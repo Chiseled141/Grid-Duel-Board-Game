@@ -180,8 +180,13 @@ Two tiny `Graphics2D` painters in `UiKit`, reused as flavor:
   capture (replaces nothing; purely decorative, capped at 200 ms per the
   brief's animation rule).
 
-No image/icon assets beyond the font; everything is drawn so the jar stays
-self-contained.
+**Hand-designed assets.** The team additionally designs real artwork
+(board, pieces, card faces, icon — manually or in a third-party tool) per
+the contract in **`docs/ASSET_CHECKLIST.md`**. M9 ships the code-drawn
+versions as the baseline; an `AssetStore` loader then replaces each drawn
+element with the matching file from `src/main/resources/assets/` **only
+when that file exists**, falling back silently otherwise. Assets are files
+in the jar, not dependencies — the two-dependency rule is unaffected.
 
 ---
 
@@ -193,9 +198,12 @@ self-contained.
 3. Restyle panels in this order: Login → Lobby → Game → Leaderboard →
    Replay → menus (each keeps its current layout manager and listeners).
 4. Repaint `BoardPanel` tiles/pieces/marks and `CardPanel` sticker faces.
-5. Add the capture lightning flash (≤200 ms, EDT-timer).
-6. Verify acceptance criteria (§1.4), add DESIGN_DECISIONS entry, take
+5. Add the `AssetStore` loader (per-file override with drawn fallback) so
+   hand-designed assets from `docs/ASSET_CHECKLIST.md` drop in without code
+   changes.
+6. Add the capture lightning flash (≤200 ms, EDT-timer).
+7. Verify acceptance criteria (§1.4), add DESIGN_DECISIONS entry, take
    before/after screenshots for the report.
 
-**Out of scope:** changing any listener, message, or model field; adding
-image assets; new dependencies; touching anything outside `client.ui`.
+**Out of scope:** changing any listener, message, or model field; new
+dependencies; touching anything outside `client.ui`.
