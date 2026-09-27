@@ -110,4 +110,19 @@ class DisconnectReconnectTest {
         assertEquals(hostStart.yourColor().opponent(), over.winnerColor());
         assertEquals(WinCondition.FORFEIT, over.way());
     }
+
+    @Test
+    void silentClientIsDroppedAfterTheSilenceLimit() throws Exception {
+        // 1-second heartbeat silence limit; the client read timeout is 10 s,
+        // so the server's drop must arrive well before the test gives up.
+        database = new Database(tempDir.resolve("ut-silence.db"));
+        server = new GameServer(new ServerConfig(0, 60, new Random(3), null, 1),
+                new SqliteUserDao(database));
+        int port = server.start();
+
+        ScriptedClient idle = new ScriptedClient(port);
+        idle.send(new onitama.net.RegisterRequest("idle", "idlepw"));
+        idle.expectLoginOk();
+        idle.expectClosed();
+    }
 }

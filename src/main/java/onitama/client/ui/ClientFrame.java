@@ -78,6 +78,7 @@ public final class ClientFrame extends JFrame {
 
         setSize(settings.windowWidth(), settings.windowHeight());
         setLocationRelativeTo(null);
+        setJMenuBar(buildMenuBar());
         setDefaultCloseOperation(DO_NOTHING_ON_CLOSE);
         addWindowListener(new WindowAdapter() {
             @Override
@@ -85,6 +86,44 @@ public final class ClientFrame extends JFrame {
                 closeAndSave();
             }
         });
+    }
+
+    /** Game and Help menus; entries act on the current screen. */
+    private javax.swing.JMenuBar buildMenuBar() {
+        javax.swing.JMenuBar menuBar = new javax.swing.JMenuBar();
+
+        javax.swing.JMenu game = new javax.swing.JMenu("Game");
+        javax.swing.JMenuItem resign = new javax.swing.JMenuItem("Resign match");
+        resign.addActionListener(event -> model.resign());
+        javax.swing.JMenuItem lobby = new javax.swing.JMenuItem("Back to lobby");
+        lobby.addActionListener(event -> model.leaveToLobby());
+        javax.swing.JMenuItem exit = new javax.swing.JMenuItem("Exit");
+        exit.addActionListener(event -> closeAndSave());
+        game.add(resign);
+        game.add(lobby);
+        game.addSeparator();
+        game.add(exit);
+        menuBar.add(game);
+
+        javax.swing.JMenu help = new javax.swing.JMenu("Help");
+        javax.swing.JMenuItem rules = new javax.swing.JMenuItem("How to play");
+        rules.addActionListener(event -> JOptionPane.showMessageDialog(this,
+                "Onitama: move one of your pieces with one of your two hand cards.\n"
+                        + "The used card swaps with the transit card, so your opponent will\n"
+                        + "get it two half-moves later - always check what you hand over.\n\n"
+                        + "Win by capturing the enemy Master (Way of the Stone) or by moving\n"
+                        + "your Master onto the enemy Temple Arch (Way of the Stream).",
+                "How to play", JOptionPane.INFORMATION_MESSAGE));
+        javax.swing.JMenuItem about = new javax.swing.JMenuItem("About");
+        about.addActionListener(event -> JOptionPane.showMessageDialog(this,
+                "Onitama Online - a networked implementation of the board game\n"
+                        + "Onitama by Shimpei Sato (Arcane Wonders, 2014).\n"
+                        + "Java Software Development final project.",
+                "About", JOptionPane.INFORMATION_MESSAGE));
+        help.add(rules);
+        help.add(about);
+        menuBar.add(help);
+        return menuBar;
     }
 
     /** Reader-thread callback: hands the message to the model on the EDT. */

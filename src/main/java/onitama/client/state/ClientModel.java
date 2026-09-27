@@ -27,6 +27,7 @@ import onitama.net.MoveRejected;
 import onitama.net.MoveRequest;
 import onitama.net.OpponentLeft;
 import onitama.net.PassTurn;
+import onitama.net.ReconnectRequest;
 import onitama.net.RegisterRequest;
 import onitama.net.RematchAccept;
 import onitama.net.RematchRequest;
@@ -57,6 +58,9 @@ public final class ClientModel {
     private Screen screen = Screen.LOGIN;
     private UserProfile me;
     private String reconnectToken;
+    // Last successful connection target, for automatic reconnect attempts.
+    private String lastHost = "127.0.0.1";
+    private int lastPort = 5555;
 
     private List<MatchSummary> openMatches = List.of();
     private List<UserProfile> leaderboard = List.of();
@@ -106,6 +110,8 @@ public final class ClientModel {
     }
 
     private void connectThenSend(String host, int port, Message request) {
+        lastHost = host;
+        lastPort = port;
         if (connection.isConnected()) {
             connection.send(request);
             return;
@@ -241,19 +247,54 @@ public final class ClientModel {
 
     /** Called when the connection dropped; resets the UI to the login screen. */
     public void handleConnectionLost() {
-        boolean wasInMatch = state != null;
-        clearMatchState();
-        me = null;
-        reconnectToken = null;
-        setScreen(Screen.LOGIN);
-        fire(listener -> listener.onError(wasInMatch
-                ? "Connection lost. Please log in again."
-                : "Connection lost."));
-        fire(ClientModelListener::onConnectionLost);
+        String token = reconnectToken;
+        if (token != null) {
+            // Keep the profile and match context: the reconnect re-attaches to
+            // the same session and the server sends the authoritative state.
+            fire(ClientModelListener::onConnectionLost);
+            attemptReconnect(token, 3);
+        } else {
+            clearMatchState();
+            me = null;
+            setScreen(Screen.LOGIN);
+            fire(ClientModelListener::onConnectionLost);
+        }
+    }
+
+    /**
+     * Tries to re-attach to the interrupted session with the reconnect token
+     * in a background thread (the server answers with the current match
+     * state or, if the match is gone, a fresh login response). Falls back to
+     * the login screen after the given number of attempts.
+     */
+    private void attemptReconnect(String token, int attemptsLeft) {
+        new Thread(() -> {
+            try {
+                connection.ensureConnected(lastHost, lastPort);
+                connection.send(new ReconnectRequest(token));
+            } catch (IOException e) {
+                if (attemptsLeft > 1) {
+                    try {
+                        Thread.sleep(1000);
+                    } catch (InterruptedException interrupted) {
+                        Thread.currentThread().interrupt();
+                        return;
+                    }
+                    attemptReconnect(token, attemptsLeft - 1);
+                } else {
+                    fire(listener -> listener.onError(
+                            "Could not reconnect (" + e.getMessage() + "). Please log in again."));
+                    me = null;
+                    reconnectToken = null;
+                    setScreen(Screen.LOGIN);
+                }
+            }
+        }, "onitama-reconnect").start();
     }
 
     private void handleLoginResponse(LoginResponse response) {
         if (response.ok()) {
+            clearMatchState(); // e.g. a reconnect whose match is already gone
             me = response.profile();
             reconnectToken = response.reconnectToken();
             setScreen(Screen.LOBBY);

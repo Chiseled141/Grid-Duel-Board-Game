@@ -3,6 +3,7 @@ package onitama.server;
 import onitama.net.Message;
 import onitama.net.RegisterRequest;
 
+import java.io.EOFException;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
@@ -73,6 +74,20 @@ final class ScriptedClient implements AutoCloseable {
             fail("login/register failed: " + response.errorText());
         }
         return response;
+    }
+
+    /** Blocks until the server closes the connection; fails on timeout or message. */
+    void expectClosed() {
+        try {
+            Object raw = in.readObject();
+            fail("expected the server to close the connection but received " + raw);
+        } catch (SocketTimeoutException e) {
+            fail("the server never closed the connection");
+        } catch (EOFException | java.net.SocketException expected) {
+            // the server dropped us, as expected
+        } catch (Exception e) {
+            // any other read error also means the connection ended
+        }
     }
 
     @Override
