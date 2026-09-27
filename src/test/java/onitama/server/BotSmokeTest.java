@@ -21,7 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * LT01 — smoke-level load test: 8 bots form 4 pairs and play 2 games each
- * (4 concurrent games at any time, 16 in total) against a real server with a
+ * (4 concurrent games at any time, 8 in total) against a real server with a
  * temporary database, without a single failed bot or rejected move.
  */
 class BotSmokeTest {
@@ -55,7 +55,7 @@ class BotSmokeTest {
         BotHarness.Summary summary = new BotHarness(tempDir.resolve("results"))
                 .run(8, 2, "127.0.0.1", port, 7L);
 
-        assertEquals(16, summary.gamesCompleted(), "all requested games must complete");
+        assertEquals(8, summary.gamesCompleted(), "all requested games must complete");
         assertEquals(0, summary.failedBots(), "no bot may fail");
         assertTrue(summary.movesMeasured() > 0, "round-trips must be measured");
         assertTrue(summary.gamesPerMinute() > 0, "throughput must be positive");

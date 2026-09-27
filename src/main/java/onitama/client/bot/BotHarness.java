@@ -62,7 +62,10 @@ public final class BotHarness {
                 .flatMap(bot -> bot.moveRtts().stream())
                 .sorted(Comparator.naturalOrder())
                 .toList();
-        int gamesCompleted = fleet.stream().mapToInt(LoadTestBot::gamesCompleted).sum();
+        // Every finished game is observed by both players of the pair, so the
+        // per-bot counts add up to twice the number of completed games.
+        int gamesCompleted = (int) Math.round(
+                fleet.stream().mapToInt(LoadTestBot::gamesCompleted).sum() / 2.0);
         int failedBots = (int) fleet.stream().filter(bot -> bot.failure() != null).count();
 
         writeLatencies(fleet);
