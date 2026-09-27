@@ -93,6 +93,7 @@ Compilatio similarity threshold (≤ 20 %). Submit the finished report as
 * Present docs/EXPERIMENTS.md's measured tables (E1, E2, E3) as charts/tables.
 * One chart: p50/p95 latency vs. number of concurrent games; one table: games/minute per configuration.
 * Interpretation: what the numbers say about the single-connection SQLite choice and the per-match executor model.
+* If milestone M9 (UI redesign) was executed: before/after screenshots of each screen (`docs/UI_DESIGN.md`, `docs/ASSET_CHECKLIST.md`) belong here.
 * TODO(team): ALL numbers from real runs; three repetitions, median; never invent values.
 
 ## 13. Discussion
@@ -105,7 +106,7 @@ Compilatio similarity threshold (≤ 20 %). Submit the finished report as
 ## 14. Novelty and Contributions
 
 * Baseline: the board game Onitama exists; no official online Java implementation was used or copied.
-* Our contributions: 1) authoritative match-server design with thread-confined sessions and full-state broadcasts; 2) replay format validated by re-simulating through the rules engine; 3) measurement harness producing reproducible CSV evidence; 4) the serialization-snapshot fix and its regression test as a documented pitfall.
+* Our contributions: 1) authoritative match-server design with thread-confined sessions and full-state broadcasts; 2) replay format validated by re-simulating through the rules engine; 3) measurement harness producing reproducible CSV evidence; 4) the serialization-snapshot fix and its regression test as a documented pitfall; 5) a view-swappable client architecture that allowed a full visual redesign (M9, `docs/UI_DESIGN.md`) without touching game logic, including a graceful asset-drop-in pipeline (`docs/ASSET_CHECKLIST.md`).
 * TODO(team): confirm the list, add anything you built beyond this skeleton.
 
 ## 15. Limitations

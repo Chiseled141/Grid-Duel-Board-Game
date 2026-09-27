@@ -1,0 +1,10 @@
+thg 9 28, 2026 12:00:45 SA onitama.server.GameServer start
+INFO: Onitama server listening on port 5555
+thg 9 28, 2026 12:02:07 SA onitama.server.ClientHandler completeLogin
+INFO: user 'hello' logged in
+thg 9 28, 2026 12:02:38 SA onitama.server.ClientHandler completeLogin
+INFO: user 'hello2' logged in
+thg 9 28, 2026 12:03:50 SA onitama.server.ClientHandler onDisconnected
+INFO: user 'hello' disconnected
+thg 9 28, 2026 12:03:55 SA onitama.server.ClientHandler onDisconnected
+INFO: user 'hello2' disconnected
