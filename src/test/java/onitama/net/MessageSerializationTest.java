@@ -1,6 +1,6 @@
 package onitama.net;
 
-import onitama.core.Card;
+import onitama.GameStateAssert;
 import onitama.core.CardDeck;
 import onitama.core.GameState;
 import onitama.core.Move;
@@ -23,8 +23,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 /**
  * UT09 — every message type round-trips through Java serialization with all
  * fields preserved. Messages are records, so equality already compares every
- * component; GameState-bearing messages are compared field by field because
- * GameState is a mutable domain object without value equality.
+ * component; GameState-bearing messages are compared field by field via
+ * {@link GameStateAssert}.
  */
 class MessageSerializationTest {
 
@@ -41,6 +41,7 @@ class MessageSerializationTest {
                 new LoginResponse(true, null, new UserProfile("alice", 1016, 3, 1), "token-123"),
                 new LoginResponse(false, "wrong password", null, null),
                 new CreateMatchRequest(),
+                new MatchCreated("AB3XZ"),
                 new JoinMatchRequest("AB3XZ"),
                 new ListMatchesRequest(),
                 new ListMatchesResponse(List.of(new MatchSummary("AB3XZ", "alice"))),
@@ -89,36 +90,14 @@ class MessageSerializationTest {
             assertEquals(expected.yourColor(), actual.yourColor());
             assertEquals(expected.roomCode(), actual.roomCode());
             assertEquals(expected.opponentUsername(), actual.opponentUsername());
-            assertSameGame(expected.initialState(), actual.initialState());
+            GameStateAssert.assertSameGame(expected.initialState(), actual.initialState());
         } else if (original instanceof MoveApplied expected) {
             MoveApplied actual = (MoveApplied) copy;
             assertEquals(expected.lastMove(), actual.lastMove());
-            assertSameGame(expected.state(), actual.state());
+            GameStateAssert.assertSameGame(expected.state(), actual.state());
         } else {
             // All other messages are records of comparable components.
             assertEquals(original, copy);
         }
-    }
-
-    /** Asserts two game states describe the identical position and progress. */
-    private void assertSameGame(GameState expected, GameState actual) {
-        assertEquals(expected.turn(), actual.turn());
-        assertEquals(expected.moveNumber(), actual.moveNumber());
-        assertEquals(expected.status(), actual.status());
-        assertEquals(expected.winner(), actual.winner());
-        assertEquals(expected.way(), actual.way());
-        assertEquals(expected.transit().id(), actual.transit().id());
-        assertEquals(cardIds(expected.hand(PlayerColor.BLUE)), cardIds(actual.hand(PlayerColor.BLUE)));
-        assertEquals(cardIds(expected.hand(PlayerColor.RED)), cardIds(actual.hand(PlayerColor.RED)));
-        for (int y = 0; y < 5; y++) {
-            for (int x = 0; x < 5; x++) {
-                assertEquals(expected.board().pieceAt(x, y), actual.board().pieceAt(x, y),
-                        "piece at (" + x + "," + y + ")");
-            }
-        }
-    }
-
-    private static List<String> cardIds(List<Card> cards) {
-        return cards.stream().map(Card::id).toList();
     }
 }

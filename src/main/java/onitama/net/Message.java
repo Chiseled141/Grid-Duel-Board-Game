@@ -15,7 +15,8 @@ import java.io.Serializable;
  */
 public sealed interface Message extends Serializable
         permits RegisterRequest, LoginRequest, LoginResponse,
-        CreateMatchRequest, JoinMatchRequest, ListMatchesRequest, ListMatchesResponse,
+        CreateMatchRequest, MatchCreated, JoinMatchRequest,
+        ListMatchesRequest, ListMatchesResponse,
         MatchStart, MoveRequest, MoveApplied, MoveRejected, PassTurn,
         GameOver, RematchRequest, RematchAccept, ResignRequest,
         OpponentLeft, ReconnectRequest, LeaderboardRequest, LeaderboardResponse,

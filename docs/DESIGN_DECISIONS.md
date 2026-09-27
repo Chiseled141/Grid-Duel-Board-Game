@@ -71,5 +71,35 @@ button; the opponent wins by FORFEIT) and `opponentUsername` as an extra
 `MatchStart` field (the game screen and game-over dialog must name the
 opponent). `RematchAccept` is sent to the *other* player when a rematch is
 offered; once both players have sent `RematchRequest`, the server deals a
-fresh game and sends `MatchStart`.
+fresh game and sends `MatchStart`. `MatchCreated` acknowledges
+`CreateMatchRequest` with the room code (the brief's table implies the host
+learns the code somehow; an explicit acknowledgment is simplest).
+
+## Every socket message is a full snapshot: `ObjectOutputStream.reset()` (M3)
+
+Java serialization writes a repeated object reference as a back-handle, not
+as data. The server broadcasts the *same live* `GameState` in `MatchStart`
+and in every `MoveApplied`; without `out.reset()` before each
+`writeObject`, clients would receive the back-handle and keep the stale
+initial copy forever (found by IT01: the first `MoveApplied` still reported
+`moveNumber = 0`). Resetting the stream's handle table per message makes
+every message an independent snapshot; `writeUnshared` would not suffice
+because it does not unshare nested references.
+
+## Match session lifecycle: retire, don't die (M3)
+
+A finished match must stay alive as a passive session (players may vote for
+a rematch, or reconnect to receive the final `GameOver`). The session's
+single-thread executor is therefore retired only when the match is over
+**and** both player colors are disconnected (`maybeRetire()`); a running
+game forfeits a disconnected player after the grace period instead. An idle
+finished session costs one parked thread, which is acceptable at this scale
+and far simpler than reference-counting handlers.
+
+## In-memory accounts before SQLite (M3)
+
+Until M5 the server runs with `InMemoryUserDao`, which implements the same
+`UserDao` interface (same validation, same PBKDF2 hashing, same errors) as
+the SQLite implementation. The server code is written against the interface
+throughout, so M5 is a drop-in swap.
 
