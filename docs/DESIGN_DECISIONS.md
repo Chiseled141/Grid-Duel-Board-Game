@@ -198,3 +198,20 @@ clear the session and return to the login screen.
 server mode. Logs rotate so a long-running EC2 instance cannot fill its
 disk.
 
+## M9 visual direction: retro-pop redesign with an asset pipeline (planning)
+
+The team chose the fireship.dev "retro-pop neo-brutalism on dark" direction
+for the client's visual redesign; it is specified in `docs/UI_DESIGN.md`
+(tokens, UiKit primitives, per-screen specs) and constrained by agent brief
+§17 (`client.ui` only, no new dependencies, behavior invariants). Two
+sub-decisions: (1) the display font (Archivo Black) is **bundled as a jar
+resource with its OFL license** — a file, not a dependency, so the
+two-dependency rule holds; (2) hand-designed artwork (board, pieces, card
+faces, icon — designed by the team per `docs/ASSET_CHECKLIST.md`) is
+integrated through an `AssetStore` that uses each file from
+`src/main/resources/assets/` **only when present** and falls back to the
+code-drawn baseline otherwise — so the game is complete before any art
+arrives and art can be delivered incrementally. Card movement patterns are
+never part of the artwork: the engine stamps them onto the card template so
+the shown pattern always matches the rules data.
+

@@ -113,8 +113,12 @@ src/main/java/onitama/
 └── client/              OnitamaClient (socket lifecycle), state/ (EDT model +
     │                    observer events), ui/ (Swing panels & renderers),
     └── bot/             headless load-test bot + harness (CSV results)
+src/main/resources/      fonts/ (display font, OFL license) and assets/
+                         (hand-designed board/piece/card art — optional,
+                         each falls back to the drawn baseline when absent)
 src/test/java/onitama/   JUnit 5 tests (UT01–UT09, IT01–IT02, LT01)
-docs/                    DESIGN_DECISIONS.md, AWS_DEPLOY.md, EXPERIMENTS.md
+docs/                    DESIGN_DECISIONS.md, UI_DESIGN.md, ASSET_CHECKLIST.md,
+                         AWS_DEPLOY.md, EXPERIMENTS.md
 report/                  REPORT_SKELETON.md (the team writes the report)
 results/                 (created by bot runs) latency + summary CSV files
 replays/                 (created by the server) .onitama-replay files
@@ -136,6 +140,9 @@ center square of their home row (Way of the Stream).
 
 ## Known limitations
 
+* The current UI is the functional M4 baseline; milestone **M9** replaces it
+  with the retro-pop redesign specified in `docs/UI_DESIGN.md`, optionally
+  using hand-designed artwork from `docs/ASSET_CHECKLIST.md`.
 * Matchmaking is only "create room → share 5-character code → join"; there is
   no automatic matchmaking queue, no spectator mode and no in-game chat.
 * Elo has no provisionality, rating floor or decay; a small player pool can
