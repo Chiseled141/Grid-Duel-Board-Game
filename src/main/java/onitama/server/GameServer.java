@@ -31,6 +31,7 @@ public final class GameServer {
 
     private final ServerConfig config;
     private final UserDao userDao;
+    private final MatchPersistence persistence;
     private final SessionRegistry registry = new SessionRegistry();
     private final LobbyManager lobby = new LobbyManager();
     private final ExecutorService clientPool;
@@ -41,14 +42,21 @@ public final class GameServer {
     private volatile ServerSocket serverSocket;
 
     /**
-     * Creates the server. Call {@link #start()} to bind the port and begin
-     * accepting connections, and {@link #stop()} to shut everything down.
+     * Creates the server with persistence. Call {@link #start()} to bind the
+     * port and begin accepting connections, and {@link #stop()} to shut
+     * everything down.
      */
-    public GameServer(ServerConfig config, UserDao userDao) {
+    public GameServer(ServerConfig config, UserDao userDao, MatchPersistence persistence) {
         this.config = config;
         this.userDao = userDao;
+        this.persistence = persistence;
         this.clientPool = Executors.newFixedThreadPool(CLIENT_POOL_SIZE, namedThreads("onitama-client-"));
         this.timers = Executors.newScheduledThreadPool(1, namedThreads("onitama-timer-"));
+    }
+
+    /** Convenience for tests: a server without persistence (log-only hook). */
+    public GameServer(ServerConfig config, UserDao userDao) {
+        this(config, userDao, null);
     }
 
     /**
@@ -121,10 +129,15 @@ public final class GameServer {
     }
 
     /**
-     * Persistence hook called once per finished match. Milestone M3 only
-     * logs; M5 adds the transactional database write and the replay file.
+     * Persistence hook called once per finished match from the match
+     * executor: records the match row, both players' stats (one transaction)
+     * and the replay file. Without a {@link MatchPersistence} (tests) it only
+     * logs.
      */
     public void onMatchFinished(MatchResult result) {
+        if (persistence != null) {
+            persistence.record(result);
+        }
         LOG.info("match " + result.roomCode() + " finished: " + result.way()
                 + ", winner=" + result.winnerUsername()
                 + ", half-moves=" + result.moveCount());
