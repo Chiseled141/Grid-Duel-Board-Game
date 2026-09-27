@@ -376,11 +376,13 @@ Produce the section headings exactly following Instructions.md §11 (Title → A
 
 ## 17. Planned Follow-up: UI Design Pass (M9) — read before any UI work
 
-**Status: waiting on the team.** The team will supply a UI design for the
-game screens later (mockups, screenshots, or a written spec — format TBD).
-The current Swing UI is a *functional placeholder*: it was built for
-correctness and testability, not looks. Until the design arrives, agents
-must **not** restyle or restructure the UI preemptively.
+**Status: design direction chosen.** The team selected the fireship.dev
+"retro-pop neo-brutalism on dark" direction; it is concretized into the
+implementation contract **`docs/UI_DESIGN.md`** (tokens, UI kit, per-screen
+specs, checklist). M9 = implement that document. The current Swing UI is a
+*functional placeholder*: it was built for correctness and testability, not
+looks. Agents must **not** restyle or restructure the UI preemptively —
+only as an explicit M9 execution of `docs/UI_DESIGN.md`.
 
 When the design is provided, implement it under these rules:
 
