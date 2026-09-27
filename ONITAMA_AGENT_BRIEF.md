@@ -396,7 +396,11 @@ When the design is provided, implement it under these rules:
    replaceable views).
 2. **No new dependencies.** Swing and the JDK only (rule 3 of this brief) —
    no look-and-feel libraries, icon packs, or animation frameworks. Custom
-   `Graphics2D` painting is fine and expected for board/cards.
+   `Graphics2D` painting is fine and expected for board/cards. The team
+   additionally supplies **hand-designed art assets** (board, pieces, card
+   faces, icon) per the contract in **`docs/ASSET_CHECKLIST.md`** — these
+   are resource files, not dependencies, and each one must gracefully fall
+   back to the drawn baseline when absent.
 3. **Behavior invariants that must survive the redesign:**
    - the board is always drawn from the player's own side, and the
      opponent's card patterns are pre-rotated to the player's perspective
