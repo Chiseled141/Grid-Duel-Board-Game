@@ -50,3 +50,26 @@ regular moves and passes.
 package-private: only `onitama.core` (the rules engine and core tests) can
 change a position. Client and server code receives effectively read-only
 objects — enforced by the compiler, not by convention.
+
+## `Message` is a sealed interface, not an abstract class (M2)
+
+The brief sketches "abstract Message implements Serializable", but every
+message is a pure data carrier, and Java records — the cleanest fit for that —
+cannot extend a class. `Message` is therefore a **sealed interface extending
+Serializable**; all 24 message records implement it and are named in the
+permits clause. This keeps the protocol hierarchy closed (adding a message is
+a conscious, reviewed change) while keeping each message a two-line record
+with value equality, which UT09 uses directly. Records serialize by component
+name; the `serialVersionUID = 1L` declaration required by the brief is kept on
+every message for convention.
+
+## Extra messages beyond the brief's table (M2)
+
+Two needs are not covered by the Section 4 message table, so two small
+messages were added: `ResignRequest` (the game screen requires a resign
+button; the opponent wins by FORFEIT) and `opponentUsername` as an extra
+`MatchStart` field (the game screen and game-over dialog must name the
+opponent). `RematchAccept` is sent to the *other* player when a rematch is
+offered; once both players have sent `RematchRequest`, the server deals a
+fresh game and sends `MatchStart`.
+
