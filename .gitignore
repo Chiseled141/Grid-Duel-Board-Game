@@ -1,0 +1,9 @@
+target/
+data/
+replays/
+results/
+*.db
+.DS_Store
+.idea/
+*.iml
+.vscode/
