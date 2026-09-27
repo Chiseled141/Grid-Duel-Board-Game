@@ -141,3 +141,32 @@ which validates the file against the real rules (corrupted files fail with a
 friendly message, and `initialState` is a deep snapshot taken before the
 first move is applied).
 
+## Database access: one shared connection guarded by a monitor (M5)
+
+The brief allows a single shared connection with a lock or a small pool. We
+use **one connection guarded by the `Database` object's monitor**: every
+statement funnels through `query(...)` or `inTransaction(...)`, both
+`synchronized`, so statements never interleave and no check-out/check-in
+logic exists. At this project's scale (a few dozen players, tiny statements)
+serialization costs nothing; a pool would add failure modes to explain in
+the viva without a measurable benefit. `PRAGMA foreign_keys = ON` is set at
+startup so a match row referencing a missing user fails loudly and rolls the
+transaction back (UT08 proves the rollback leaves no partial data).
+
+## Where match recording happens (M5)
+
+`MatchSession.finish()` computes the Elo update and hands a `MatchResult` to
+`GameServer.onMatchFinished`, which delegates to `MatchPersistence`: it
+writes the replay file first (a replay failure only nulls the stored path)
+and then commits the match row **and** both players' Elo/wins/losses updates
+in one transaction. `GameServer` constructed without a `MatchPersistence`
+(tests) keeps a log-only hook. `PRAGMA`-checked FKs plus the explicit
+"unknown user" check make a half-recorded match impossible.
+
+## The joiner's hosted lobby closes when they join elsewhere (M4/M5)
+
+A player can host a lobby and then join someone else's room; the stale lobby
+would linger in the browser list forever. `handleJoinMatch` therefore closes
+the joiner's own hosted lobby when a join succeeds (mirroring what the atomic
+lobby claim already does for the host).
+

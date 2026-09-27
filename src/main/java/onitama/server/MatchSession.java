@@ -267,10 +267,11 @@ public final class MatchSession {
     }
 
     /**
-     * Ends the match: computes the Elo update, persists the new stats, sends
-     * {@link GameOver} to both players and hands the result to the server's
-     * persistence hook. The executor stays alive so the players can still
-     * agree on a rematch; it is retired once both players are gone.
+     * Ends the match: computes the Elo update, hands the result to the
+     * server's persistence hook (match row + both players' stats in one
+     * transaction, plus the replay file), then sends {@link GameOver} to both
+     * players. The executor stays alive so the players can still agree on a
+     * rematch; it is retired once both players are gone.
      */
     private void finish(PlayerColor winner, WinCondition way) {
         if (finished) {
@@ -281,16 +282,14 @@ public final class MatchSession {
         UserProfile blue = userDao.profileOf(blueUsername);
         UserProfile red = userDao.profileOf(redUsername);
         Elo.Result elo = Elo.update(blue.elo(), red.elo(), winner);
-        updateStats(userDao, blue, winner == PlayerColor.BLUE, elo.blue());
-        updateStats(userDao, red, winner == PlayerColor.RED, elo.red());
+        MatchResult result = new MatchResult(roomCode, blueUsername, redUsername,
+                winner, way, elo.blue(), elo.red(), deal, List.copyOf(history));
+        server.onMatchFinished(result);
 
         gameOver = new GameOver(winner, way, elo.blue(), elo.red());
         broadcast(gameOver);
-        MatchResult result = new MatchResult(roomCode, blueUsername, redUsername,
-                winner, way, elo.blue(), elo.red(), deal, List.copyOf(history));
         releaseTokens();
         server.removeLiveMatch(roomCode);
-        server.onMatchFinished(result);
         maybeRetire();
         LOG.info(() -> "match " + roomCode + " finished: " + way + ", winner="
                 + result.winnerUsername() + ", half-moves=" + result.moveCount());

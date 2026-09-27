@@ -7,15 +7,23 @@ import onitama.core.Move;
 import onitama.core.PlayerColor;
 import onitama.core.RulesEngine;
 import onitama.core.Square;
-import onitama.db.InMemoryUserDao;
+import onitama.db.Database;
+import onitama.db.MatchDao;
+import onitama.db.SqliteMatchDao;
+import onitama.db.SqliteUserDao;
 import onitama.server.GameServer;
+import onitama.server.MatchPersistence;
 import onitama.server.ServerConfig;
 
 import java.awt.GraphicsEnvironment;
+import java.nio.file.Path;
+import java.sql.SQLException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 import javax.swing.SwingUtilities;
 
@@ -32,6 +40,8 @@ import javax.swing.SwingUtilities;
  * The {@code bots} mode is added by a later milestone.
  */
 public final class Main {
+
+    private static final Logger LOG = Logger.getLogger(Main.class.getName());
 
     private Main() {
     }
@@ -116,10 +126,21 @@ public final class Main {
 
     private static void runServer(Map<String, String> options) {
         int port = Integer.parseInt(options.getOrDefault("port", "5555"));
-        // Milestone M5 replaces the in-memory accounts with SQLite persistence.
-        GameServer server = new GameServer(ServerConfig.defaults(port), new InMemoryUserDao());
-        Runtime.getRuntime().addShutdownHook(new Thread(server::stop, "onitama-shutdown"));
-        try {
+        Path dbFile = Path.of(options.getOrDefault("db", "data/onitama.db"));
+        Path replayDir = Path.of(options.getOrDefault("replays", "replays"));
+        try (Database database = new Database(dbFile)) {
+            SqliteUserDao userDao = new SqliteUserDao(database);
+            MatchDao matchDao = new SqliteMatchDao(database, userDao);
+            GameServer server = new GameServer(ServerConfig.defaults(port), userDao,
+                    new MatchPersistence(database, matchDao, replayDir));
+            Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+                server.stop();
+                try {
+                    database.close();
+                } catch (SQLException e) {
+                    LOG.log(Level.WARNING, "closing database failed", e);
+                }
+            }, "onitama-shutdown"));
             server.start();
             server.awaitShutdown();
         } catch (Exception e) {

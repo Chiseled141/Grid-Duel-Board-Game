@@ -4,7 +4,8 @@ import onitama.GameStateAssert;
 import onitama.core.GameState;
 import onitama.core.Move;
 import onitama.core.RulesEngine;
-import onitama.db.InMemoryUserDao;
+import onitama.db.Database;
+import onitama.db.SqliteUserDao;
 import onitama.net.CreateMatchRequest;
 import onitama.net.GameOver;
 import onitama.net.JoinMatchRequest;
@@ -18,8 +19,11 @@ import onitama.net.ReconnectRequest;
 import onitama.core.WinCondition;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
+import java.nio.file.Path;
+import java.sql.SQLException;
 import java.util.Random;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -33,11 +37,15 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 class DisconnectReconnectTest {
 
     private GameServer server;
+    private Database database;
     private ScriptedClient host;
     private ScriptedClient guest;
 
+    @TempDir
+    Path tempDir;
+
     @AfterEach
-    void stopEverything() {
+    void stopEverything() throws SQLException {
         if (host != null) {
             host.close();
         }
@@ -47,11 +55,16 @@ class DisconnectReconnectTest {
         if (server != null) {
             server.stop();
         }
+        if (database != null) {
+            database.close();
+        }
     }
 
     @Test
     void reconnectRestoresStateAndGraceExpiryForfeits() throws Exception {
-        server = new GameServer(new ServerConfig(0, 1, new Random(7)), new InMemoryUserDao());
+        database = new Database(tempDir.resolve("it02.db"));
+        server = new GameServer(new ServerConfig(0, 1, new Random(7), null),
+                new SqliteUserDao(database));
         int port = server.start();
 
         // Register, meet in a lobby and play three half-moves.

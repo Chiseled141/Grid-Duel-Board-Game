@@ -10,7 +10,9 @@ import onitama.core.PlayerColor;
 import onitama.core.RulesEngine;
 import onitama.core.Square;
 import onitama.core.WinCondition;
-import onitama.db.InMemoryUserDao;
+import onitama.db.Database;
+import onitama.db.SqliteMatchDao;
+import onitama.db.SqliteUserDao;
 import onitama.net.CreateMatchRequest;
 import onitama.net.GameOver;
 import onitama.net.JoinMatchRequest;
@@ -28,11 +30,16 @@ import onitama.net.PassTurn;
 import onitama.net.RegisterRequest;
 import onitama.net.RematchAccept;
 import onitama.net.RematchRequest;
+import onitama.replay.ReplayFile;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
@@ -54,19 +61,27 @@ class ServerClientIntegrationTest {
     private static final long SEED = 20260927L;
 
     private GameServer server;
+    private Database database;
     private int port;
     private ScriptedClient blue;
     private ScriptedClient red;
 
+    @TempDir
+    Path tempDir;
+
     @BeforeEach
-    void startServer() throws IOException {
-        server = new GameServer(new ServerConfig(0, 60, new Random(SEED)),
-                new InMemoryUserDao());
+    void startServer() throws IOException, SQLException {
+        database = new Database(tempDir.resolve("it01.db"));
+        SqliteUserDao userDao = new SqliteUserDao(database);
+        Path replayDir = tempDir.resolve("replays");
+        server = new GameServer(new ServerConfig(0, 60, new Random(SEED), replayDir),
+                userDao, new MatchPersistence(database, new SqliteMatchDao(database, userDao),
+                        replayDir));
         port = server.start();
     }
 
     @AfterEach
-    void stopEverything() {
+    void stopEverything() throws SQLException {
         if (blue != null) {
             blue.close();
         }
@@ -74,12 +89,14 @@ class ServerClientIntegrationTest {
             red.close();
         }
         server.stop();
+        database.close();
     }
 
     @Test
     void twoClientsPlayAFullScriptedGameToAStoneWin() throws Exception {
         // ---- predict the whole game locally with the same seeded deal ----
         GameState initial = GameState.newGame(CardDeck.deal(new Random(SEED)));
+        String initialTransitId = initial.transit().id();
         GameState sim = GameState.newGame(CardDeck.deal(new Random(SEED)));
         List<ScriptEntry> script = new ArrayList<>();
         List<String> boardAfterEachStep = new ArrayList<>();
@@ -182,6 +199,16 @@ class ServerClientIntegrationTest {
         assertEquals(1, board.topPlayers().get(0).wins());
         assertEquals(loserName, board.topPlayers().get(1).username());
         assertEquals(1, board.topPlayers().get(1).losses());
+
+        // ---- the server persisted a valid replay file ----
+        try (var replayFiles = Files.list(tempDir.resolve("replays"))) {
+            Path replayFile = replayFiles.findFirst().orElseThrow();
+            ReplayFile.Replay replay = ReplayFile.read(replayFile);
+            assertEquals(sim.moveNumber(), replay.moves().size());
+            assertEquals("alice", replay.blueUsername());
+            assertEquals("bob", replay.redUsername());
+            assertEquals(initialTransitId, replay.initialState().transit().id());
+        }
 
         // ---- rematch: offer is forwarded, second vote starts a fresh game ----
         blue.send(new RematchRequest());
