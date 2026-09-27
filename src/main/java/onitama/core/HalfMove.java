@@ -1,4 +1,4 @@
-package onitama.server;
+package onitama.core;
 
 import onitama.core.Square;
 

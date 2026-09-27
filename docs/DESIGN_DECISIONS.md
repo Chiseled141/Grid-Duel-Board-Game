@@ -103,3 +103,41 @@ Until M5 the server runs with `InMemoryUserDao`, which implements the same
 the SQLite implementation. The server code is written against the interface
 throughout, so M5 is a drop-in swap.
 
+## Client threading: model on the EDT, two network threads (M4)
+
+The client uses exactly three threads for the UI path: the Swing EDT (owns
+all model state), a socket reader thread and a socket writer thread. The
+reader hands each message to the model via `SwingUtilities.invokeLater`; UI
+actions enqueue outgoing messages into a `LinkedBlockingQueue` drained by the
+writer. The EDT never touches sockets and the network threads never touch
+Swing — the two rules from the brief, enforced structurally. Connecting also
+happens off the EDT (a background thread spawned by the model's login flow).
+
+## `ServerConnection` interface between model and socket (M4)
+
+`ClientModel` depends on a small `ServerConnection` interface (send /
+isConnected / ensureConnected) that `OnitamaClient` implements. The panels
+never see the socket at all; tests could swap in a fake connection.
+
+## Mandatory passes are sent automatically by the client (M4)
+
+When the client detects (with the local rules engine) that it has no legal
+move on its turn, it sends `PassTurn` with its first hand card instead of
+requiring the user to press anything. The server re-verifies the pass, and
+both engines agree deterministically because they run the same `core`.
+
+## Captured pieces are derived, not broadcast (M4)
+
+The protocol broadcasts full `GameState`s only. The client derives the
+captured-piece trays by diffing the destination square of each `MoveApplied`
+against the previous state — no extra protocol fields needed.
+
+## Replay files record the opening deal in the header (M4)
+
+`ReplayFile` writes the dealt card ids and first player into the header so a
+replay is fully self-contained: the viewer reconstructs the exact initial
+`GameState` and re-applies every recorded half-move through `RulesEngine`,
+which validates the file against the real rules (corrupted files fail with a
+friendly message, and `initialState` is a deep snapshot taken before the
+first move is applied).
+

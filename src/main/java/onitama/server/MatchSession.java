@@ -1,8 +1,10 @@
 package onitama.server;
 
 import onitama.core.CardDeck;
+import onitama.core.DealSnapshot;
 import onitama.core.Elo;
 import onitama.core.GameState;
+import onitama.core.HalfMove;
 import onitama.core.IllegalMoveException;
 import onitama.core.Move;
 import onitama.core.PlayerColor;
@@ -56,6 +58,7 @@ public final class MatchSession {
     private final ExecutorService executor;
 
     private GameState state;
+    private DealSnapshot deal;
     private volatile boolean finished;
     private GameOver gameOver;
     private boolean blueWantsRematch;
@@ -81,11 +84,16 @@ public final class MatchSession {
 
     /** Deals the cards and sends {@link MatchStart} to both players. */
     public void start() {
-        submit(() -> {
-            state = GameState.newGame(CardDeck.deal(server.config().dealRandom()));
-            history.clear();
-            announceMatchStart();
-        });
+        submit(this::beginNewGame);
+    }
+
+    /** Deals a fresh game, resets the history and announces it to both players. */
+    private void beginNewGame() {
+        CardDeck.Deal deal = CardDeck.deal(server.config().dealRandom());
+        state = GameState.newGame(deal);
+        this.deal = new DealSnapshot(deal.blueHand(), deal.redHand(), deal.transit());
+        history.clear();
+        announceMatchStart();
     }
 
     /** Validates and applies a move requested by {@code sender}. */
@@ -173,9 +181,7 @@ public final class MatchSession {
                 disconnected.clear();
                 finished = false;
                 gameOver = null;
-                state = GameState.newGame(CardDeck.deal(server.config().dealRandom()));
-                history.clear();
-                announceMatchStart();
+                beginNewGame();
             }
         });
     }
@@ -281,7 +287,7 @@ public final class MatchSession {
         gameOver = new GameOver(winner, way, elo.blue(), elo.red());
         broadcast(gameOver);
         MatchResult result = new MatchResult(roomCode, blueUsername, redUsername,
-                winner, way, elo.blue(), elo.red(), List.copyOf(history));
+                winner, way, elo.blue(), elo.red(), deal, List.copyOf(history));
         releaseTokens();
         server.removeLiveMatch(roomCode);
         server.onMatchFinished(result);

@@ -11,21 +11,25 @@ import onitama.db.InMemoryUserDao;
 import onitama.server.GameServer;
 import onitama.server.ServerConfig;
 
+import java.awt.GraphicsEnvironment;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
+
+import javax.swing.SwingUtilities;
 
 /**
  * Command-line entry point (Factory Method): builds the right application
  * from the first argument.
  *
  * <pre>
- *   java -jar onitama.jar demo   [--seed n]   # print a board and legal moves
- *   java -jar onitama.jar server --port 5555
+ *   java -jar onitama.jar demo   [--seed n]              # print a board and legal moves
+ *   java -jar onitama.jar server --port 5555             # headless server
+ *   java -jar onitama.jar client --host &lt;ip&gt; --port 5555 # Swing client
  * </pre>
  *
- * The {@code client} and {@code bots} modes are added by later milestones.
+ * The {@code bots} mode is added by a later milestone.
  */
 public final class Main {
 
@@ -42,6 +46,7 @@ public final class Main {
         switch (args[0]) {
             case "demo" -> runDemo(options);
             case "server" -> runServer(options);
+            case "client" -> launchClient(options);
             default -> {
                 usage();
                 System.exit(1);
@@ -52,6 +57,7 @@ public final class Main {
     private static void usage() {
         System.err.println("usage: onitama demo [--seed n]");
         System.err.println("       onitama server --port <port>");
+        System.err.println("       onitama client [--host <host>] [--port <port>]");
     }
 
     /** Parses "--key value" pairs after the mode argument into a map. */
@@ -110,7 +116,7 @@ public final class Main {
 
     private static void runServer(Map<String, String> options) {
         int port = Integer.parseInt(options.getOrDefault("port", "5555"));
-        // Milestone M3: accounts live in memory; milestone M5 swaps in SQLite.
+        // Milestone M5 replaces the in-memory accounts with SQLite persistence.
         GameServer server = new GameServer(ServerConfig.defaults(port), new InMemoryUserDao());
         Runtime.getRuntime().addShutdownHook(new Thread(server::stop, "onitama-shutdown"));
         try {
@@ -120,5 +126,21 @@ public final class Main {
             System.err.println("server failed: " + e.getMessage());
             System.exit(1);
         }
+    }
+
+    // ------------------------------------------------------------------
+    // client
+    // ------------------------------------------------------------------
+
+    /** Launches the Swing client on the EDT; CLI host/port override settings. */
+    private static void launchClient(Map<String, String> options) {
+        if (GraphicsEnvironment.isHeadless()) {
+            System.err.println("client mode needs a graphical environment");
+            System.exit(1);
+        }
+        String host = options.get("host");
+        Integer port = options.containsKey("port")
+                ? Integer.valueOf(options.get("port")) : null;
+        SwingUtilities.invokeLater(() -> new onitama.client.ui.ClientFrame(host, port).setVisible(true));
     }
 }

@@ -175,6 +175,8 @@ public final class ClientHandler implements Runnable {
             send(new ErrorMessage("room not found: " + roomCode));
             return;
         }
+        // The joiner's own hosted lobby (if any) is now stale — close it.
+        server.lobby().removeHostedLobby(this);
         MatchSession session = new MatchSession(server, roomCode, host, this);
         server.registerLiveMatch(session);
         session.start();
