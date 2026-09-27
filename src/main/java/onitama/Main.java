@@ -58,6 +58,7 @@ public final class Main {
             case "demo" -> runDemo(options);
             case "server" -> runServer(options);
             case "client" -> launchClient(options);
+            case "bots" -> runBots(options);
             default -> {
                 usage();
                 System.exit(1);
@@ -69,6 +70,7 @@ public final class Main {
         System.err.println("usage: onitama demo [--seed n]");
         System.err.println("       onitama server --port <port>");
         System.err.println("       onitama client [--host <host>] [--port <port>]");
+        System.err.println("       onitama bots --host <host> --port <port> --bots <n> --games <g>");
     }
 
     /** Parses "--key value" pairs after the mode argument into a map. */
@@ -182,5 +184,41 @@ public final class Main {
         Integer port = options.containsKey("port")
                 ? Integer.valueOf(options.get("port")) : null;
         SwingUtilities.invokeLater(() -> new onitama.client.ui.ClientFrame(host, port).setVisible(true));
+    }
+
+    // ------------------------------------------------------------------
+    // bots (load-test harness)
+    // ------------------------------------------------------------------
+
+    /** Runs the headless bot fleet and writes CSV results; exit 1 on failures. */
+    private static void runBots(Map<String, String> options) {
+        int bots = Integer.parseInt(options.getOrDefault("bots", "2"));
+        int games = Integer.parseInt(options.getOrDefault("games", "1"));
+        String host = options.getOrDefault("host", "127.0.0.1");
+        int port = Integer.parseInt(options.getOrDefault("port", "5555"));
+        Long seed = options.containsKey("seed") ? Long.valueOf(options.get("seed")) : null;
+        if (bots % 2 != 0) {
+            System.err.println("bots must be even (they pair up)");
+            System.exit(1);
+        }
+        try {
+            onitama.client.bot.BotHarness.Summary summary = new onitama.client.bot.BotHarness(
+                    Path.of(options.getOrDefault("results", "results")))
+                    .run(bots, games, host, port, seed);
+            System.out.println("bots=" + summary.botCount()
+                    + " gamesCompleted=" + summary.gamesCompleted() + "/" + summary.gamesRequested()
+                    + " failedBots=" + summary.failedBots()
+                    + " wallMillis=" + summary.wallMillis());
+            System.out.println("games/minute=" + String.format("%.1f", summary.gamesPerMinute())
+                    + " move RTT ms mean/p50/p95/max="
+                    + String.format("%.1f/%.1f/%.1f/%.1f", summary.meanRttMillis(),
+                            summary.p50RttMillis(), summary.p95RttMillis(), summary.maxRttMillis()));
+            System.out.println("CSV written to " + options.getOrDefault("results", "results") + "/");
+            System.exit(summary.failedBots() == 0
+                    && summary.gamesCompleted() == summary.gamesRequested() ? 0 : 1);
+        } catch (Exception e) {
+            System.err.println("bot run failed: " + e.getMessage());
+            System.exit(1);
+        }
     }
 }
