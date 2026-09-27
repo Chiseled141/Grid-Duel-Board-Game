@@ -227,6 +227,12 @@ Requirements:
 
 ## 6. Client (Swing GUI)
 
+> **Note (added after M8):** the screens below are the *functional baseline*
+> built in milestone M4. The team plans a visual redesign pass (M9) once they
+> supply a UI design — see **Section 17** for the rules that redesign must
+> follow. Keep the views swappable: panels render from `ClientModel`, never
+> from sockets.
+
 ### 6.1 Screens
 1. **Login/Register** — username + password fields, buttons, error dialog on failure.
 2. **Lobby** — user info (name, Elo), "Create match" (shows room code), "Join by code" input, list of open matches, "Leaderboard" button, "Replay viewer" button.
@@ -327,6 +333,7 @@ Provide a `docs/EXPERIMENTS.md` describing exactly which experiments to run (bot
 | M6 | Resilience & polish | Reconnect works (IT02); heartbeats; friendly error dialogs everywhere; menus/dialogs complete; logging clean. |
 | M7 | Benchmark harness + docs | `bots` mode works; LT01 passes; README.md final; `docs/AWS_DEPLOY.md`, `docs/EXPERIMENTS.md`, `docs/DESIGN_DECISIONS.md`, `report/REPORT_SKELETON.md` written. |
 | M8 | Final QA | `mvn clean verify` green; runnable-jar instructions verified from a clean clone; course checklist (Instructions.md §15) reviewed item by item. |
+| M9 | UI design pass (**planned, blocked on the team's design**) | Implement the supplied design under the rules of Section 17; all existing tests stay green; behavior unchanged. |
 
 ---
 
@@ -366,6 +373,48 @@ Produce the section headings exactly following Instructions.md §11 (Title → A
 - [ ] README + docs complete and accurate; runbook written but **nothing deployed to any cloud**.
 
 ---
+
+## 17. Planned Follow-up: UI Design Pass (M9) — read before any UI work
+
+**Status: waiting on the team.** The team will supply a UI design for the
+game screens later (mockups, screenshots, or a written spec — format TBD).
+The current Swing UI is a *functional placeholder*: it was built for
+correctness and testability, not looks. Until the design arrives, agents
+must **not** restyle or restructure the UI preemptively.
+
+When the design is provided, implement it under these rules:
+
+1. **Scope: `onitama.client.ui` only.** Theme constants, panel layouts,
+   `BoardPanel`/`CardPanel` painting, dialogs, and the menu bar. Every other
+   package (`core`, `net`, `server`, `db`, `replay`, `client.state`, and the
+   `client` root classes) must remain unchanged — the redesign is a view
+   swap, not a behavior change. If the design appears to require a model or
+   protocol change, **stop and ask the team**; it almost never does (the
+   Observer-based `ClientModel` was built precisely so panels are
+   replaceable views).
+2. **No new dependencies.** Swing and the JDK only (rule 3 of this brief) —
+   no look-and-feel libraries, icon packs, or animation frameworks. Custom
+   `Graphics2D` painting is fine and expected for board/cards.
+3. **Behavior invariants that must survive the redesign:**
+   - the board is always drawn from the player's own side, and the
+     opponent's card patterns are pre-rotated to the player's perspective
+     (Section 6.2);
+   - the click flow stays: card + piece (either order) → legal destinations
+     highlighted → destination click sends `MoveRequest`; ESC clears the
+     selection (Section 6.2);
+   - all state keeps flowing through `ClientModel` and
+     `ClientModelListener`; the EDT/reader-thread separation (Section 6.3)
+     is untouched;
+   - auto-pass behavior, rematch dialog flow, resign, reconnect and error
+     dialogs keep working exactly as before.
+4. **Acceptance criteria:** `mvn clean verify` green; all five screens still
+   fully usable (login, lobby, game, leaderboard, replay viewer); IT01,
+   IT02 and LT01 pass unchanged; a new DESIGN_DECISIONS.md entry documents
+   what the design changed and why; README screenshots/structure updated if
+   panel names change.
+5. **Deliverables:** the updated `ui` classes, before/after screenshots for
+   the report (the team inserts them into
+   `report/REPORT_SKELETON.md` §13), and the design-decision note.
 
 # Appendix A — The 16 Movement Cards (authoritative data)
 
