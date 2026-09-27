@@ -8,7 +8,9 @@ import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.net.InetSocketAddress;
 import java.net.Socket;
+import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.logging.Level;
@@ -26,13 +28,25 @@ public final class OnitamaClient implements AutoCloseable, ServerConnection {
 
     private static final Logger LOG = Logger.getLogger(OnitamaClient.class.getName());
     private static final int CONNECT_TIMEOUT_MILLIS = 5000;
+    /** Heartbeat interval while the connection is idle. */
+    private static final int PING_INTERVAL_SECONDS = 30;
+    /** A peer silent for this long is considered gone. */
+    private static final int SILENCE_LIMIT_SECONDS = 90;
 
     private final LinkedBlockingQueue<Message> outgoing = new LinkedBlockingQueue<>();
     private final Consumer<Message> receiver;
     private final Consumer<String> connectionLostHandler;
+    private final ScheduledExecutorService heartbeat =
+            Executors.newSingleThreadScheduledExecutor(runnable -> {
+                Thread thread = new Thread(runnable, "onitama-client-heartbeat");
+                thread.setDaemon(true);
+                return thread;
+            });
 
     private volatile Socket socket;
     private volatile boolean running;
+    private volatile long lastReceivedAt;
+    private volatile java.util.concurrent.ScheduledFuture<?> heartbeatTask;
 
     /**
      * Creates a client.
@@ -62,13 +76,35 @@ public final class OnitamaClient implements AutoCloseable, ServerConnection {
         ObjectInputStream in = new ObjectInputStream(newSocket.getInputStream());
         socket = newSocket;
         running = true;
+        lastReceivedAt = System.currentTimeMillis();
         Thread reader = new Thread(() -> readLoop(in), "onitama-client-reader");
         Thread writer = new Thread(() -> writeLoop(out), "onitama-client-writer");
         reader.setDaemon(true);
         writer.setDaemon(true);
         reader.start();
         writer.start();
+        if (heartbeatTask != null) {
+            heartbeatTask.cancel(false);
+        }
+        heartbeatTask = heartbeat.scheduleWithFixedDelay(this::checkLiveness,
+                PING_INTERVAL_SECONDS, PING_INTERVAL_SECONDS, TimeUnit.SECONDS);
         LOG.info(() -> "connected to " + host + ":" + port);
+    }
+
+    /** Pings the server and drops the connection when it stayed silent too long. */
+    private void checkLiveness() {
+        if (!isConnected()) {
+            return;
+        }
+        if (System.currentTimeMillis() - lastReceivedAt
+                > SILENCE_LIMIT_SECONDS * 1000L) {
+            LOG.info("server silent for too long, dropping the connection");
+            connectionLostHandler.accept("no response from server for "
+                    + SILENCE_LIMIT_SECONDS + " seconds");
+            close();
+            return;
+        }
+        outgoing.offer(new onitama.net.Ping(System.currentTimeMillis()));
     }
 
     /** Returns true while the socket is open. */
@@ -92,6 +128,9 @@ public final class OnitamaClient implements AutoCloseable, ServerConnection {
     @Override
     public synchronized void close() {
         running = false;
+        if (heartbeatTask != null) {
+            heartbeatTask.cancel(false);
+        }
         Socket current = socket;
         socket = null;
         if (current != null) {
@@ -107,6 +146,7 @@ public final class OnitamaClient implements AutoCloseable, ServerConnection {
         try {
             while (running) {
                 Object raw = in.readObject();
+                lastReceivedAt = System.currentTimeMillis();
                 if (raw instanceof Message message) {
                     receiver.accept(message);
                 }

@@ -170,3 +170,31 @@ would linger in the browser list forever. `handleJoinMatch` therefore closes
 the joiner's own hosted lobby when a join succeeds (mirroring what the atomic
 lobby claim already does for the host).
 
+## Heartbeats: client pings, server uses a socket read timeout (M6)
+
+The client pings every 30 seconds of connection lifetime and drops the
+connection if the server stays silent for 90 seconds (any inbound message
+counts as liveness). On the server we use the same limit implemented as a
+plain `socket.setSoTimeout(90 s)` per accepted connection instead of a
+sweeper thread: a client that sends nothing within the limit loses its
+connection through the OS timeout, which flows through the existing
+disconnect path (grace timer, forfeit) with zero extra machinery. Working
+clients ping every 30 s, so they never come close; idle unauthenticated
+sockets are cleaned up by the same mechanism.
+
+## Client reconnect is automatic, three attempts (M6)
+
+When the client loses the connection while holding a reconnect token it
+keeps the whole match context (profile, color, history, captures) and tries
+to re-attach up to three times, one second apart, in a background thread.
+The server answers with the authoritative match state (or a fresh login
+response when the match is gone). Only when all attempts fail does the model
+clear the session and return to the login screen.
+
+## Server logs go to console and a rotating file (M6)
+
+`java.util.logging` with the default console handler plus a
+`FileHandler("logs/onitama-server.log", 5 MB, 3 files, append)` installed in
+server mode. Logs rotate so a long-running EC2 instance cannot fill its
+disk.
+

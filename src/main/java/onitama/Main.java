@@ -16,6 +16,7 @@ import onitama.server.MatchPersistence;
 import onitama.server.ServerConfig;
 
 import java.awt.GraphicsEnvironment;
+import java.io.IOException;
 import java.nio.file.Path;
 import java.sql.SQLException;
 import java.util.HashMap;
@@ -128,6 +129,7 @@ public final class Main {
         int port = Integer.parseInt(options.getOrDefault("port", "5555"));
         Path dbFile = Path.of(options.getOrDefault("db", "data/onitama.db"));
         Path replayDir = Path.of(options.getOrDefault("replays", "replays"));
+        installFileLogging();
         try (Database database = new Database(dbFile)) {
             SqliteUserDao userDao = new SqliteUserDao(database);
             MatchDao matchDao = new SqliteMatchDao(database, userDao);
@@ -146,6 +148,23 @@ public final class Main {
         } catch (Exception e) {
             System.err.println("server failed: " + e.getMessage());
             System.exit(1);
+        }
+    }
+
+    /**
+     * Adds a rotating file log handler (logs/onitama-server.log, 5 MB x 3
+     * files) next to the console handler the JUL default already provides.
+     */
+    private static void installFileLogging() {
+        try {
+            java.nio.file.Files.createDirectories(Path.of("logs"));
+            java.util.logging.FileHandler fileHandler = new java.util.logging.FileHandler(
+                    "logs/onitama-server.log", 5_000_000, 3, true);
+            fileHandler.setFormatter(new java.util.logging.SimpleFormatter());
+            Logger rootLogger = Logger.getLogger("");
+            rootLogger.addHandler(fileHandler);
+        } catch (IOException e) {
+            System.err.println("file logging unavailable: " + e.getMessage());
         }
     }
 

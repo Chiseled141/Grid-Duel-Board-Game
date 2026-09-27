@@ -87,6 +87,10 @@ public final class ClientHandler implements Runnable {
     @Override
     public void run() {
         try (socket) {
+            // Clients must show liveness (any message, including heartbeats)
+            // at least this often; a silent socket is dropped by the OS read
+            // timeout. Authenticated clients ping every 30 s, well inside it.
+            socket.setSoTimeout(server.config().silenceSeconds() * 1000);
             out = new ObjectOutputStream(socket.getOutputStream());
             out.flush();
             in = new ObjectInputStream(socket.getInputStream());
