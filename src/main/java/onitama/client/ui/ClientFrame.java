@@ -10,6 +10,7 @@ import java.awt.CardLayout;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 
+import javax.swing.BorderFactory;
 import javax.swing.JFrame;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
@@ -37,6 +38,7 @@ public final class ClientFrame extends JFrame {
      */
     public ClientFrame(String host, Integer port) {
         super(WINDOW_TITLE);
+        UiKit.installSystemTheme();
         this.settings = ClientSettings.load();
         if (host != null) {
             settings.setHost(host);
@@ -76,7 +78,10 @@ public final class ClientFrame extends JFrame {
             }
         });
 
-        setSize(settings.windowWidth(), settings.windowHeight());
+        // The game screen needs ~1100x880; never open smaller than that even
+        // if a previous session saved a smaller window.
+        setSize(Math.max(settings.windowWidth(), 1100),
+                Math.max(settings.windowHeight(), 880));
         setLocationRelativeTo(null);
         setJMenuBar(buildMenuBar());
         setDefaultCloseOperation(DO_NOTHING_ON_CLOSE);
@@ -123,6 +128,18 @@ public final class ClientFrame extends JFrame {
         help.add(rules);
         help.add(about);
         menuBar.add(help);
+
+        // macOS Aqua ignores UIManager colors for the bar — style directly.
+        menuBar.setBackground(Theme.BG);
+        menuBar.setOpaque(true);
+        menuBar.setBorder(BorderFactory.createMatteBorder(0, 0, 2, 0, Theme.OUTLINE));
+        for (int i = 0; i < menuBar.getMenuCount(); i++) {
+            javax.swing.JMenu menu = menuBar.getMenu(i);
+            menu.setForeground(Theme.CREAM);
+            menu.setFont(Theme.bold(13f));
+            menu.setOpaque(true);
+            menu.setBackground(Theme.BG);
+        }
         return menuBar;
     }
 

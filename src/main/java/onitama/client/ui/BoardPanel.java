@@ -7,10 +7,12 @@ import onitama.core.Piece;
 import onitama.core.PlayerColor;
 import onitama.core.Square;
 
+import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
+import java.awt.Image;
 import java.awt.RenderingHints;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
@@ -24,7 +26,8 @@ import javax.swing.JComponent;
  * pieces, selection ring, legal-move dots and the last-move highlight. The
  * board is always drawn from the viewer's side (the viewer's home row at the
  * bottom); canonical coordinates are mapped through a 180-degree flip for
- * Red. Reused by the game screen and the replay viewer.
+ * Red. Hand-designed tiles/pieces from the AssetStore replace the drawn
+ * versions file by file. Reused by the game screen and the replay viewer.
  */
 public final class BoardPanel extends JComponent {
 
@@ -37,6 +40,8 @@ public final class BoardPanel extends JComponent {
     private Square selectedSquare;
     private List<Square> targets = List.of();
     private Consumer<Square> clickHandler;
+
+    private Move lastMove;
 
     /** Creates the panel and wires the mouse click mapping. */
     public BoardPanel() {
@@ -77,15 +82,13 @@ public final class BoardPanel extends JComponent {
         this.clickHandler = clickHandler;
     }
 
-    private Move lastMove;
-
     @Override
     protected void paintComponent(Graphics graphics) {
-        Graphics2D g = (Graphics2D) graphics;
-        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-        g.setColor(Theme.BACKGROUND);
+        Graphics2D g = UiKit.nice(graphics);
+        g.setColor(Theme.BG);
         g.fillRect(0, 0, getWidth(), getHeight());
         if (state == null) {
+            g.dispose();
             return;
         }
         for (int y = 0; y < Board.SIZE; y++) {
@@ -94,8 +97,8 @@ public final class BoardPanel extends JComponent {
             }
         }
         if (lastMove != null) {
-            overlay(g, lastMove.from(), Theme.LAST_MOVE);
-            overlay(g, lastMove.to(), Theme.LAST_MOVE);
+            overlay(g, lastMove.from());
+            overlay(g, lastMove.to());
         }
         for (int y = 0; y < Board.SIZE; y++) {
             for (int x = 0; x < Board.SIZE; x++) {
@@ -111,65 +114,83 @@ public final class BoardPanel extends JComponent {
         if (selectedSquare != null) {
             drawSelectionRing(g, selectedSquare);
         }
+        g.dispose();
     }
 
     private void drawSquare(Graphics2D g, int x, int y) {
+        Image tile = AssetStore.optional(
+                (x + y) % 2 == 0 ? "board-tile-light.png" : "board-tile-dark.png");
         int px = displayX(x) * CELL + MARGIN;
         int py = displayY(y) * CELL + MARGIN;
-        g.setColor((x + y) % 2 == 0 ? Theme.BOARD_LIGHT : Theme.BOARD_DARK);
-        g.fillRect(px, py, CELL, CELL);
-        g.setColor(new Color(0, 0, 0, 40));
+        if (tile != null) {
+            g.drawImage(tile, px, py, CELL, CELL, null);
+        } else {
+            g.setColor((x + y) % 2 == 0 ? Theme.BOARD_LIGHT : Theme.BOARD_DARK);
+            g.fillRect(px, py, CELL, CELL);
+        }
+        g.setColor(Theme.OUTLINE);
+        g.setStroke(new BasicStroke(1.5f));
         g.drawRect(px, py, CELL, CELL);
     }
 
     private void drawPiece(Graphics2D g, int x, int y, Piece piece) {
+        Image sprite = AssetStore.optional(
+                "piece-" + piece.color().name().toLowerCase()
+                        + (piece.master() ? "-master" : "-student") + ".png");
         int px = displayX(x) * CELL + MARGIN;
         int py = displayY(y) * CELL + MARGIN;
         int cx = px + CELL / 2;
         int cy = py + CELL / 2;
-        int radius = CELL / 2 - 10;
-        g.setColor(piece.color() == PlayerColor.BLUE ? Theme.BLUE_PIECE : Theme.RED_PIECE);
-        g.fillOval(cx - radius, cy - radius, 2 * radius, 2 * radius);
-        g.setColor(Color.WHITE);
-        if (piece.master()) {
-            // Masters wear a white ring; students are plain discs.
-            g.drawOval(cx - radius + 5, cy - radius + 5, 2 * radius - 10, 2 * radius - 10);
+        if (sprite != null) {
+            g.drawImage(sprite, px + 4, py + 4, CELL - 8, CELL - 8, null);
+            return;
         }
-        g.setFont(Theme.FONT_BOLD);
-        String label = piece.master() ? "M" : "S";
-        var metrics = g.getFontMetrics();
-        g.drawString(label, cx - metrics.stringWidth(label) / 2,
-                cy + metrics.getAscent() / 2 - 2);
+        int radius = CELL / 2 - 12;
+        g.setColor(piece.color() == PlayerColor.BLUE ? Theme.SKY : Theme.CORAL);
+        g.fillOval(cx - radius, cy - radius, 2 * radius, 2 * radius);
+        g.setColor(Theme.INK);
+        g.setStroke(new BasicStroke(2.5f));
+        g.drawOval(cx - radius, cy - radius, 2 * radius, 2 * radius);
+        if (piece.master()) {
+            // Masters carry the gold starburst mark.
+            UiKit.starburst(g, cx, cy, radius - 7);
+        } else {
+            g.setColor(Theme.CREAM);
+            g.setFont(Theme.bold(16f));
+            var metrics = g.getFontMetrics();
+            g.drawString("S", cx - metrics.stringWidth("S") / 2,
+                    cy + metrics.getAscent() / 2 - 2);
+        }
     }
 
     private void drawTargetDot(Graphics2D g, Square target) {
         int cx = displayX(target.x()) * CELL + MARGIN + CELL / 2;
         int cy = displayY(target.y()) * CELL + MARGIN + CELL / 2;
-        g.setColor(Theme.TARGET_DOT);
         Piece occupant = state.board().pieceAt(target);
-        int radius = occupant == null ? 8 : CELL / 2 - 6;
+        g.setColor(Theme.TEAL);
         if (occupant == null) {
-            g.fillOval(cx - radius, cy - radius, 2 * radius, 2 * radius);
+            g.fillOval(cx - 9, cy - 9, 18, 18);
         } else {
-            // Enemy piece: ring around it, signaling a capture.
+            // Enemy piece: double ring signals a capture.
+            g.setStroke(new BasicStroke(3f));
+            int radius = CELL / 2 - 7;
             g.drawOval(cx - radius, cy - radius, 2 * radius, 2 * radius);
-            g.drawOval(cx - radius + 3, cy - radius + 3, 2 * radius - 6, 2 * radius - 6);
+            g.drawOval(cx - radius + 4, cy - radius + 4, 2 * radius - 8, 2 * radius - 8);
         }
     }
 
     private void drawSelectionRing(Graphics2D g, Square square) {
         int px = displayX(square.x()) * CELL + MARGIN;
         int py = displayY(square.y()) * CELL + MARGIN;
-        g.setColor(Theme.SELECTION);
-        for (int width = 1; width <= 3; width++) {
-            g.drawRect(px + width, py + width, CELL - 2 * width, CELL - 2 * width);
-        }
+        g.setColor(Theme.AMBER);
+        g.setStroke(new BasicStroke(3.5f));
+        g.drawRect(px + 2, py + 2, CELL - 4, CELL - 4);
     }
 
-    private void overlay(Graphics2D g, Square square, Color color) {
+    private void overlay(Graphics2D g, Square square) {
         int px = displayX(square.x()) * CELL + MARGIN;
         int py = displayY(square.y()) * CELL + MARGIN;
-        g.setColor(color);
+        g.setColor(new Color(252, 186, 40, 56));
         g.fillRect(px, py, CELL, CELL);
     }
 

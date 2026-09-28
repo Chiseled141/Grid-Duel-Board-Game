@@ -4,12 +4,14 @@ import onitama.client.state.ClientModel;
 import onitama.client.state.ClientModelListener;
 import onitama.client.state.Screen;
 import onitama.core.GameState;
+import onitama.core.Piece;
 import onitama.net.GameOver;
 
 import java.awt.BorderLayout;
 import java.awt.FlowLayout;
 import java.awt.GridLayout;
 import java.awt.event.KeyEvent;
+import java.util.List;
 
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
@@ -19,47 +21,46 @@ import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.KeyStroke;
+import javax.swing.ScrollPaneConstants;
 
 /**
  * The game screen: opponent cards on top (patterns drawn from your own
  * perspective), the board in the center, your hand cards, the transit card,
- * turn indicator, move history and captured trays at the bottom/side. Click
- * a card and a piece (either order) to see legal destinations, then click a
- * destination to move. ESC clears the selection.
+ * the turn banner, move history and captured trays. Click a card and a piece
+ * (either order) to see legal destinations, then click a destination to move.
+ * ESC clears the selection.
  */
 public final class GamePanel extends JPanel {
 
     private final ClientModel model;
 
     private final BoardPanel boardPanel = new BoardPanel();
-    private final JLabel turnLabel = new JLabel();
-    private final JLabel opponentLabel = new JLabel();
-    private final JLabel youLabel = new JLabel();
-    private final JLabel transitLabel = new JLabel();
-    private final JPanel opponentCards = new JPanel(new FlowLayout(FlowLayout.CENTER, 8, 4));
-    private final JPanel myCards = new JPanel(new FlowLayout(FlowLayout.CENTER, 8, 4));
+    private final UiKit.HeadingLabel turnLabel = new UiKit.HeadingLabel(15f);
+    private final JLabel opponentLabel = UiKit.label("", 14f);
+    private final JLabel youLabel = UiKit.label("", 14f);
+    private final JLabel transitLabel = UiKit.label("", 14f);
+    private final JPanel opponentCards = new JPanel(new FlowLayout(FlowLayout.CENTER, 10, 4));
+    private final JPanel myCards = new JPanel(new FlowLayout(FlowLayout.CENTER, 10, 4));
     private final JList<String> historyList = new JList<>();
-    private final JLabel capturesLabel = new JLabel();
+    private final JLabel capturesLabel = UiKit.label(" ", 13f);
 
     /** Builds the game screen and subscribes it to the model. */
     public GamePanel(ClientModel model) {
         this.model = model;
         setLayout(new BorderLayout(8, 8));
         setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
-        setBackground(Theme.BACKGROUND);
+        setBackground(Theme.BG);
 
         JPanel north = new JPanel(new BorderLayout());
-        north.setBackground(Theme.BACKGROUND);
-        opponentLabel.setForeground(Theme.FOREGROUND);
+        north.setBackground(Theme.BG);
         opponentLabel.setHorizontalAlignment(javax.swing.SwingConstants.CENTER);
-        opponentCards.setBackground(Theme.BACKGROUND);
-        myCards.setBackground(Theme.BACKGROUND);
+        opponentCards.setBackground(Theme.BG);
         north.add(opponentLabel, BorderLayout.NORTH);
         north.add(opponentCards, BorderLayout.SOUTH);
         add(north, BorderLayout.NORTH);
 
         JPanel center = new JPanel(new FlowLayout(FlowLayout.CENTER));
-        center.setBackground(Theme.BACKGROUND);
+        center.setBackground(Theme.BG);
         center.add(boardPanel);
         add(center, BorderLayout.CENTER);
 
@@ -98,59 +99,65 @@ public final class GamePanel extends JPanel {
 
             @Override
             public void onOpponentLeft(int graceSeconds) {
-                turnLabel.setText("Opponent disconnected - reconnecting within "
-                        + graceSeconds + "s or the match is forfeited");
+                turnLabel.setText("OPPONENT LOST CONNECTION");
             }
 
             @Override
             public void onRematchOffered() {
-                turnLabel.setText("Opponent offered a rematch!");
+                turnLabel.setText("OPPONENT WANTS A REMATCH!");
             }
         });
     }
 
     private JPanel buildHistoryPanel() {
-        JPanel panel = new JPanel(new BorderLayout(4, 4));
-        panel.setBackground(Theme.BACKGROUND);
-        // Empty border outside the titled border so the "Moves" title is
-        // never clipped by the panel edge.
-        panel.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createEmptyBorder(8, 0, 0, 0),
-                BorderFactory.createCompoundBorder(
-                        BorderFactory.createTitledBorder("Moves"),
-                        BorderFactory.createEmptyBorder(4, 4, 4, 4))));
-        panel.setPreferredSize(new java.awt.Dimension(240, 100));
-        historyList.setBackground(Theme.BACKGROUND.brighter());
-        historyList.setForeground(Theme.FOREGROUND);
-        panel.add(new JScrollPane(historyList), BorderLayout.CENTER);
-        capturesLabel.setForeground(Theme.FOREGROUND);
+        JPanel panel = UiKit.surface(10);
+        panel.setLayout(new BorderLayout(6, 6));
+        panel.setPreferredSize(new java.awt.Dimension(250, 120));
+
+        JLabel title = UiKit.boldLabel("MOVES", 13f);
+        panel.add(title, BorderLayout.NORTH);
+
+        historyList.setBackground(Theme.SURFACE);
+        historyList.setForeground(Theme.CREAM);
+        historyList.setSelectionBackground(Theme.AMBER);
+        historyList.setSelectionForeground(Theme.INK);
+        historyList.setFont(Theme.normal(13f));
+        JScrollPane scroll = new JScrollPane(historyList);
+        scroll.setBorder(BorderFactory.createEmptyBorder());
+        scroll.setBackground(Theme.SURFACE);
+        scroll.getViewport().setBackground(Theme.SURFACE);
+        scroll.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
+        panel.add(scroll, BorderLayout.CENTER);
+
+        capturesLabel.setForeground(Theme.CREAM);
         panel.add(capturesLabel, BorderLayout.SOUTH);
         return panel;
     }
 
     private JPanel buildSouthPanel() {
         JPanel south = new JPanel(new BorderLayout());
-        south.setBackground(Theme.BACKGROUND);
-        youLabel.setForeground(Theme.FOREGROUND);
+        south.setBackground(Theme.BG);
         youLabel.setHorizontalAlignment(javax.swing.SwingConstants.CENTER);
         south.add(youLabel, BorderLayout.NORTH);
 
-        JPanel middle = new JPanel(new FlowLayout(FlowLayout.CENTER, 16, 4));
-        middle.setBackground(Theme.BACKGROUND);
+        JPanel middle = new JPanel(new FlowLayout(FlowLayout.CENTER, 18, 4));
+        middle.setBackground(Theme.BG);
         middle.add(myCards);
-        transitLabel.setForeground(Theme.FOREGROUND);
-        transitLabel.setVerticalAlignment(javax.swing.SwingConstants.BOTTOM);
         middle.add(transitLabel);
         south.add(middle, BorderLayout.CENTER);
 
-        turnLabel.setForeground(Theme.SELECTION);
-        turnLabel.setHorizontalAlignment(javax.swing.SwingConstants.CENTER);
-        JButton resign = new JButton("Resign");
+        JPanel bottom = new JPanel(new BorderLayout(10, 0));
+        bottom.setBackground(Theme.BG);
+        JPanel bannerRow = new JPanel(new FlowLayout(FlowLayout.CENTER));
+        bannerRow.setBackground(Theme.BG);
+        bannerRow.add(turnLabel);
+        bottom.add(bannerRow, BorderLayout.CENTER);
+        JButton resign = UiKit.pill("Resign", UiKit.Pill.DANGER);
         resign.addActionListener(event -> confirmResign());
-        JPanel bottom = new JPanel(new BorderLayout());
-        bottom.setBackground(Theme.BACKGROUND);
-        bottom.add(turnLabel, BorderLayout.CENTER);
-        bottom.add(resign, BorderLayout.EAST);
+        JPanel resignRow = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+        resignRow.setBackground(Theme.BG);
+        resignRow.add(resign);
+        bottom.add(resignRow, BorderLayout.EAST);
         south.add(bottom, BorderLayout.SOUTH);
         return south;
     }
@@ -161,8 +168,8 @@ public final class GamePanel extends JPanel {
         if (state == null) {
             return;
         }
-        opponentLabel.setText("Opponent: " + model.opponentName());
-        youLabel.setText("You: " + (model.me() == null ? "" : model.me().username()));
+        opponentLabel.setText("vs  " + model.opponentName().toUpperCase());
+        youLabel.setText(model.me() == null ? "" : model.me().username().toUpperCase());
 
         opponentCards.removeAll();
         state.hand(model.myColor().opponent()).forEach(card -> {
@@ -178,11 +185,11 @@ public final class GamePanel extends JPanel {
             myCards.add(panel);
         });
 
-        transitLabel.setText("Transit: " + state.transit().name());
-        turnLabel.setText(model.statusLine());
+        transitLabel.setText("transit: " + state.transit().name().toUpperCase());
+        turnLabel.setText(model.statusLine().toUpperCase());
         historyList.setListData(model.historyLines().toArray(new String[0]));
-        capturesLabel.setText("You captured: " + describe(model.myCaptures())
-                + "    |    You lost: " + describe(model.enemyCaptures()));
+        capturesLabel.setText("took: " + describe(model.myCaptures())
+                + "   ·   lost: " + describe(model.enemyCaptures()));
 
         boardPanel.setView(state, model.myColor());
         boardPanel.setSelection(model.selectedSquare(), model.highlightedTargets());
@@ -191,16 +198,16 @@ public final class GamePanel extends JPanel {
         repaint();
     }
 
-    private static String describe(java.util.List<onitama.core.Piece> pieces) {
+    private static String describe(List<Piece> pieces) {
         if (pieces.isEmpty()) {
-            return "-";
+            return "—";
         }
         StringBuilder text = new StringBuilder();
-        for (onitama.core.Piece piece : pieces) {
+        for (Piece piece : pieces) {
             if (text.length() > 0) {
                 text.append(", ");
             }
-            text.append(piece.master() ? "Master" : "Student");
+            text.append(piece.master() ? "master" : "student");
         }
         return text.toString();
     }
@@ -221,15 +228,15 @@ public final class GamePanel extends JPanel {
         refresh();
         String result;
         if (over.winnerColor() == null) {
-            result = "Draw - the move limit was reached.";
+            result = "Draw — the move limit was reached.";
         } else if (over.winnerColor() == model.myColor()) {
             result = "You win by " + over.way() + "!";
         } else {
             result = model.opponentName() + " wins by " + over.way() + ".";
         }
-        String ratings = "New Elo - you: " + myEloAfter(over) + ", opponent: "
+        String ratings = "New Elo — you: " + myEloAfter(over) + ", opponent: "
                 + opponentEloAfter(over);
-        Object[] options = {"Offer rematch", "Back to lobby"};
+        Object[] options = {"OFFER REMATCH", "BACK TO LOBBY"};
         int choice = JOptionPane.showOptionDialog(this, result + "\n" + ratings,
                 "Game over", JOptionPane.DEFAULT_OPTION, JOptionPane.INFORMATION_MESSAGE,
                 null, options, options[0]);
