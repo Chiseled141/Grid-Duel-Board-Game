@@ -50,6 +50,10 @@ public final class BoardPanel extends JComponent {
     private Move lastMove;
     private Square hoveredSquare;
     private CaptureEffect captureEffect;
+    private Move animMove;
+    private long animStart;
+    private Color animFill;
+    private boolean animMaster;
 
     /** A short expanding-ring animation where a piece was captured. */
     private record CaptureEffect(Square square, Color color, long startMillis) {
@@ -145,6 +149,25 @@ public final class BoardPanel extends JComponent {
         this.clickHandler = clickHandler;
     }
 
+    /**
+     * Animates the latest half-move: the moving figurine slides from its
+     * origin to the destination instead of teleporting (§13).
+     */
+    public void animateMove(Move move, PlayerColor mover, boolean master) {
+        animMove = move;
+        animStart = System.currentTimeMillis();
+        animFill = Theme.playerColor(mover);
+        animMaster = master;
+        javax.swing.Timer animation = new javax.swing.Timer(16, event -> {
+            if (System.currentTimeMillis() - animStart > 240) {
+                ((javax.swing.Timer) event.getSource()).stop();
+                animMove = null;
+            }
+            repaint();
+        });
+        animation.start();
+    }
+
     @Override
     protected void paintComponent(Graphics graphics) {
         Graphics2D g = UiKit.nice(graphics);
@@ -155,22 +178,55 @@ public final class BoardPanel extends JComponent {
             g.dispose();
             return;
         }
+        // Premium tabletop frame: shadow, warm wooden band, inner rim, rivets.
+        int grid = Board.SIZE * cell;
+        int frameOut = 12;
+        g.setColor(Theme.SHADOW);
+        g.fillRoundRect(originX - frameOut + 6, originY - frameOut + 6,
+                grid + 2 * frameOut, grid + 2 * frameOut, 22, 22);
+        g.setColor(Theme.BOARD_FRAME);
+        g.fillRoundRect(originX - frameOut, originY - frameOut,
+                grid + 2 * frameOut, grid + 2 * frameOut, 22, 22);
+        g.setColor(Theme.INK);
+        g.setStroke(new BasicStroke(2.5f));
+        g.drawRoundRect(originX - frameOut, originY - frameOut,
+                grid + 2 * frameOut, grid + 2 * frameOut, 22, 22);
+        g.setColor(Theme.BOARD_DARK);
+        g.drawRoundRect(originX - frameOut + 4, originY - frameOut + 4,
+                grid + 2 * frameOut - 8, grid + 2 * frameOut - 8, 16, 16);
+        for (int[] corner : new int[][]{{0, 0}, {1, 0}, {0, 1}, {1, 1}}) {
+            int rivetX = originX - frameOut / 2 + corner[0] * (grid + frameOut);
+            int rivetY = originY - frameOut / 2 + corner[1] * (grid + frameOut);
+            g.setColor(Theme.INK);
+            g.fillOval(rivetX - 3, rivetY - 3, 6, 6);
+        }
         for (int y = 0; y < Board.SIZE; y++) {
             for (int x = 0; x < Board.SIZE; x++) {
                 drawSquare(g, x, y);
             }
         }
+        // Temple arch markers on the two home-row center squares.
+        drawTempleMark(g, new Square(2, 0));
+        drawTempleMark(g, new Square(2, 4));
         if (lastMove != null) {
             overlay(g, lastMove.from());
             overlay(g, lastMove.to());
         }
+        boolean animating = animMove != null;
+        Square animTo = animating ? animMove.to() : null;
         for (int y = 0; y < Board.SIZE; y++) {
             for (int x = 0; x < Board.SIZE; x++) {
+                if (animating && animTo.equals(new Square(x, y))) {
+                    continue; // the moving figurine is drawn mid-flight below
+                }
                 Piece piece = state.board().pieceAt(x, y);
                 if (piece != null) {
                     drawPiece(g, x, y, piece);
                 }
             }
+        }
+        if (animating) {
+            drawMovingFigurine(g);
         }
         for (Square target : targets) {
             drawTargetDot(g, target);
@@ -195,6 +251,34 @@ public final class BoardPanel extends JComponent {
                 effect.color().getBlue(), (int) (200 * (1 - progress))));
         g.setStroke(new BasicStroke(4f));
         g.drawOval(cx - radius, cy - radius, 2 * radius, 2 * radius);
+    }
+
+    /** Draws the sliding figurine between origin and destination. */
+    private void drawMovingFigurine(Graphics2D g) {
+        long elapsed = System.currentTimeMillis() - animStart;
+        double progress = Math.min(1.0, elapsed / 240.0);
+        double eased = 1 - (1 - progress) * (1 - progress); // ease-out
+        int fromX = displayX(animMove.from().x()) * cell + originX + cell / 2;
+        int fromY = displayY(animMove.from().y()) * cell + originY;
+        int toX = displayX(animMove.to().x()) * cell + originX + cell / 2;
+        int toY = displayY(animMove.to().y()) * cell + originY;
+        int cx = (int) (fromX + (toX - fromX) * eased);
+        int baseY = (int) (fromY + (toY - fromY) * eased + cell - 7
+                - Math.sin(progress * Math.PI) * cell * 0.18);
+        UiKit.drawFigurine(g, cx, baseY, (int) (cell * (animMaster ? 0.82 : 0.64)),
+                animFill, animMaster);
+    }
+
+    /** A subtle torii-style marker on the temple arch squares. */
+    private void drawTempleMark(Graphics2D g, Square square) {
+        int px = displayX(square.x()) * cell + originX;
+        int py = displayY(square.y()) * cell + originY;
+        g.setColor(new Color(35, 31, 32, 70));
+        g.setStroke(new BasicStroke(2f));
+        int top = py + cell / 5;
+        g.drawLine(px + cell / 4, top, px + cell - cell / 4, top);
+        g.drawLine(px + cell / 3, top + 3, px + cell / 3, top + cell / 4);
+        g.drawLine(px + cell - cell / 3, top + 3, px + cell - cell / 3, top + cell / 4);
     }
 
     private void drawSquare(Graphics2D g, int x, int y) {
@@ -229,7 +313,7 @@ public final class BoardPanel extends JComponent {
         int height = (int) (cell * (piece.master() ? 0.82 : 0.64));
         int baseY = py + cell - 7;
         Color fill = piece.color() == PlayerColor.BLUE ? Theme.SKY : Theme.CORAL;
-        UiKit.drawPawn(g, cx, baseY, height, fill, piece.master());
+        UiKit.drawFigurine(g, cx, baseY, height, fill, piece.master());
     }
 
     private void drawTargetDot(Graphics2D g, Square target) {

@@ -74,7 +74,7 @@ public final class ClientModel {
     private PlayerColor myColor;
     private String roomCode;
     private String opponentName;
-    private final List<String> historyLines = new ArrayList<>();
+    private final List<MoveInfo> historyMoves = new ArrayList<>();
     private final List<Piece> myCaptures = new ArrayList<>();
     private final List<Piece> enemyCaptures = new ArrayList<>();
     private boolean rematchOfferedByOpponent;
@@ -86,6 +86,14 @@ public final class ClientModel {
     private List<Square> highlightedTargets = List.of();
     /** The square where the most recent half-move captured a piece (or null). */
     private Square lastCaptureSquare;
+
+    /** One compact move-history row (§17 of the design spec). */
+    public record MoveInfo(int number, String cardName, String fromSquare,
+                           String toSquare, boolean capture, boolean pass) {
+        /** Shown while no move has been played yet. */
+        public static final MoveInfo PLACEHOLDER =
+                new MoveInfo(0, "Waiting for the first move…", "", "", false, true);
+    }
 
     /** Creates the model; outgoing messages go through the connection. */
     public ClientModel(ServerConnection connection) {
@@ -314,7 +322,7 @@ public final class ClientModel {
         myColor = start.yourColor();
         roomCode = start.roomCode();
         opponentName = start.opponentUsername();
-        historyLines.clear();
+        historyMoves.clear();
         myCaptures.clear();
         enemyCaptures.clear();
         rematchOfferedByOpponent = false;
@@ -331,55 +339,21 @@ public final class ClientModel {
         Move lastMove = applied.lastMove();
         if (lastMove == null) {
             lastCaptureSquare = null;
-            historyLines.add(state.moveNumber() + ". Pass — "
-                    + state.transit().name());
+            historyMoves.add(new MoveInfo(state.moveNumber(),
+                    state.transit().name(), "", "", false, true));
         } else {
             Piece captured = previous == null ? null : recordCapture(previous, lastMove);
             lastCaptureSquare = captured == null ? null : lastMove.to();
-            historyLines.add(describeMove(previous, lastMove, captured));
+            historyMoves.add(new MoveInfo(state.moveNumber(),
+                    CardDeck.cardById(lastMove.cardId()).name(),
+                    squareName(lastMove.from()), squareName(lastMove.to()),
+                    captured != null, false));
         }
         clearSelection();
         autoPassIfNeeded();
         fire(ClientModelListener::onMatchChanged);
     }
 
-    /**
-     * Builds a human-readable move line ("2. Crab — master left · capture")
-     * from the mover's point of view: forward always means toward the
-     * opponent, right/left are the mover's screen sides.
-     */
-    private String describeMove(GameState previous, Move lastMove, Piece captured) {
-        String cardName = CardDeck.cardById(lastMove.cardId()).name();
-        PlayerColor mover = state.turn().opponent();
-        Piece moved = previous == null ? null : previous.board().pieceAt(lastMove.from());
-        String pieceName = moved == null ? "piece" : moved.master() ? "master" : "student";
-        int forward = mover == PlayerColor.BLUE
-                ? lastMove.to().y() - lastMove.from().y()
-                : lastMove.from().y() - lastMove.to().y();
-        int side = mover == PlayerColor.BLUE
-                ? lastMove.to().x() - lastMove.from().x()
-                : lastMove.from().x() - lastMove.to().x();
-        StringBuilder direction = new StringBuilder();
-        if (forward > 0) {
-            direction.append("forward");
-        } else if (forward < 0) {
-            direction.append("back");
-        }
-        if (side != 0) {
-            if (direction.length() > 0) {
-                direction.append('-');
-            }
-            direction.append(side > 0 ? "right" : "left");
-        }
-        String line = state.moveNumber() + ". " + cardName + " — " + pieceName;
-        if (direction.length() > 0) {
-            line += " " + direction;
-        }
-        if (captured != null) {
-            line += captured.master() ? " · MASTER TAKEN!" : " · captures";
-        }
-        return line;
-    }
 
     /** Records a captured piece by comparing the previous and current boards. */
     private Piece recordCapture(GameState previous, Move lastMove) {
@@ -430,7 +404,7 @@ public final class ClientModel {
         roomCode = null;
         opponentName = null;
         pendingRoomCode = null;
-        historyLines.clear();
+        historyMoves.clear();
         myCaptures.clear();
         enemyCaptures.clear();
         rematchOfferedByOpponent = false;
@@ -508,8 +482,13 @@ public final class ClientModel {
         return opponentName;
     }
 
-    public List<String> historyLines() {
-        return List.copyOf(historyLines);
+    public List<MoveInfo> historyMoves() {
+        return List.copyOf(historyMoves);
+    }
+
+    /** Board coordinates in the compact A1..E5 form used by the history. */
+    private static String squareName(Square square) {
+        return "" + (char) ('A' + square.x()) + (square.y() + 1);
     }
 
     public List<Piece> myCaptures() {

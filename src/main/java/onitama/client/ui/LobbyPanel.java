@@ -6,13 +6,22 @@ import onitama.client.state.Screen;
 import onitama.net.MatchSummary;
 
 import java.awt.BorderLayout;
+import java.awt.Color;
+import java.awt.Dimension;
 import java.awt.FlowLayout;
+import java.awt.Font;
+import java.awt.Graphics;
+import java.awt.Graphics2D;
 import java.awt.GridLayout;
+import java.awt.RenderingHints;
+import java.awt.Toolkit;
+import java.awt.datatransfer.StringSelection;
 import java.util.List;
 
 import javax.swing.BorderFactory;
 import javax.swing.DefaultListModel;
 import javax.swing.JButton;
+import javax.swing.JComponent;
 import javax.swing.JLabel;
 import javax.swing.JList;
 import javax.swing.JPanel;
@@ -21,60 +30,87 @@ import javax.swing.JTextField;
 import javax.swing.Timer;
 
 /**
- * The lobby: profile badge, create/join match controls (the room code appears
- * as a ticket), the open-match list, and the leaderboard/replay buttons.
+ * The lobby, composed like the front page of an indie board game (§19-31):
+ * the ONITAMA title with its tagline, the Master hero illustration, proper
+ * CREATE/JOIN action cards, the room code as a major waiting object with a
+ * copy button, and leaderboard/replays as secondary navigation cards. The
+ * background carries faint dojo decoration instead of empty black.
  */
 public final class LobbyPanel extends JPanel {
 
     private final ClientModel model;
 
-    private final JLabel profileLabel = UiKit.inkLabel(" ", 14f);
-    private final JLabel roomCodeLabel = new JLabel("—");
-    private final JLabel roomCaption = UiKit.inkLabel("CREATE A MATCH TO GET A CODE", 11f);
-    private final JTextField joinField = new JTextField(8);
+    private final JLabel roomCodeLabel = new JLabel("· · · · ·");
+    private final JLabel roomCaption = UiKit.label("CREATE A MATCH TO GET A CODE", 11f);
+    private final JLabel waitingLabel = UiKit.label(" ", 12f);
+    private final JTextField joinField = new JTextField(10);
     private final DefaultListModel<String> matchListModel = new DefaultListModel<>();
     private final JList<String> matchList = new JList<>(matchListModel);
-    private JPanel ticket;
+    private final JLabel profileName = UiKit.inkLabel(" ", 15f);
+    private final JLabel profileStats = UiKit.inkLabel(" ", 11f);
+    private final JComponent profileAvatar = new JComponent() {
+        {
+            setPreferredSize(new java.awt.Dimension(36, 40));
+            setOpaque(false);
+        }
 
-    /** Builds the panel and subscribes it to the model. */
+        @Override
+        protected void paintComponent(Graphics graphics) {
+            Graphics2D g = (Graphics2D) graphics.create();
+            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
+                    RenderingHints.VALUE_ANTIALIAS_ON);
+            UiKit.drawFigurine(g, getWidth() / 2, getHeight() - 4,
+                    getHeight() - 8, Theme.AMBER, true);
+            g.dispose();
+        }
+    };
+    private final JComponent onlineDot = new JComponent() {
+        {
+            setPreferredSize(new java.awt.Dimension(10, 10));
+            setOpaque(false);
+        }
+
+        @Override
+        protected void paintComponent(Graphics graphics) {
+            Graphics2D g = (Graphics2D) graphics.create();
+            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
+                    RenderingHints.VALUE_ANTIALIAS_ON);
+            g.setColor(Theme.GREEN);
+            g.fillOval(0, 0, 9, 9);
+            g.setColor(Theme.INK);
+            g.drawOval(0, 0, 9, 9);
+            g.dispose();
+        }
+    };
+
+    private int waitingDots;
+    private Timer waitingTimer;
+    private Runnable openLeaderboard;
+    private Runnable openReplays;
+
+    /** Builds the lobby and subscribes it to the model. */
     public LobbyPanel(ClientModel model, Runnable openLeaderboard, Runnable openReplays) {
         this.model = model;
-        setLayout(new BorderLayout(14, 14));
+        this.openLeaderboard = openLeaderboard;
+        this.openReplays = openReplays;
+        setLayout(new BorderLayout(16, 12));
         setBackground(Theme.BG);
-        setBorder(BorderFactory.createEmptyBorder(16, 16, 16, 16));
+        setBorder(BorderFactory.createEmptyBorder(18, 22, 14, 22));
 
-        // Profile badge (cream sticker, ink text).
-        JPanel profileBadge = UiKit.sticker(10);
-        profileBadge.setLayout(new FlowLayout(FlowLayout.LEFT, 8, 2));
-        profileBadge.add(profileLabel);
-        JPanel north = new JPanel(new FlowLayout(FlowLayout.LEFT));
-        north.setBackground(Theme.BG);
-        north.add(profileBadge);
-        add(north, BorderLayout.NORTH);
+        add(buildHeader(), BorderLayout.NORTH);
 
-        JPanel center = new JPanel(new GridLayout(1, 2, 20, 0));
-        center.setBackground(Theme.BG);
-        center.add(buildCreateCard());
-        center.add(buildJoinCard());
+        JPanel center = new JPanel(new BorderLayout(24, 0));
+        center.setOpaque(false);
+        center.add(buildHero(), BorderLayout.CENTER);
+        center.add(buildActionsColumn(), BorderLayout.EAST);
         add(center, BorderLayout.CENTER);
-
-        JPanel bottom = new JPanel(new FlowLayout(FlowLayout.RIGHT));
-        bottom.setBackground(Theme.BG);
-        JButton leaderboard = UiKit.pill("Leaderboard", UiKit.Pill.CREAM_OUTLINE);
-        leaderboard.addActionListener(event -> openLeaderboard.run());
-        bottom.add(leaderboard);
-        JButton replays = UiKit.pill("Replay viewer", UiKit.Pill.CREAM_OUTLINE);
-        replays.addActionListener(event -> openReplays.run());
-        bottom.add(replays);
-        add(bottom, BorderLayout.SOUTH);
 
         model.addListener(new ClientModelListener() {
             @Override
             public void onScreenChanged(Screen screen) {
                 if (screen == Screen.LOBBY) {
                     refreshProfile();
-                    roomCodeLabel.setText("—");
-                    roomCaption.setText("CREATE A MATCH TO GET A CODE");
+                    setWaitingVisible(false);
                     refreshMatches();
                 }
             }
@@ -89,10 +125,10 @@ public final class LobbyPanel extends JPanel {
             public void onMatchCreated(String roomCode) {
                 roomCodeLabel.setText(roomCode);
                 roomCaption.setText("SHARE THIS CODE WITH YOUR OPPONENT");
+                setWaitingVisible(true);
             }
         });
 
-        // Periodic refresh of the open-match list while the lobby is visible.
         new Timer(5000, event -> {
             if (model.screen() == Screen.LOBBY) {
                 model.refreshMatches();
@@ -100,38 +136,175 @@ public final class LobbyPanel extends JPanel {
         }).start();
     }
 
-    private JPanel buildCreateCard() {
-        JPanel card = UiKit.sticker(20);
-        card.setLayout(new GridLayout(4, 1, 10, 12));
+    /** Faint dojo decoration: a ghost grid and low-contrast animal kanji. */
+    @Override
+    protected void paintComponent(Graphics graphics) {
+        super.paintComponent(graphics);
+        Graphics2D g = (Graphics2D) graphics.create();
+        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
+                RenderingHints.VALUE_ANTIALIAS_ON);
+        int step = 66;
+        g.setColor(new Color(249, 244, 218, 10));
+        for (int x = step; x < getWidth(); x += step) {
+            g.drawLine(x, 0, x, getHeight());
+        }
+        for (int y = step; y < getHeight(); y += step) {
+            g.drawLine(0, y, getWidth(), y);
+        }
+        g.setFont(Theme.display(150f));
+        g.setColor(new Color(252, 186, 40, 14));
+        g.drawString("龍", getWidth() - 230, 200);
+        g.setColor(new Color(237, 32, 61, 12));
+        g.drawString("虎", 30, getHeight() - 40);
+        g.dispose();
+    }
 
+    // ------------------------------------------------------------------
+    // Header: title + profile
+    // ------------------------------------------------------------------
+
+    private JPanel buildHeader() {
+        JPanel header = new JPanel(new BorderLayout());
+        header.setOpaque(false);
+
+        JPanel titleBlock = new JPanel(new GridLayout(2, 1, 0, 0));
+        titleBlock.setOpaque(false);
+        JLabel title = new JLabel("ONITAMA");
+        title.setFont(Theme.display(40f));
+        title.setForeground(Theme.AMBER);
+        JLabel tagline = UiKit.label("ONLINE · THE ANCIENT GAME OF MOVEMENT", 11f);
+        titleBlock.add(title);
+        titleBlock.add(tagline);
+        header.add(titleBlock, BorderLayout.WEST);
+
+        JPanel profile = UiKit.sticker(10);
+        profile.setLayout(new FlowLayout(FlowLayout.LEFT, 8, 2));
+        profile.add(profileAvatar);
+        JPanel profileText = new JPanel(new GridLayout(2, 1, 0, -3));
+        profileText.setOpaque(false);
+        profileText.add(profileName);
+        profileText.add(profileStats);
+        profile.add(profileText);
+        profile.add(onlineDot);
+        header.add(profile, BorderLayout.EAST);
+        return header;
+    }
+
+    // ------------------------------------------------------------------
+    // Hero illustration
+    // ------------------------------------------------------------------
+
+    private JComponent buildHero() {
+        return new JComponent() {
+            {
+                setOpaque(false);
+            }
+
+            @Override
+            public Dimension getPreferredSize() {
+                return new Dimension(330, 380);
+            }
+
+            @Override
+            protected void paintComponent(Graphics graphics) {
+                Graphics2D g = (Graphics2D) graphics.create();
+                g.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
+                        RenderingHints.VALUE_ANTIALIAS_ON);
+                int cx = getWidth() / 2;
+                // Halo + orbit ring.
+                UiKit.starburst(g, cx, getHeight() / 2 - 30, 74);
+                g.setColor(new Color(252, 186, 40, 60));
+                g.setStroke(new java.awt.BasicStroke(3f, java.awt.BasicStroke.CAP_ROUND,
+                        java.awt.BasicStroke.JOIN_ROUND, 0, new float[]{10, 10}, 0));
+                g.drawOval(cx - 130, getHeight() / 2 - 120, 260, 220);
+                // The Master figurine.
+                UiKit.drawFigurine(g, cx, getHeight() / 2 + 120, 240, Theme.CREAM, true);
+                // Flanking animal stickers.
+                AnimalIcon.paint(g, "tiger", cx - 150, getHeight() / 2 - 140, 54,
+                        Theme.CORAL, Theme.INK, Theme.CREAM);
+                AnimalIcon.paint(g, "crane", cx + 96, getHeight() / 2 - 150, 54,
+                        Theme.SKY, Theme.INK, Theme.CREAM);
+                AnimalIcon.paint(g, "dragon", cx + 110, getHeight() / 2 + 40, 54,
+                        Theme.PURPLE, Theme.INK, Theme.CREAM);
+                g.dispose();
+            }
+        };
+    }
+
+    // ------------------------------------------------------------------
+    // Actions column: create / join cards
+    // ------------------------------------------------------------------
+
+    private JPanel buildActionsColumn() {
+        JPanel column = new JPanel();
+        column.setOpaque(false);
+        column.setLayout(new BorderLayout(0, 16));
+        column.setPreferredSize(new java.awt.Dimension(430, 100));
+
+        JPanel createCard = UiKit.sticker(18);
+        createCard.setLayout(new BorderLayout(10, 10));
+        createCard.add(UiKit.inkLabel("CREATE A MATCH", 17f), BorderLayout.NORTH);
+        JPanel createBody = new JPanel(new BorderLayout(10, 10));
+        createBody.setOpaque(false);
+        createBody.add(UiKit.label("Challenge another master to a duel.", 13f),
+                BorderLayout.NORTH);
         JButton create = UiKit.pill("Create match", UiKit.Pill.GOLD);
         create.addActionListener(event -> model.createMatch());
+        JPanel createRow = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 0));
+        createRow.setOpaque(false);
+        createRow.add(create);
+        createBody.add(createRow, BorderLayout.SOUTH);
 
-        // The room-code ticket: cream field, dashed inner border, big code.
-        ticket = new JPanel(new GridLayout(2, 1, 4, 4));
+        // The ticket: the room code becomes the major waiting object.
+        ticket = new JPanel(new GridLayout(3, 1, 4, 4));
         ticket.setBackground(Theme.BOARD_LIGHT);
         ticket.setBorder(BorderFactory.createCompoundBorder(
                 BorderFactory.createDashedBorder(Theme.INK, 6, 4),
                 BorderFactory.createEmptyBorder(8, 12, 8, 12)));
-        roomCodeLabel.setFont(Theme.display(26f));
+        roomCodeLabel.setFont(Theme.display(30f));
         roomCodeLabel.setForeground(Theme.INK);
         roomCodeLabel.setHorizontalAlignment(JLabel.CENTER);
         roomCaption.setHorizontalAlignment(JLabel.CENTER);
         roomCaption.setForeground(Theme.INK);
+        JPanel copyRow = new JPanel(new FlowLayout(FlowLayout.CENTER, 8, 0));
+        copyRow.setOpaque(false);
+        JButton copy = UiKit.pill("Copy code", UiKit.Pill.GOLD_OUTLINE);
+        copy.addActionListener(event -> Toolkit.getDefaultToolkit()
+                .getSystemClipboard()
+                .setContents(new StringSelection(roomCodeLabel.getText()), null));
+        copyRow.add(copy);
+        waitingLabel.setForeground(Theme.INK);
+        copyRow.add(waitingLabel);
         ticket.add(roomCodeLabel);
         ticket.add(roomCaption);
+        ticket.add(copyRow);
+        ticket.setVisible(false);
+        createBody.add(ticket, BorderLayout.CENTER);
+        createCard.add(createBody, BorderLayout.CENTER);
 
-        card.add(UiKit.inkLabel("START A GAME", 16f));
-        card.add(create);
-        card.add(ticket);
-        return card;
+        JPanel joinCard = buildJoinCard();
+
+        JPanel nav = new JPanel(new GridLayout(1, 2, 14, 0));
+        nav.setOpaque(false);
+        nav.add(navCard("LEADERBOARD", "Top masters", () -> openLeaderboard.run()));
+        nav.add(navCard("REPLAY VIEWER", "Watch matches", () -> openReplays.run()));
+
+        column.add(createCard, BorderLayout.NORTH);
+        column.add(joinCard, BorderLayout.CENTER);
+        column.add(nav, BorderLayout.SOUTH);
+        return column;
     }
 
+    private JPanel ticket;
     private JPanel buildJoinCard() {
         JPanel card = UiKit.surface(16);
         card.setLayout(new BorderLayout(8, 8));
 
-        card.add(UiKit.boldLabel("JOIN A GAME", 16f), BorderLayout.NORTH);
+        JPanel joinHeader = new JPanel(new GridLayout(2, 1, 0, 0));
+        joinHeader.setBackground(Theme.SURFACE);
+        joinHeader.add(UiKit.boldLabel("JOIN A MATCH", 15f));
+        joinHeader.add(UiKit.label("Enter your opponent's code.", 12f));
+        card.add(joinHeader, BorderLayout.NORTH);
 
         JPanel joinRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 4));
         joinRow.setBackground(Theme.SURFACE);
@@ -149,8 +322,7 @@ public final class LobbyPanel extends JPanel {
         });
         joinRow.add(join);
 
-        // One CENTER child: join row on top, match list below (two adds to
-        // the same BorderLayout region would overwrite each other).
+        // One CENTER child: join row on top, match list below.
         JPanel joinAndList = new JPanel(new BorderLayout(6, 6));
         joinAndList.setBackground(Theme.SURFACE);
         joinAndList.add(joinRow, BorderLayout.NORTH);
@@ -159,15 +331,12 @@ public final class LobbyPanel extends JPanel {
         matchList.setForeground(Theme.CREAM);
         matchList.setSelectionBackground(Theme.AMBER);
         matchList.setSelectionForeground(Theme.INK);
-        matchList.setFont(Theme.normal(14f));
-        // Double-click a listed room to join it.
+        matchList.setFont(Theme.normal(13f));
         matchList.addMouseListener(new java.awt.event.MouseAdapter() {
             @Override
             public void mouseClicked(java.awt.event.MouseEvent event) {
                 if (event.getClickCount() == 2) {
                     String entry = matchList.getSelectedValue();
-                    // Real entries start with a 5-character room code; the
-                    // empty-state placeholder is not joinable.
                     if (entry != null && entry.length() >= 5
                             && entry.matches("[A-Z2-9]{5}.*")) {
                         model.joinMatch(entry.substring(0, 5));
@@ -190,11 +359,77 @@ public final class LobbyPanel extends JPanel {
         return card;
     }
 
+    /** Adds a compact navigation card with a drawn icon. */
+    private JComponent navCard(String title, String subtitle, Runnable action) {
+        JPanel card = UiKit.surface(10);
+        card.setLayout(new BorderLayout(10, 2));
+        card.setCursor(new java.awt.Cursor(java.awt.Cursor.HAND_CURSOR));
+        card.addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override
+            public void mouseClicked(java.awt.event.MouseEvent event) {
+                action.run();
+            }
+        });
+        JComponent icon = new JComponent() {
+            @Override
+            public Dimension getPreferredSize() {
+                return new Dimension(30, 30);
+            }
+
+            @Override
+            protected void paintComponent(Graphics graphics) {
+                Graphics2D g = (Graphics2D) graphics.create();
+                g.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
+                        RenderingHints.VALUE_ANTIALIAS_ON);
+                if (title.contains("LEADERBOARD")) {
+                    UiKit.starburst(g, 15, 15, 13);
+                } else {
+                    g.setColor(Theme.AMBER);
+                    g.fillPolygon(new int[]{9, 9, 24}, new int[]{7, 23, 15}, 3);
+                    g.setColor(Theme.INK);
+                    g.drawPolygon(new int[]{9, 9, 24}, new int[]{7, 23, 15}, 3);
+                }
+                g.dispose();
+            }
+        };
+        card.add(icon, BorderLayout.WEST);
+        JPanel text = new JPanel(new GridLayout(2, 1, 0, 0));
+        text.setOpaque(false);
+        text.add(UiKit.boldLabel(title, 13f));
+        text.add(UiKit.label(subtitle, 11f));
+        card.add(text, BorderLayout.CENTER);
+        return card;
+    }
+
+    // ------------------------------------------------------------------
+    // Waiting state + data refresh
+    // ------------------------------------------------------------------
+
+    private void setWaitingVisible(boolean visible) {
+        ticket.setVisible(visible);
+        if (visible) {
+            waitingDots = 0;
+            if (waitingTimer != null) {
+                waitingTimer.stop();
+            }
+            waitingTimer = new Timer(500, event -> {
+                waitingDots = (waitingDots + 1) % 4;
+                waitingLabel.setText("WAITING FOR OPPONENT"
+                        + ".".repeat(waitingDots));
+            });
+            waitingTimer.start();
+        } else if (waitingTimer != null) {
+            waitingTimer.stop();
+        }
+        revalidate();
+        repaint();
+    }
+
     private void refreshProfile() {
         if (model.me() != null) {
-            profileLabel.setText(" " + model.me().username().toUpperCase()
-                    + "   ·   ELO " + model.me().elo()
-                    + "   ·   " + model.me().wins() + "W / " + model.me().losses() + "L ");
+            profileName.setText(" " + model.me().username().toUpperCase() + " ");
+            profileStats.setText("  ELO " + model.me().elo() + "   ·   "
+                    + model.me().wins() + "W · " + model.me().losses() + "L  ");
         }
     }
 
@@ -205,7 +440,7 @@ public final class LobbyPanel extends JPanel {
                 .filter(summary -> !summary.roomCode().equals(ownCode))
                 .toList();
         if (others.isEmpty()) {
-            matchListModel.addElement("No open matches yet — create one!");
+            matchListModel.addElement("THE DOJO IS QUIET — CREATE A MATCH");
         } else {
             others.forEach(summary -> matchListModel.addElement(
                     summary.roomCode() + "  —  " + summary.hostUsername()));

@@ -54,7 +54,7 @@ public final class PieceTray extends JComponent {
                 int cx = 8 + i * STEP + DISC / 2;
                 int baseY = DISC + 4;
                 Color fill = piece.color() == PlayerColor.BLUE ? Theme.SKY : Theme.CORAL;
-                UiKit.drawPawn(g, cx, baseY, DISC + 4, fill, piece.master());
+                UiKit.drawFigurine(g, cx, baseY, DISC + 4, fill, piece.master());
             }
         }
         g.dispose();
