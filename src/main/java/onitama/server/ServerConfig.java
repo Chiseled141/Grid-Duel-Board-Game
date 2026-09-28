@@ -9,18 +9,19 @@ import java.util.Random;
  * freshly seeded {@link Random}. The reconnect grace period is configurable
  * for the same reason (tests use 1 second, production 60). A null replayDir
  * disables replay writing (tests). {@code silenceSeconds} is the heartbeat
- * silence limit (production 90; tests use 1).
+ * silence limit (production 90; tests use 1). {@code clientPoolSize} controls
+ * the maximum number of concurrent client handler threads.
  */
 public record ServerConfig(int port, int graceSeconds, Random dealRandom, Path replayDir,
-                           int silenceSeconds) {
+                           int silenceSeconds, int clientPoolSize) {
 
     /** Default production configuration with the given port. */
     public static ServerConfig defaults(int port) {
-        return new ServerConfig(port, 60, new Random(), Path.of("replays"), 90);
+        return new ServerConfig(port, 60, new Random(), Path.of("replays"), 90, 32);
     }
 
     /** Configuration with a custom silence limit (tests). */
     public ServerConfig(int port, int graceSeconds, Random dealRandom, Path replayDir) {
-        this(port, graceSeconds, dealRandom, replayDir, 90);
+        this(port, graceSeconds, dealRandom, replayDir, 90, 32);
     }
 }

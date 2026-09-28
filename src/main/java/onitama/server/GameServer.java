@@ -27,7 +27,6 @@ import java.util.logging.Logger;
 public final class GameServer {
 
     private static final Logger LOG = Logger.getLogger(GameServer.class.getName());
-    private static final int CLIENT_POOL_SIZE = 32;
 
     private final ServerConfig config;
     private final UserDao userDao;
@@ -50,7 +49,7 @@ public final class GameServer {
         this.config = config;
         this.userDao = userDao;
         this.persistence = persistence;
-        this.clientPool = Executors.newFixedThreadPool(CLIENT_POOL_SIZE, namedThreads("onitama-client-"));
+        this.clientPool = Executors.newFixedThreadPool(config.clientPoolSize(), namedThreads("onitama-client-"));
         this.timers = Executors.newScheduledThreadPool(1, namedThreads("onitama-timer-"));
     }
 

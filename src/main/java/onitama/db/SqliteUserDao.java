@@ -46,7 +46,10 @@ public final class SqliteUserDao implements UserDao {
                 return null;
             });
         } catch (SQLException e) {
-            if (e.getMessage() != null && e.getMessage().contains("UNIQUE")) {
+            // SQLITE_CONSTRAINT (error code 19) is raised on a UNIQUE violation.
+            // Using the error code is locale-independent and more robust than
+            // inspecting the English error message.
+            if (e.getErrorCode() == 19) {
                 throw new AuthenticationException("username is already taken");
             }
             throw new PersistenceException("could not register user", e);

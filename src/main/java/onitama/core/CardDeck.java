@@ -3,7 +3,9 @@ package onitama.core;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
+import java.util.stream.Collectors;
 
 /**
  * The deck of the 16 movement cards with the fixed offset data from the
@@ -19,6 +21,8 @@ public final class CardDeck {
     }
 
     private static final List<Card> CATALOG = buildCatalog();
+    private static final Map<String, Card> BY_ID = CATALOG.stream()
+            .collect(Collectors.toUnmodifiableMap(Card::id, c -> c));
 
     private CardDeck() {
     }
@@ -79,10 +83,11 @@ public final class CardDeck {
      * @throws IllegalArgumentException if no card has this id
      */
     public static Card cardById(String id) {
-        return CATALOG.stream()
-                .filter(card -> card.id().equals(id))
-                .findFirst()
-                .orElseThrow(() -> new IllegalArgumentException("unknown card: " + id));
+        Card card = BY_ID.get(id);
+        if (card == null) {
+            throw new IllegalArgumentException("unknown card: " + id);
+        }
+        return card;
     }
 
     /**

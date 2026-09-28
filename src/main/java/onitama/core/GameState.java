@@ -10,6 +10,13 @@ import java.util.List;
  * card, whose turn it is, the half-move counter and the result. The state is
  * mutated only by {@link RulesEngine}; all mutating methods are package-private
  * so client and server code can treat a received GameState as read-only.
+ *
+ * <p><b>Wire safety:</b> this class is mutable and {@link java.io.Serializable}.
+ * When received over the network (inside {@code MoveApplied} or
+ * {@code MatchStart}), callers must treat the deserialized instance as
+ * <em>effectively immutable</em>. Mutating a received state will silently
+ * corrupt the client's view of the game; if local rule checking is needed,
+ * create a deep copy first.
  */
 public final class GameState implements Serializable {
 
