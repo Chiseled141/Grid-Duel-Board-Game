@@ -76,8 +76,12 @@ public final class Main {
     /** Parses "--key value" pairs after the mode argument into a map. */
     private static Map<String, String> parseOptions(String[] args) {
         Map<String, String> options = new HashMap<>();
-        for (int i = 1; i < args.length - 1; i++) {
+        for (int i = 1; i < args.length; i++) {
             if (args[i].startsWith("--")) {
+                if (i + 1 >= args.length) {
+                    System.err.println("missing value for " + args[i]);
+                    System.exit(1);
+                }
                 options.put(args[i].substring(2), args[i + 1]);
                 i++;
             }
@@ -113,14 +117,9 @@ public final class Main {
     }
 
     private static String cardNames(List<Card> cards) {
-        StringBuilder sb = new StringBuilder();
-        for (Card card : cards) {
-            if (sb.length() > 0) {
-                sb.append(", ");
-            }
-            sb.append(card.name()).append(" (").append(card.id()).append(")");
-        }
-        return sb.toString();
+        return cards.stream()
+                .map(card -> card.name() + " (" + card.id() + ")")
+                .collect(java.util.stream.Collectors.joining(", "));
     }
 
     // ------------------------------------------------------------------

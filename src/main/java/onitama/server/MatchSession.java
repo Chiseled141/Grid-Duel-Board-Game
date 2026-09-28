@@ -249,6 +249,12 @@ public final class MatchSession {
      * True while this session still owns its players: the game is running or
      * finished-but-rematchable. Read from other threads to decide whether a
      * player may start something new.
+     *
+     * <p><b>Note:</b> this reads the volatile {@code finished} flag without
+     * entering the match executor.  There is a small TOCTOU gap: the match
+     * could finish between this check and the caller's next action. In
+     * practice this is harmless because the match executor will reject any
+     * stale action submitted after the game ends.
      */
     public boolean isActive() {
         return !finished;
@@ -304,12 +310,6 @@ public final class MatchSession {
         if (disconnected.size() == 2) {
             executor.shutdown();
         }
-    }
-
-    private void updateStats(UserDao userDao, UserProfile profile, boolean won, int newElo) {
-        userDao.updateStats(profile.username(), newElo,
-                profile.wins() + (won ? 1 : 0),
-                profile.losses() + (!won ? 1 : 0));
     }
 
     private void releaseTokens() {
