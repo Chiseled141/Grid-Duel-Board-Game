@@ -4,6 +4,7 @@ import onitama.core.Piece;
 import onitama.core.PlayerColor;
 
 import java.awt.BasicStroke;
+import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
@@ -50,17 +51,10 @@ public final class PieceTray extends JComponent {
         } else {
             for (int i = 0; i < pieces.size(); i++) {
                 Piece piece = pieces.get(i);
-                int cx = 6 + i * STEP + DISC / 2;
-                int cy = DISC / 2 + 2;
-                int radius = DISC / 2 - 2;
-                g.setColor(piece.color() == PlayerColor.BLUE ? Theme.SKY : Theme.CORAL);
-                g.fillOval(cx - radius, cy - radius, 2 * radius, 2 * radius);
-                g.setColor(Theme.INK);
-                g.setStroke(new BasicStroke(1.5f));
-                g.drawOval(cx - radius, cy - radius, 2 * radius, 2 * radius);
-                if (piece.master()) {
-                    UiKit.starburst(g, cx, cy, radius - 4);
-                }
+                int cx = 8 + i * STEP + DISC / 2;
+                int baseY = DISC + 4;
+                Color fill = piece.color() == PlayerColor.BLUE ? Theme.SKY : Theme.CORAL;
+                UiKit.drawPawn(g, cx, baseY, DISC + 4, fill, piece.master());
             }
         }
         g.dispose();

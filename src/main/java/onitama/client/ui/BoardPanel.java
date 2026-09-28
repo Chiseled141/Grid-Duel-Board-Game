@@ -170,28 +170,16 @@ public final class BoardPanel extends JComponent {
         int px = displayX(x) * cell + originX;
         int py = displayY(y) * cell + originY;
         int cx = px + cell / 2;
-        int cy = py + cell / 2;
         if (sprite != null) {
             int inset = cell / 10;
             g.drawImage(sprite, px + inset, py + inset, cell - 2 * inset, cell - 2 * inset, null);
             return;
         }
-        int radius = cell / 2 - 10;
-        g.setColor(piece.color() == PlayerColor.BLUE ? Theme.SKY : Theme.CORAL);
-        g.fillOval(cx - radius, cy - radius, 2 * radius, 2 * radius);
-        g.setColor(Theme.INK);
-        g.setStroke(new BasicStroke(2.5f));
-        g.drawOval(cx - radius, cy - radius, 2 * radius, 2 * radius);
-        if (piece.master()) {
-            // Masters carry the gold starburst mark.
-            UiKit.starburst(g, cx, cy, radius - 6);
-        } else {
-            g.setColor(Theme.CREAM);
-            g.setFont(Theme.bold(15f));
-            var metrics = g.getFontMetrics();
-            g.drawString("S", cx - metrics.stringWidth("S") / 2,
-                    cy + metrics.getAscent() / 2 - 2);
-        }
+        // Pawn silhouettes: shorter students, taller masters (like the real game).
+        int height = (int) (cell * (piece.master() ? 0.82 : 0.64));
+        int baseY = py + cell - 7;
+        Color fill = piece.color() == PlayerColor.BLUE ? Theme.SKY : Theme.CORAL;
+        UiKit.drawPawn(g, cx, baseY, height, fill, piece.master());
     }
 
     private void drawTargetDot(Graphics2D g, Square target) {
