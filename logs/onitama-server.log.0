@@ -180,3 +180,11 @@ thg 9 29, 2026 3:41:39 SA onitama.server.ClientHandler completeLogin
 INFO: user 'kuro' logged in
 thg 9 29, 2026 3:41:40 SA onitama.server.ClientHandler completeLogin
 INFO: user 'shiro' logged in
+thg 9 29, 2026 3:45:44 SA onitama.server.ClientHandler onDisconnected
+INFO: user 'kuro' disconnected
+thg 9 29, 2026 3:45:44 SA onitama.server.ClientHandler onDisconnected
+INFO: user 'shiro' disconnected
+thg 9 29, 2026 3:45:47 SA onitama.server.ClientHandler completeLogin
+INFO: user 'kuro' logged in
+thg 9 29, 2026 3:45:49 SA onitama.server.ClientHandler completeLogin
+INFO: user 'shiro' logged in
