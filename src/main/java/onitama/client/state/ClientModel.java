@@ -39,7 +39,10 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.Consumer;
+import java.util.logging.Level;
 import java.util.logging.Logger;
+
+import javax.swing.SwingUtilities;
 
 /**
  * The client-side model, owned by the Swing EDT: every field is only read or
@@ -399,9 +402,23 @@ public final class ClientModel {
         fire(listener -> listener.onScreenChanged(newScreen));
     }
 
+    /**
+     * Fires one event to every listener. Always runs on the Swing EDT:
+     * calls from background threads (connect/reconnect failures) are
+     * marshalled there, because listeners touch Swing components. Each
+     * listener is isolated — a failing panel can never starve the others.
+     */
     private void fire(Consumer<ClientModelListener> event) {
+        if (!SwingUtilities.isEventDispatchThread()) {
+            SwingUtilities.invokeLater(() -> fire(event));
+            return;
+        }
         for (ClientModelListener listener : listeners) {
-            event.accept(listener);
+            try {
+                event.accept(listener);
+            } catch (RuntimeException e) {
+                LOG.log(Level.SEVERE, "UI listener failed", e);
+            }
         }
     }
 
