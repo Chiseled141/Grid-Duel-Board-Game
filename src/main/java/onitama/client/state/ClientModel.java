@@ -324,12 +324,14 @@ public final class ClientModel {
         GameState previous = state;
         state = applied.state();
         Move lastMove = applied.lastMove();
-        if (previous != null && lastMove != null) {
-            recordCapture(previous, lastMove);
+        if (lastMove == null) {
+            historyLines.add(state.moveNumber() + ". pass");
+        } else {
+            if (previous != null) {
+                recordCapture(previous, lastMove);
+            }
             historyLines.add(state.moveNumber() + ". "
                     + lastMove.cardId() + " " + lastMove.from() + " \u2192 " + lastMove.to());
-        } else {
-            historyLines.add(state.moveNumber() + ". pass");
         }
         clearSelection();
         autoPassIfNeeded();

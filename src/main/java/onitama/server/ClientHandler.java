@@ -234,6 +234,9 @@ public final class ClientHandler implements Runnable {
         reconnectToken = token;
         match = previous.match;
         color = previous.color;
+        // Re-claim the account (kicks any second login that happened in
+        // between) and keep the old token working for this handler.
+        server.registry().attach(this);
         server.registry().rebind(token, this);
         previous.closeSocket();
 
