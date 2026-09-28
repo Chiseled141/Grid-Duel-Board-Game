@@ -164,8 +164,15 @@ public final class LobbyPanel extends JPanel {
         JPanel header = new JPanel(new BorderLayout());
         header.setOpaque(false);
 
-        // The painting carries the ONITAMA title; only the profile sits here.
-        header.add(new JLabel(), BorderLayout.WEST);
+        JPanel titleBlock = UiKit.sticker(12);
+        titleBlock.setLayout(new GridLayout(2, 1, 0, 0));
+        JLabel title = new JLabel("ONITAMA");
+        title.setFont(Theme.display(38f));
+        title.setForeground(Theme.INK);
+        JLabel tagline = UiKit.inkLabel("ONLINE · THE ANCIENT GAME OF MOVEMENT", 11f);
+        titleBlock.add(title);
+        titleBlock.add(tagline);
+        header.add(titleBlock, BorderLayout.WEST);
 
         JPanel profile = UiKit.sticker(10);
         profile.setLayout(new FlowLayout(FlowLayout.LEFT, 8, 2));
