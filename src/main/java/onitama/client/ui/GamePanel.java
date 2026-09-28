@@ -52,6 +52,8 @@ public final class GamePanel extends JPanel {
         north.setBackground(Theme.BACKGROUND);
         opponentLabel.setForeground(Theme.FOREGROUND);
         opponentLabel.setHorizontalAlignment(javax.swing.SwingConstants.CENTER);
+        opponentCards.setBackground(Theme.BACKGROUND);
+        myCards.setBackground(Theme.BACKGROUND);
         north.add(opponentLabel, BorderLayout.NORTH);
         north.add(opponentCards, BorderLayout.SOUTH);
         add(north, BorderLayout.NORTH);
@@ -110,9 +112,13 @@ public final class GamePanel extends JPanel {
     private JPanel buildHistoryPanel() {
         JPanel panel = new JPanel(new BorderLayout(4, 4));
         panel.setBackground(Theme.BACKGROUND);
+        // Empty border outside the titled border so the "Moves" title is
+        // never clipped by the panel edge.
         panel.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createTitledBorder("Moves"),
-                BorderFactory.createEmptyBorder(4, 4, 4, 4)));
+                BorderFactory.createEmptyBorder(8, 0, 0, 0),
+                BorderFactory.createCompoundBorder(
+                        BorderFactory.createTitledBorder("Moves"),
+                        BorderFactory.createEmptyBorder(4, 4, 4, 4))));
         panel.setPreferredSize(new java.awt.Dimension(240, 100));
         historyList.setBackground(Theme.BACKGROUND.brighter());
         historyList.setForeground(Theme.FOREGROUND);
