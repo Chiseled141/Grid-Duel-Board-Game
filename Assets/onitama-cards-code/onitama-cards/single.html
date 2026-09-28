@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Onitama card</title>
+<link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho+B1:wght@600;800&family=Outfit:wght@400;500;600&display=block" rel="stylesheet">
+<link rel="stylesheet" href="card.css">
+<style>
+  /* Render helper: one card filling a 400x460 viewport, transparent outside. */
+  html, body { margin: 0; background: transparent; overflow: hidden; }
+  .ink-card { box-shadow: none; }
+</style>
+</head>
+<body>
+<script src="card.js"></script>
+<script src="cards-data.js"></script>
+<script>
+  const q = new URLSearchParams(location.search);
+  const c = ONITAMA_CARDS.find(x => x.id === (q.get("id") || "tiger"));
+  document.body.appendChild(renderCard({ ...c, img: `../onitama-icons/${c.id}.png`, side: q.get("side") || "red" }));
+</script>
+</body>
+</html>

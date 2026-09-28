@@ -24,6 +24,8 @@ import java.awt.geom.RoundRectangle2D;
  */
 public final class UiKit {
 
+    /** Hover animation length in ms (§11). */
+    public static final int HOVER_MS = 180;
     /** Hard-shadow offset in pixels (never blurred). */
     private static final int SHADOW = 4;
 
