@@ -188,3 +188,37 @@ thg 9 29, 2026 3:45:47 SA onitama.server.ClientHandler completeLogin
 INFO: user 'kuro' logged in
 thg 9 29, 2026 3:45:49 SA onitama.server.ClientHandler completeLogin
 INFO: user 'shiro' logged in
+thg 9 29, 2026 3:46:44 SA onitama.server.MatchPersistence record
+INFO: recorded match BNUB9 as id 13 with replay replays/match-20260929-034644-BNUB9.onitama-replay
+thg 9 29, 2026 3:46:44 SA onitama.server.GameServer onMatchFinished
+INFO: match BNUB9 finished: FORFEIT, winner=kuro, half-moves=1
+thg 9 29, 2026 3:46:44 SA onitama.server.MatchSession finish
+INFO: match BNUB9 finished: FORFEIT, winner=kuro, half-moves=1
+thg 9 29, 2026 3:48:15 SA onitama.server.ClientHandler onDisconnected
+INFO: user 'shiro' disconnected
+thg 9 29, 2026 3:48:16 SA onitama.server.ClientHandler onDisconnected
+INFO: user 'kuro' disconnected
+thg 9 29, 2026 3:49:03 SA onitama.server.ClientHandler completeLogin
+INFO: user 'kuro' logged in
+thg 9 29, 2026 3:49:05 SA onitama.server.ClientHandler completeLogin
+INFO: user 'shiro' logged in
+thg 9 29, 2026 3:49:13 SA onitama.server.MatchPersistence record
+INFO: recorded match QZHUA as id 14 with replay replays/match-20260929-034913-QZHUA.onitama-replay
+thg 9 29, 2026 3:49:13 SA onitama.server.GameServer onMatchFinished
+INFO: match QZHUA finished: FORFEIT, winner=shiro, half-moves=0
+thg 9 29, 2026 3:49:13 SA onitama.server.MatchSession finish
+INFO: match QZHUA finished: FORFEIT, winner=shiro, half-moves=0
+thg 9 29, 2026 3:49:15 SA onitama.server.MatchPersistence record
+INFO: recorded match ZZTKJ as id 15 with replay replays/match-20260929-034915-ZZTKJ.onitama-replay
+thg 9 29, 2026 3:49:16 SA onitama.server.GameServer onMatchFinished
+INFO: match ZZTKJ finished: FORFEIT, winner=kuro, half-moves=0
+thg 9 29, 2026 3:49:16 SA onitama.server.MatchSession finish
+INFO: match ZZTKJ finished: FORFEIT, winner=kuro, half-moves=0
+thg 9 29, 2026 3:49:59 SA onitama.server.ClientHandler onDisconnected
+INFO: user 'shiro' disconnected
+thg 9 29, 2026 3:49:59 SA onitama.server.ClientHandler onDisconnected
+INFO: user 'kuro' disconnected
+thg 9 29, 2026 3:51:03 SA onitama.server.ClientHandler completeLogin
+INFO: user 'kuro' logged in
+thg 9 29, 2026 3:51:04 SA onitama.server.ClientHandler completeLogin
+INFO: user 'shiro' logged in
