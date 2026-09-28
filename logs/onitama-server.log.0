@@ -130,3 +130,25 @@ thg 9 29, 2026 3:09:05 SA onitama.server.GameServer onMatchFinished
 INFO: match QHVRJ finished: FORFEIT, winner=shiro, half-moves=0
 thg 9 29, 2026 3:09:05 SA onitama.server.MatchSession finish
 INFO: match QHVRJ finished: FORFEIT, winner=shiro, half-moves=0
+thg 9 29, 2026 3:19:31 SA onitama.server.ClientHandler onDisconnected
+INFO: user 'shiro' disconnected
+thg 9 29, 2026 3:19:31 SA onitama.server.ClientHandler onDisconnected
+INFO: user 'kuro' disconnected
+thg 9 29, 2026 3:20:16 SA onitama.server.ClientHandler completeLogin
+INFO: user 'kuro' logged in
+thg 9 29, 2026 3:20:18 SA onitama.server.ClientHandler completeLogin
+INFO: user 'shiro' logged in
+thg 9 29, 2026 3:21:27 SA onitama.server.ClientHandler onDisconnected
+INFO: user 'shiro' disconnected
+thg 9 29, 2026 3:21:27 SA onitama.server.ClientHandler onDisconnected
+INFO: user 'kuro' disconnected
+thg 9 29, 2026 3:21:30 SA onitama.server.ClientHandler completeLogin
+INFO: user 'kuro' logged in
+thg 9 29, 2026 3:21:32 SA onitama.server.ClientHandler completeLogin
+INFO: user 'shiro' logged in
+thg 9 29, 2026 3:22:27 SA onitama.server.MatchPersistence record
+INFO: recorded match 7B6M9 as id 10 with replay replays/match-20260929-032227-7B6M9.onitama-replay
+thg 9 29, 2026 3:22:27 SA onitama.server.GameServer onMatchFinished
+INFO: match 7B6M9 finished: FORFEIT, winner=shiro, half-moves=0
+thg 9 29, 2026 3:22:27 SA onitama.server.MatchSession finish
+INFO: match 7B6M9 finished: FORFEIT, winner=shiro, half-moves=0
