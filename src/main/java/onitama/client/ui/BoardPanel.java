@@ -180,8 +180,10 @@ public final class BoardPanel extends JComponent {
         if (displayCol < 0 || displayCol >= Board.SIZE || displayRow < 0 || displayRow >= Board.SIZE) {
             return null;
         }
+        // Same flip as painting: the viewer's own home row (Blue y=0, Red y=4)
+        // must sit at the BOTTOM of the screen.
         int x = viewColor == PlayerColor.BLUE ? displayCol : Board.SIZE - 1 - displayCol;
-        int y = viewColor == PlayerColor.BLUE ? displayRow : Board.SIZE - 1 - displayRow;
+        int y = viewColor == PlayerColor.BLUE ? Board.SIZE - 1 - displayRow : displayRow;
         return new Square(x, y);
     }
 
@@ -190,6 +192,6 @@ public final class BoardPanel extends JComponent {
     }
 
     private int displayY(int y) {
-        return viewColor == PlayerColor.BLUE ? y : Board.SIZE - 1 - y;
+        return viewColor == PlayerColor.BLUE ? Board.SIZE - 1 - y : y;
     }
 }

@@ -110,8 +110,10 @@ public final class GamePanel extends JPanel {
     private JPanel buildHistoryPanel() {
         JPanel panel = new JPanel(new BorderLayout(4, 4));
         panel.setBackground(Theme.BACKGROUND);
-        panel.setBorder(BorderFactory.createTitledBorder("Moves"));
-        panel.setPreferredSize(new java.awt.Dimension(230, 100));
+        panel.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createTitledBorder("Moves"),
+                BorderFactory.createEmptyBorder(4, 4, 4, 4)));
+        panel.setPreferredSize(new java.awt.Dimension(240, 100));
         historyList.setBackground(Theme.BACKGROUND.brighter());
         historyList.setForeground(Theme.FOREGROUND);
         panel.add(new JScrollPane(historyList), BorderLayout.CENTER);
