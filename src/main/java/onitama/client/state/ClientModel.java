@@ -84,6 +84,8 @@ public final class ClientModel {
     private String selectedCardId;
     private Square selectedSquare;
     private List<Square> highlightedTargets = List.of();
+    /** The square where the most recent half-move captured a piece (or null). */
+    private Square lastCaptureSquare;
 
     /** Creates the model; outgoing messages go through the connection. */
     public ClientModel(ServerConnection connection) {
@@ -328,10 +330,12 @@ public final class ClientModel {
         state = applied.state();
         Move lastMove = applied.lastMove();
         if (lastMove == null) {
+            lastCaptureSquare = null;
             historyLines.add(state.moveNumber() + ". Pass — "
                     + state.transit().name());
         } else {
             Piece captured = previous == null ? null : recordCapture(previous, lastMove);
+            lastCaptureSquare = captured == null ? null : lastMove.to();
             historyLines.add(describeMove(previous, lastMove, captured));
         }
         clearSelection();
@@ -538,6 +542,11 @@ public final class ClientModel {
 
     public List<Square> highlightedTargets() {
         return highlightedTargets;
+    }
+
+    /** The square where the latest half-move captured a piece, or null. */
+    public Square lastCaptureSquare() {
+        return lastCaptureSquare;
     }
 
     /** A short human-readable status line for the game screen. */

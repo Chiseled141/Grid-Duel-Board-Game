@@ -146,11 +146,10 @@ public final class CardPanel extends JComponent {
         if (face != null) {
             g.drawImage(face, x0, y0, W, H, null);
         }
-        g.setColor(Theme.INK);
-        g.setStroke(new BasicStroke(selected ? 3f : 1.8f));
-        if (selected) {
-            g.setColor(Theme.AMBER);
-        }
+        // Accent border: each card frames itself in its own color; the
+        // selected card frames in the player's color instead.
+        g.setStroke(new BasicStroke(selected ? 3f : 2f));
+        g.setColor(selected ? Theme.playerColor(viewerColor) : accent());
         g.drawRoundRect(x0, y0, W - 1, H - 1, 14, 14);
 
         drawKanji(g, x0, y0);

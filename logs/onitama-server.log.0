@@ -10,3 +10,33 @@ thg 9 28, 2026 12:03:55 SA onitama.server.ClientHandler onDisconnected
 INFO: user 'hello2' disconnected
 thg 9 28, 2026 9:34:57 SA onitama.server.GameServer start
 INFO: Onitama server listening on port 15703
+thg 9 29, 2026 1:27:45 SA onitama.server.GameServer start
+INFO: Onitama server listening on port 5555
+thg 9 29, 2026 1:31:30 SA onitama.server.ClientHandler completeLogin
+INFO: user 'user1' logged in
+thg 9 29, 2026 1:31:38 SA onitama.server.ClientHandler completeLogin
+INFO: user 'user2' logged in
+thg 9 29, 2026 1:32:42 SA onitama.server.MatchPersistence record
+INFO: recorded match 2PN8Z as id 1 with replay replays/match-20260929-013242-2PN8Z.onitama-replay
+thg 9 29, 2026 1:32:42 SA onitama.server.GameServer onMatchFinished
+INFO: match 2PN8Z finished: FORFEIT, winner=user1, half-moves=1
+thg 9 29, 2026 1:32:42 SA onitama.server.MatchSession finish
+INFO: match 2PN8Z finished: FORFEIT, winner=user1, half-moves=1
+thg 9 29, 2026 2:05:39 SA onitama.server.ClientHandler onDisconnected
+INFO: user 'user1' disconnected
+thg 9 29, 2026 2:05:39 SA onitama.server.ClientHandler onDisconnected
+INFO: user 'user2' disconnected
+thg 9 29, 2026 2:06:01 SA onitama.server.ClientHandler completeLogin
+INFO: user 'kuro' logged in
+thg 9 29, 2026 2:06:01 SA onitama.server.ClientHandler completeLogin
+INFO: user 'kuro' logged in
+thg 9 29, 2026 2:06:01 SA onitama.server.ClientHandler completeLogin
+INFO: user 'shiro' logged in
+thg 9 29, 2026 2:06:02 SA onitama.server.ClientHandler completeLogin
+INFO: user 'shiro' logged in
+thg 9 29, 2026 2:06:39 SA onitama.server.MatchPersistence record
+INFO: recorded match 3D6G7 as id 2 with replay replays/match-20260929-020639-3D6G7.onitama-replay
+thg 9 29, 2026 2:06:39 SA onitama.server.GameServer onMatchFinished
+INFO: match 3D6G7 finished: FORFEIT, winner=user2, half-moves=0
+thg 9 29, 2026 2:06:39 SA onitama.server.MatchSession finish
+INFO: match 3D6G7 finished: FORFEIT, winner=user2, half-moves=0
