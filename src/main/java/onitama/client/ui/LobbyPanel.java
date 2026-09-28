@@ -101,7 +101,6 @@ public final class LobbyPanel extends JPanel {
 
         JPanel center = new JPanel(new BorderLayout(24, 0));
         center.setOpaque(false);
-        center.add(buildHero(), BorderLayout.CENTER);
         center.add(buildActionsColumn(), BorderLayout.EAST);
         add(center, BorderLayout.CENTER);
 
@@ -136,39 +135,26 @@ public final class LobbyPanel extends JPanel {
         }).start();
     }
 
-    /** Atmospheric dojo background: soft ink washes and paper grain (§11). */
+    /** The sumi-e temple painting as the lobby background (cover, left-anchored). */
     @Override
     protected void paintComponent(Graphics graphics) {
         super.paintComponent(graphics);
+        java.awt.Image background = AssetStore.optional("menu-background.png");
+        if (background == null) {
+            return;
+        }
         Graphics2D g = (Graphics2D) graphics.create();
-        // A couple of large, very faint ink washes for depth.
-        for (java.awt.geom.Point2D.Double spot : new java.awt.geom.Point2D.Double[]{
-                new java.awt.geom.Point2D.Double(getWidth() * 0.18, getHeight() * 0.3),
-                new java.awt.geom.Point2D.Double(getWidth() * 0.8, getHeight() * 0.72)}) {
-            g.setColor(new Color(249, 244, 218, 9));
-            g.fillOval((int) (spot.x - 190), (int) (spot.y - 150), 380, 300);
-            g.setColor(new Color(252, 186, 40, 6));
-            g.fillOval((int) (spot.x - 120), (int) (spot.y - 90), 240, 180);
-        }
-        // Paper grain: sparse, tiny, low-contrast flecks (cached).
-        if (grain == null) {
-            grain = new java.awt.image.BufferedImage(220, 220,
-                    java.awt.image.BufferedImage.TYPE_INT_ARGB);
-            java.util.Random random = new java.util.Random(7);
-            for (int i = 0; i < 500; i++) {
-                grain.setRGB(random.nextInt(220), random.nextInt(220),
-                        new Color(249, 244, 218, 14).getRGB());
-            }
-        }
-        for (int x = 0; x < getWidth(); x += 220) {
-            for (int y = 0; y < getHeight(); y += 220) {
-                g.drawImage(grain, x, y, null);
-            }
-        }
+        // Cover-fit, anchored left: the temple and mountains stay on screen.
+        double scaleFactor = Math.max(getWidth() / (double) background.getWidth(null),
+                getHeight() / (double) background.getHeight(null));
+        int drawW = (int) (background.getWidth(null) * scaleFactor);
+        int drawH = (int) (background.getHeight(null) * scaleFactor);
+        g.drawImage(background, 0, (getHeight() - drawH) / 2, drawW, drawH, null);
+        // Subtle right-side scrim so the action cards keep their contrast.
+        g.setColor(new Color(15, 13, 14, 40));
+        g.fillRect(getWidth() - 480, 0, 480, getHeight());
         g.dispose();
     }
-
-    private java.awt.image.BufferedImage grain;
 
     // ------------------------------------------------------------------
     // Header: title + profile
@@ -178,12 +164,12 @@ public final class LobbyPanel extends JPanel {
         JPanel header = new JPanel(new BorderLayout());
         header.setOpaque(false);
 
-        JPanel titleBlock = new JPanel(new GridLayout(2, 1, 0, 0));
-        titleBlock.setOpaque(false);
+        JPanel titleBlock = UiKit.sticker(12);
+        titleBlock.setLayout(new GridLayout(2, 1, 0, 0));
         JLabel title = new JLabel("ONITAMA");
-        title.setFont(Theme.display(40f));
-        title.setForeground(Theme.AMBER);
-        JLabel tagline = UiKit.label("ONLINE · THE ANCIENT GAME OF MOVEMENT", 11f);
+        title.setFont(Theme.display(38f));
+        title.setForeground(Theme.INK);
+        JLabel tagline = UiKit.inkLabel("ONLINE · THE ANCIENT GAME OF MOVEMENT", 11f);
         titleBlock.add(title);
         titleBlock.add(tagline);
         header.add(titleBlock, BorderLayout.WEST);
@@ -204,43 +190,6 @@ public final class LobbyPanel extends JPanel {
     // ------------------------------------------------------------------
     // Hero illustration
     // ------------------------------------------------------------------
-
-    private JComponent buildHero() {
-        return new JComponent() {
-            {
-                setOpaque(false);
-            }
-
-            @Override
-            public Dimension getPreferredSize() {
-                return new Dimension(330, 380);
-            }
-
-            @Override
-            protected void paintComponent(Graphics graphics) {
-                Graphics2D g = (Graphics2D) graphics.create();
-                g.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
-                        RenderingHints.VALUE_ANTIALIAS_ON);
-                int cx = getWidth() / 2;
-                // Halo + orbit ring.
-                UiKit.starburst(g, cx, getHeight() / 2 - 30, 74);
-                g.setColor(new Color(252, 186, 40, 60));
-                g.setStroke(new java.awt.BasicStroke(3f, java.awt.BasicStroke.CAP_ROUND,
-                        java.awt.BasicStroke.JOIN_ROUND, 0, new float[]{10, 10}, 0));
-                g.drawOval(cx - 130, getHeight() / 2 - 120, 260, 220);
-                // The Master figurine.
-                UiKit.drawFigurine(g, cx, getHeight() / 2 + 120, 240, Theme.CREAM, true);
-                // Flanking animal stickers.
-                AnimalIcon.paint(g, "tiger", cx - 150, getHeight() / 2 - 140, 54,
-                        Theme.CORAL, Theme.INK, Theme.CREAM);
-                AnimalIcon.paint(g, "crane", cx + 96, getHeight() / 2 - 150, 54,
-                        Theme.SKY, Theme.INK, Theme.CREAM);
-                AnimalIcon.paint(g, "dragon", cx + 110, getHeight() / 2 + 40, 54,
-                        Theme.PURPLE, Theme.INK, Theme.CREAM);
-                g.dispose();
-            }
-        };
-    }
 
     // ------------------------------------------------------------------
     // Actions column: create / join cards
