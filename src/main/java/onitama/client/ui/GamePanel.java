@@ -42,7 +42,8 @@ public final class GamePanel extends JPanel {
     private final JPanel opponentCards = new JPanel(new FlowLayout(FlowLayout.CENTER, 10, 4));
     private final JPanel myCards = new JPanel(new FlowLayout(FlowLayout.CENTER, 10, 4));
     private final JList<String> historyList = new JList<>();
-    private final JLabel capturesLabel = UiKit.label(" ", 13f);
+    private final PieceTray myCapturesTray = new PieceTray("—");
+    private final PieceTray enemyCapturesTray = new PieceTray("—");
 
     /** Builds the game screen and subscribes it to the model. */
     public GamePanel(ClientModel model) {
@@ -112,7 +113,7 @@ public final class GamePanel extends JPanel {
     private JPanel buildHistoryPanel() {
         JPanel panel = UiKit.surface(10);
         panel.setLayout(new BorderLayout(6, 6));
-        panel.setPreferredSize(new java.awt.Dimension(250, 120));
+        panel.setPreferredSize(new java.awt.Dimension(260, 120));
 
         JLabel title = UiKit.boldLabel("MOVES", 13f);
         panel.add(title, BorderLayout.NORTH);
@@ -129,8 +130,18 @@ public final class GamePanel extends JPanel {
         scroll.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
         panel.add(scroll, BorderLayout.CENTER);
 
-        capturesLabel.setForeground(Theme.CREAM);
-        panel.add(capturesLabel, BorderLayout.SOUTH);
+        // Capture trays: tiny discs instead of words.
+        JPanel trays = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 2));
+        trays.setBackground(Theme.SURFACE);
+        trays.add(UiKit.label("TOOK", 10f));
+        trays.add(myCapturesTray);
+        JPanel separator = new JPanel() { };
+        separator.setBackground(Theme.SURFACE);
+        separator.setPreferredSize(new java.awt.Dimension(2, 18));
+        trays.add(separator);
+        trays.add(UiKit.label("LOST", 10f));
+        trays.add(enemyCapturesTray);
+        panel.add(trays, BorderLayout.SOUTH);
         return panel;
     }
 
@@ -173,13 +184,14 @@ public final class GamePanel extends JPanel {
 
         opponentCards.removeAll();
         state.hand(model.myColor().opponent()).forEach(card -> {
-            // Opponent patterns are drawn from MY perspective (pre-rotated).
-            opponentCards.add(new CardPanel(card, model.myColor(), null));
+            // Opponent patterns are drawn from MY perspective (pre-rotated)
+            // and dimmed so your own cards stand out.
+            opponentCards.add(new CardPanel(card, model.myColor(), true, null));
         });
 
         myCards.removeAll();
         state.hand(model.myColor()).forEach(card -> {
-            CardPanel panel = new CardPanel(card, model.myColor(),
+            CardPanel panel = new CardPanel(card, model.myColor(), false,
                     () -> model.cardClicked(card.id()));
             panel.setSelected(card.id().equals(model.selectedCardId()));
             myCards.add(panel);
@@ -188,28 +200,14 @@ public final class GamePanel extends JPanel {
         transitLabel.setText("transit: " + state.transit().name().toUpperCase());
         turnLabel.setText(model.statusLine().toUpperCase());
         historyList.setListData(model.historyLines().toArray(new String[0]));
-        capturesLabel.setText("took: " + describe(model.myCaptures())
-                + "   ·   lost: " + describe(model.enemyCaptures()));
+        myCapturesTray.setPieces(model.myCaptures());
+        enemyCapturesTray.setPieces(model.enemyCaptures());
 
         boardPanel.setView(state, model.myColor());
         boardPanel.setSelection(model.selectedSquare(), model.highlightedTargets());
         boardPanel.setLastMove(state.lastMove());
         revalidate();
         repaint();
-    }
-
-    private static String describe(List<Piece> pieces) {
-        if (pieces.isEmpty()) {
-            return "—";
-        }
-        StringBuilder text = new StringBuilder();
-        for (Piece piece : pieces) {
-            if (text.length() > 0) {
-                text.append(", ");
-            }
-            text.append(piece.master() ? "master" : "student");
-        }
-        return text.toString();
     }
 
     private void confirmResign() {
