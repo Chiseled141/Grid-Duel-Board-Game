@@ -8,33 +8,37 @@ This doc describes the new look for the game's five screens (login, lobby,
 game, leaderboard, replay viewer). The redesign only touches the visuals —
 how the game *plays* stays exactly the same.
 
+> Implemented in milestone M9. The color and font values below were
+> extracted directly from fireship.dev's own CSS, so the look is faithful.
+
 ---
 
 ## The vibe in one line
 
-Near-black room, cream board and cards on top, amber highlights, coral-red
+Near-black room, cream board and cards on top, gold highlights, coral-red
 vs sky-blue players, everything outlined in ink like a printed board game.
 
 ## Colors
 
 | Use | Color |
 |---|---|
-| App background | `#0D0D0D` (near black) |
-| Panels & list rows | `#1A1A1A` |
-| Text, card faces | `#F5EFE0` (cream) |
-| Outlines, text on cream | `#141414` (ink) |
-| Highlight color (buttons, selected card, your-turn banner) | `#E8B23F` (amber) |
-| Blue player | `#5BA8D9` (sky) |
-| Red player + errors | `#E2696B` (coral) |
-| Move hints | `#4E9E8A` (teal) |
+| App background ("coal") | `#0F0D0E` |
+| Panels & list rows ("charcoal muted") | `#1B1918` |
+| Text, card faces ("beige") | `#F9F4DA` |
+| Outlines, text on cream ("charcoal") | `#231F20` |
+| Highlight: buttons, selection, banner ("gold") | `#FCBA28` |
+| Blue player ("brand blue") | `#12B5E5` |
+| Red player + errors ("brand red") | `#ED203D` |
+| Move hints ("brand green") | `#0BA95B` |
 | Board squares | cream `#F0E6D2` + charcoal `#221E1A` |
 
 ## Font
 
-* **Titles, buttons, big numbers:** a chunky display font (Archivo Black) —
-  always UPPERCASE. The font file ships inside the game, so it looks the
-  same on every computer.
-* **Everything else:** the system's normal font, for easy reading.
+* **Titles, buttons, banners:** **Outfit** weight 900 (with 400/700 for
+  body and bold text) — always UPPERCASE for headings. The font files are
+  bundled inside the game (`src/main/resources/fonts/`, SIL OFL license
+  included), so it looks the same on every computer.
+* **Everything else:** the same Outfit at regular weight, for easy reading.
 
 ## The signature elements
 

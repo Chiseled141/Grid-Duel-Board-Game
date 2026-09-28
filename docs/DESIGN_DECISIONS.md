@@ -198,20 +198,26 @@ clear the session and return to the login screen.
 server mode. Logs rotate so a long-running EC2 instance cannot fill its
 disk.
 
-## M9 visual direction: retro-pop redesign with an asset pipeline (planning)
+## M9 visual direction: retro-pop redesign with an asset pipeline (implemented)
 
 The team chose the fireship.dev "retro-pop neo-brutalism on dark" direction
 for the client's visual redesign; it is specified in `docs/UI_DESIGN.md`
-(tokens, UiKit primitives, per-screen specs) and constrained by agent brief
-§17 (`client.ui` only, no new dependencies, behavior invariants). Two
-sub-decisions: (1) the display font (Archivo Black) is **bundled as a jar
-resource with its OFL license** — a file, not a dependency, so the
-two-dependency rule holds; (2) hand-designed artwork (board, pieces, card
-faces, icon — designed by the team per `docs/ASSET_CHECKLIST.md`) is
+and constrained by agent brief §17 (`client.ui` only, no new dependencies,
+behavior invariants). Two sub-decisions: (1) the display font (**Outfit**,
+weights 400/700/900) is **bundled as jar resources with its SIL OFL
+license** — files, not dependencies, so the two-dependency rule holds; the
+palette in `Theme` was extracted directly from fireship.dev's CSS custom
+properties (coal `#0F0D0E`, beige `#F9F4DA`, gold `#FCBA28`, charcoal
+`#231F20`, brand blue/red/green); (2) hand-designed artwork (board, pieces,
+card faces, icon — designed by the team per `docs/ASSET_CHECKLIST.md`) is
 integrated through an `AssetStore` that uses each file from
 `src/main/resources/assets/` **only when present** and falls back to the
 code-drawn baseline otherwise — so the game is complete before any art
 arrives and art can be delivered incrementally. Card movement patterns are
 never part of the artwork: the engine stamps them onto the card template so
-the shown pattern always matches the rules data.
+the shown pattern always matches the rules data. The redesign also fixed
+four real UI bugs found by driving two live client windows with a scripted
+harness: inverted board orientation, an unstyled opponent strip, clipped
+panel titles, and — most importantly — Register/Login handlers swapped in
+the restyle plus UI events fired off the EDT (both frozen the login flow).
 

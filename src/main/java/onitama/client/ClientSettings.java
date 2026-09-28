@@ -22,8 +22,8 @@ public final class ClientSettings {
 
     private String host = "127.0.0.1";
     private int port = 5555;
-    private int windowWidth = 1024;
-    private int windowHeight = 768;
+    private int windowWidth = 1100;
+    private int windowHeight = 880;
 
     /** Loads the settings file; keeps defaults when it does not exist. */
     public static ClientSettings load() {

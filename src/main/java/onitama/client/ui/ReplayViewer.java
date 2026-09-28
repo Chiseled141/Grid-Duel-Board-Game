@@ -2,9 +2,9 @@ package onitama.client.ui;
 
 import onitama.core.GameState;
 import onitama.core.HalfMove;
-import onitama.core.IllegalMoveException;
 import onitama.core.Move;
 import onitama.core.PlayerColor;
+import onitama.core.RulesEngine;
 import onitama.replay.ReplayFile;
 import onitama.replay.ReplayFormatException;
 
@@ -32,10 +32,10 @@ import javax.swing.filechooser.FileNameExtensionFilter;
 public final class ReplayViewer extends JDialog {
 
     private final BoardPanel boardPanel = new BoardPanel();
-    private final JLabel infoLabel = new JLabel("No replay loaded");
-    private final JLabel positionLabel = new JLabel(" ");
-    private final JButton prevButton = new JButton("< Previous");
-    private final JButton nextButton = new JButton("Next >");
+    private final JLabel infoLabel = UiKit.label("No replay loaded", 14f);
+    private final JLabel positionLabel = UiKit.label(" ", 13f);
+    private final JButton prevButton = UiKit.pill("◀ Prev", UiKit.Pill.CREAM_OUTLINE);
+    private final JButton nextButton = UiKit.pill("Next ▶", UiKit.Pill.CREAM_OUTLINE);
 
     private List<GameState> positions = List.of();
     private int index;
@@ -43,16 +43,18 @@ public final class ReplayViewer extends JDialog {
     /** Creates the (modal) viewer dialog. */
     public ReplayViewer(java.awt.Window owner) {
         super(owner, "Replay viewer", ModalityType.APPLICATION_MODAL);
-        setLayout(new BorderLayout(8, 8));
-        setSize(560, 640);
+        setLayout(new BorderLayout(10, 10));
+        setSize(600, 700);
         setLocationRelativeTo(owner);
 
         JPanel north = new JPanel(new BorderLayout());
-        infoLabel.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
+        north.setBackground(Theme.BG);
+        infoLabel.setBorder(BorderFactory.createEmptyBorder(10, 10, 4, 10));
         north.add(infoLabel, BorderLayout.NORTH);
 
-        JPanel controls = new JPanel(new FlowLayout(FlowLayout.CENTER));
-        JButton open = new JButton("Open replay...");
+        JPanel controls = new JPanel(new FlowLayout(FlowLayout.CENTER, 10, 6));
+        controls.setBackground(Theme.BG);
+        JButton open = UiKit.pill("Open replay", UiKit.Pill.GOLD);
         open.addActionListener(event -> openFile());
         prevButton.setEnabled(false);
         nextButton.setEnabled(false);
@@ -66,6 +68,7 @@ public final class ReplayViewer extends JDialog {
         add(north, BorderLayout.NORTH);
 
         JPanel center = new JPanel(new FlowLayout(FlowLayout.CENTER));
+        center.setBackground(Theme.BG);
         center.add(boardPanel);
         add(center, BorderLayout.CENTER);
     }
@@ -82,8 +85,8 @@ public final class ReplayViewer extends JDialog {
             positions = computePositions(replay);
             index = 0;
             infoLabel.setText(replay.blueUsername() + " (blue)  vs  " + replay.redUsername()
-                    + " (red)   -   " + replay.playedAt().toLocalDate()
-                    + "   -   " + replay.moves().size() + " half-moves");
+                    + " (red)   —   " + replay.playedAt().toLocalDate()
+                    + "   —   " + replay.moves().size() + " half-moves");
             prevButton.setEnabled(true);
             nextButton.setEnabled(true);
             showPosition();
@@ -105,9 +108,9 @@ public final class ReplayViewer extends JDialog {
         positions.add(copy(current));
         for (HalfMove move : replay.moves()) {
             if (move.isPass()) {
-                onitama.core.RulesEngine.pass(current, move.cardId());
+                RulesEngine.pass(current, move.cardId());
             } else {
-                onitama.core.RulesEngine.apply(current,
+                RulesEngine.apply(current,
                         new Move(move.from(), move.to(), move.cardId()));
             }
             positions.add(copy(current));
@@ -142,7 +145,7 @@ public final class ReplayViewer extends JDialog {
         boardPanel.setView(positions.get(index), PlayerColor.BLUE);
         boardPanel.setSelection(null, List.of());
         boardPanel.setLastMove(index == 0 ? null : positions.get(index).lastMove());
-        positionLabel.setText("Move " + index + " / " + (positions.size() - 1));
+        positionLabel.setText("MOVE " + index + " / " + (positions.size() - 1));
     }
 
     private void showError(String text) {

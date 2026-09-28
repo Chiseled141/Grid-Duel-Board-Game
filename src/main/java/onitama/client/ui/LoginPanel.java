@@ -16,8 +16,8 @@ import javax.swing.JPasswordField;
 import javax.swing.JTextField;
 
 /**
- * Login and registration screen: server address, credentials, and two
- * actions. Failed attempts are shown inline in a red label.
+ * Login and registration screen: a cream sticker card centered on the coal
+ * background with gold pill buttons. Failed attempts are shown inline.
  */
 public final class LoginPanel extends JPanel {
 
@@ -35,52 +35,58 @@ public final class LoginPanel extends JPanel {
         this.model = model;
         this.settings = settings;
         setLayout(new GridBagLayout());
-        setBackground(Theme.BACKGROUND);
+        setBackground(Theme.BG);
 
         hostField.setText(settings.host());
         portField.setText(String.valueOf(settings.port()));
+        styleField(hostField);
+        styleField(portField);
+        styleField(usernameField);
+        styleField(passwordField);
 
+        JPanel card = UiKit.sticker(26);
+        card.setLayout(new GridBagLayout());
         GridBagConstraints constraints = new GridBagConstraints();
-        constraints.insets = new Insets(6, 6, 6, 6);
+        constraints.insets = new Insets(5, 6, 5, 6);
         constraints.fill = GridBagConstraints.HORIZONTAL;
 
+        // Title row: starburst flourish + wordmark in the display font.
         constraints.gridx = 0;
         constraints.gridy = 0;
         constraints.gridwidth = 2;
-        JLabel title = new JLabel("Onitama Online");
-        title.setFont(Theme.FONT_TITLE);
-        title.setForeground(Theme.ACCENT);
-        add(title, constraints);
+        JPanel title = new JPanel(new GridBagLayout());
+        title.setOpaque(false);
+        title.add(UiKit.flourish(26));
+        JLabel wordmark = new JLabel("ONITAMA ONLINE");
+        wordmark.setFont(Theme.display(24f));
+        wordmark.setForeground(Theme.INK);
+        title.add(wordmark);
+        card.add(title, constraints);
 
         constraints.gridwidth = 1;
-        addLabel(constraints, 1, "Server host");
-        constraints.gridx = 1;
-        add(hostField, constraints);
-        addLabel(constraints, 2, "Server port");
-        constraints.gridx = 1;
-        add(portField, constraints);
-        addLabel(constraints, 3, "Username");
-        constraints.gridx = 1;
-        add(usernameField, constraints);
-        addLabel(constraints, 4, "Password");
-        constraints.gridx = 1;
-        add(passwordField, constraints);
+        addFieldRow(card, constraints, 1, "SERVER HOST", hostField);
+        addFieldRow(card, constraints, 2, "SERVER PORT", portField);
+        addFieldRow(card, constraints, 3, "USERNAME", usernameField);
+        addFieldRow(card, constraints, 4, "PASSWORD", passwordField);
 
         constraints.gridx = 0;
         constraints.gridy = 5;
-        JButton login = new JButton("Login");
-        login.addActionListener(event -> submit(true));
-        add(login, constraints);
-        constraints.gridx = 1;
-        JButton register = new JButton("Register");
+        JButton register = UiKit.pill("Register", UiKit.Pill.GOLD);
         register.addActionListener(event -> submit(false));
-        add(register, constraints);
+        card.add(register, constraints);
+        constraints.gridx = 1;
+        JButton login = UiKit.pill("Login", UiKit.Pill.GOLD_OUTLINE);
+        login.addActionListener(event -> submit(true));
+        card.add(login, constraints);
 
         constraints.gridx = 0;
         constraints.gridy = 6;
         constraints.gridwidth = 2;
-        errorLabel.setForeground(Theme.ERROR);
-        add(errorLabel, constraints);
+        errorLabel.setForeground(Theme.CORAL);
+        errorLabel.setFont(Theme.bold(13f));
+        card.add(errorLabel, constraints);
+
+        add(card, new GridBagConstraints());
 
         model.addListener(new ClientModelListener() {
             @Override
@@ -97,12 +103,24 @@ public final class LoginPanel extends JPanel {
         });
     }
 
-    private void addLabel(GridBagConstraints constraints, int row, String text) {
+    private void addFieldRow(JPanel card, GridBagConstraints constraints,
+                             int row, String labelText, JTextField field) {
         constraints.gridx = 0;
         constraints.gridy = row;
-        JLabel label = new JLabel(text);
-        label.setForeground(Theme.FOREGROUND);
-        add(label, constraints);
+        JLabel label = new JLabel(labelText);
+        label.setFont(Theme.bold(12f));
+        label.setForeground(Theme.INK);
+        card.add(label, constraints);
+        constraints.gridx = 1;
+        card.add(field, constraints);
+    }
+
+    private void styleField(JTextField field) {
+        field.setBackground(Theme.BOARD_LIGHT);
+        field.setForeground(Theme.INK);
+        field.setCaretColor(Theme.INK);
+        field.setBorder(UiKit.fieldBorder());
+        field.setFont(Theme.normal(14f));
     }
 
     /** Reads the fields, remembers the connection and sends the request. */

@@ -5,14 +5,15 @@ import onitama.client.state.ClientModelListener;
 import onitama.net.UserProfile;
 
 import java.awt.BorderLayout;
+import java.awt.Color;
+import java.awt.Component;
 import java.awt.FlowLayout;
 
 import javax.swing.BorderFactory;
-import javax.swing.JButton;
-import javax.swing.JLabel;
 import javax.swing.JPanel;
-import javax.swing.JScrollPane;
 import javax.swing.JTable;
+import javax.swing.SwingConstants;
+import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.DefaultTableModel;
 
 /**
@@ -22,7 +23,7 @@ import javax.swing.table.DefaultTableModel;
 public final class LeaderboardPanel extends JPanel {
 
     private final DefaultTableModel tableModel =
-            new DefaultTableModel(new Object[]{"#", "Player", "Elo", "Wins", "Losses"}, 0) {
+            new DefaultTableModel(new Object[]{"#", "PLAYER", "ELO", "W", "L"}, 0) {
                 @Override
                 public boolean isCellEditable(int row, int column) {
                     return false;
@@ -31,24 +32,43 @@ public final class LeaderboardPanel extends JPanel {
 
     /** Builds the panel and subscribes it to the model. */
     public LeaderboardPanel(ClientModel model, Runnable backAction) {
-        setLayout(new BorderLayout(8, 8));
-        setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
-        setBackground(Theme.BACKGROUND);
+        setLayout(new BorderLayout(10, 10));
+        setBackground(Theme.BG);
+        setBorder(BorderFactory.createEmptyBorder(16, 16, 16, 16));
 
-        JLabel title = new JLabel("Leaderboard - top players by Elo");
-        title.setFont(Theme.FONT_TITLE);
-        title.setForeground(Theme.ACCENT);
-        add(title, BorderLayout.NORTH);
+        UiKit.HeadingLabel title = new UiKit.HeadingLabel(20f);
+        title.setText("LEADERBOARD");
+        JPanel titleRow = new JPanel(new FlowLayout(FlowLayout.CENTER));
+        titleRow.setBackground(Theme.BG);
+        titleRow.add(title);
+        add(titleRow, BorderLayout.NORTH);
 
         JTable table = new JTable(tableModel);
-        table.setBackground(Theme.BACKGROUND.brighter());
-        table.setForeground(Theme.FOREGROUND);
-        table.setRowHeight(24);
-        add(new JScrollPane(table), BorderLayout.CENTER);
+        table.setBackground(Theme.SURFACE);
+        table.setForeground(Theme.CREAM);
+        table.setGridColor(new Color(0x3A3634));
+        table.setRowHeight(28);
+        table.setFont(Theme.normal(14f));
+        table.setShowVerticalLines(false);
+        table.getTableHeader().setBackground(Theme.AMBER);
+        table.getTableHeader().setForeground(Theme.INK);
+        table.getTableHeader().setFont(Theme.bold(13f));
+        table.getTableHeader().setReorderingAllowed(false);
+        DefaultTableCellRenderer centerer = new DefaultTableCellRenderer();
+        centerer.setHorizontalAlignment(SwingConstants.CENTER);
+        centerer.setBackground(Theme.SURFACE);
+        centerer.setForeground(Theme.CREAM);
+        for (int column = 0; column < tableModel.getColumnCount(); column++) {
+            if (column != 1) {
+                table.getColumnModel().getColumn(column).setCellRenderer(centerer);
+            }
+        }
+        table.getColumnModel().getColumn(0).setMaxWidth(50);
+        add(new javax.swing.JScrollPane(table), BorderLayout.CENTER);
 
         JPanel bottom = new JPanel(new FlowLayout(FlowLayout.RIGHT));
-        bottom.setBackground(Theme.BACKGROUND);
-        JButton back = new JButton("Back to lobby");
+        bottom.setBackground(Theme.BG);
+        var back = UiKit.pill("Back to lobby", UiKit.Pill.CREAM_OUTLINE);
         back.addActionListener(event -> backAction.run());
         bottom.add(back);
         add(bottom, BorderLayout.SOUTH);
