@@ -35,9 +35,9 @@ public final class Theme {
     /** Legal-move hints ("brand green"). */
     public static final Color TEAL = new Color(0x0BA95B);
     /** Board light square. */
-    public static final Color BOARD_LIGHT = new Color(0xF0E6D2);
+    public static final Color BOARD_LIGHT = new Color(0xF3EAD3);
     /** Board dark square (warm charcoal). */
-    public static final Color BOARD_DARK = new Color(0x221E1A);
+    public static final Color BOARD_DARK = new Color(0xE2D2AE);
     /** Warm wooden board frame band. */
     public static final Color BOARD_FRAME = new Color(0xE5D3A8);
     /** Tile outlines. */

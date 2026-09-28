@@ -158,7 +158,7 @@ public final class CardPanel extends JComponent {
 
         // TOP: original animal illustration (sticker style).
         AnimalIcon.paint(g, card.id(), x0 + (W - 56) / 2, y0 + 8, 56,
-                accent(), Theme.INK, Theme.CREAM);
+                Theme.INK, accent(), Theme.CREAM);
         // Small kanji keeps the dojo flavor next to the illustration.
         g.setFont(Theme.display(16f));
         g.setColor(Theme.blend(accent(), cardFill));

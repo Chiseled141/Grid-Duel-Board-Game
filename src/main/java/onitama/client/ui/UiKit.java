@@ -364,23 +364,32 @@ public final class UiKit {
         g.setColor(Theme.INK);
         g.drawRoundRect(cx - plinthW / 2, baseY - 3, plinthW, 6, 4, 4);
 
-        // Head with a simple ink headband.
+        // Head with a simple ink headband; a small cream highlight gives the
+        // painted-lacquer feel so the piece doesn't read as a flat blob.
         g.setColor(fill);
         g.fillOval(cx - headR, headCy - headR, 2 * headR, 2 * headR);
         g.setColor(Theme.INK);
         g.drawOval(cx - headR, headCy - headR, 2 * headR, 2 * headR);
         g.setStroke(new java.awt.BasicStroke(2f));
         g.drawLine(cx - headR, headCy - headR / 2 + 1, cx + headR, headCy - headR / 2 + 1);
+        g.setColor(Theme.blend(fill, Theme.CREAM));
+        int hiW = headR;
+        int hiH = headR / 2;
+        g.fillOval(cx - headR / 2, headCy - headR / 2 - 1, hiW, hiH);
 
-        // The Master wears the wide kasa hat with the gold starburst crest.
+        // The Master is taller and keeps a restrained topknot plus a thin
+        // ceremonial halo ring — authority without fantasy costume.
         if (master) {
-            int brimW = (int) (height * 0.62);
-            int brimH = Math.max(5, (int) (height * 0.10));
+            int knotR = Math.max(3, headR / 2);
+            int knotCy = headCy - headR - knotR * 3 / 4;
             g.setColor(shade);
-            g.fillOval(cx - brimW / 2, headCy - headR - brimH, brimW, 2 * brimH);
+            g.fillOval(cx - knotR / 2, knotCy - knotR, knotR, 2 * knotR);
             g.setColor(Theme.INK);
-            g.drawOval(cx - brimW / 2, headCy - headR - brimH, brimW, 2 * brimH);
-            starburst(g, cx, headCy - headR - brimH / 2, Math.max(6, headR));
+            g.drawOval(cx - knotR / 2, knotCy - knotR, knotR, 2 * knotR);
+            g.setColor(Theme.AMBER);
+            g.setStroke(new java.awt.BasicStroke(2f));
+            g.drawOval(cx - headR - 3, headCy - headR - 3,
+                    2 * headR + 6, 2 * headR + 6);
         }
         g.dispose();
     }
