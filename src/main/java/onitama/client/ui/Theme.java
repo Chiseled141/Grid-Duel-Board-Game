@@ -38,6 +38,8 @@ public final class Theme {
     public static final Color BOARD_LIGHT = new Color(0xF0E6D2);
     /** Board dark square (warm charcoal). */
     public static final Color BOARD_DARK = new Color(0x221E1A);
+    /** Warm wooden board frame band. */
+    public static final Color BOARD_FRAME = new Color(0xE5D3A8);
     /** Tile outlines. */
     public static final Color OUTLINE = new Color(0x231F20);
     /** Hard offset shadow fill (never blurred). */

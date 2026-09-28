@@ -82,7 +82,7 @@ public final class UiKit {
                 int shadow = pressed ? 1 : hover ? SHADOW + 2 : SHADOW;
                 int w = getWidth() - shadow;
                 int h = getHeight() - shadow;
-                int arc = h;
+                int arc = Math.min(h, 22);
                 if (!pressed) {
                     g.setColor(Theme.SHADOW);
                     g.fillRoundRect(shadow, shadow, w, h, arc, arc);
@@ -217,11 +217,19 @@ public final class UiKit {
      * {@code revalidate()}.
      */
     public static class HeadingLabel extends JLabel {
+        private Color accentBar = Theme.AMBER;
+
         public HeadingLabel(float size) {
             setFont(Theme.display(size));
             setForeground(Theme.INK);
             setHorizontalAlignment(CENTER);
             setOpaque(false);
+        }
+
+        /** Sets the small accent strip painted on the banner's lower edge. */
+        public void setAccent(Color accent) {
+            accentBar = accent;
+            repaint();
         }
 
         @Override
@@ -240,6 +248,8 @@ public final class UiKit {
             g.setColor(Theme.INK);
             g.setStroke(new java.awt.BasicStroke(2f));
             g.drawRoundRect(0, 0, boxW - 1, boxH - 1, arc, arc);
+            g.setColor(accentBar);
+            g.fillRect(8, boxH - 6, boxW - 16, 4);
             g.setFont(getFont());
             g.setColor(getForeground());
             g.drawString(getText(), 16, metrics.getAscent() + 4);
@@ -310,54 +320,69 @@ public final class UiKit {
     }
 
     /**
-     * Draws a flat pawn silhouette — the real Onitama pieces are pawns
-     * (short students, taller masters), so the board shows pawn profiles
-     * instead of flat discs. Centered at {@code cx}, standing on
-     * {@code baseY}; filled with the player color, outlined in ink.
+     * Draws a stylized martial-arts figurine — Onitama's pieces are dojo
+     * pawns, so each piece is a robed figure: a flowing robe for the body,
+     * a small head, a gold sash, and for the Master a wide kasa hat with the
+     * gold starburst crest. Students are the same figure, smaller and
+     * bare-headed. Centered at {@code cx}, standing on {@code baseY}.
      */
-    public static void drawPawn(Graphics2D g, int cx, int baseY, int height,
-                                Color fill, boolean master) {
-        int baseW = Math.max(10, (int) (height * 0.62));
-        int baseH = Math.max(4, (int) (height * 0.16));
-        int headR = Math.max(4, (int) (height * 0.18));
-        int neckW = Math.max(5, (int) (height * 0.18));
-        int collarH = Math.max(4, (int) (height * 0.10));
-        int headCy = baseY - height + headR;
-
-        // Stem (neck) from head down to the base, in a darker shade so the
-        // pawn reads as two-tone rather than a flat blob.
+    public static void drawFigurine(Graphics2D g0, int cx, int baseY, int height,
+                                    Color fill, boolean master) {
+        Graphics2D g = (Graphics2D) g0.create();
+        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
         Color shade = fill.darker();
-        int stemTop = headCy + headR / 2;
-        g.setColor(shade);
-        g.fillRoundRect(cx - neckW / 2, stemTop, neckW, baseY - baseH - stemTop + 2,
-                neckW, neckW);
+        int robeW = Math.max(12, (int) (height * 0.72));
+        int bodyH = Math.max(10, (int) (height * 0.62));
+        int shoulderW = Math.max(8, (int) (height * 0.34));
+        int headR = Math.max(4, (int) (height * (master ? 0.15 : 0.17)));
+        int headCy = baseY - height + headR;
+        int sashY = baseY - (int) (bodyH * 0.38);
+
+        // Robe: flares from the shoulders down to the base.
+        var robe = new java.awt.geom.Path2D.Double();
+        robe.moveTo(cx - shoulderW / 2.0, baseY - bodyH);
+        robe.quadTo(cx - robeW / 2.0, baseY - bodyH * 0.55, cx - robeW / 2.0, baseY);
+        robe.lineTo(cx + robeW / 2.0, baseY);
+        robe.quadTo(cx + robeW / 2.0, baseY - bodyH * 0.55, cx + shoulderW / 2.0, baseY - bodyH);
+        robe.closePath();
+        g.setColor(fill);
+        g.fill(robe);
         g.setColor(Theme.INK);
         g.setStroke(new java.awt.BasicStroke(2f));
-        g.drawRoundRect(cx - neckW / 2, stemTop, neckW, baseY - baseH - stemTop + 2,
-                neckW, neckW);
+        g.draw(robe);
 
-        // Base.
+        // Gold sash.
+        g.setColor(Theme.AMBER);
+        g.setStroke(new java.awt.BasicStroke(Math.max(3f, height * 0.06f)));
+        g.draw(new java.awt.geom.Line2D.Double(cx - robeW / 2.0 + 2, sashY,
+                cx + robeW / 2.0 - 2, sashY));
+
+        // Plinth under the robe (stronger for the Master).
+        int plinthW = master ? robeW + 8 : robeW + 2;
         g.setColor(shade);
-        g.fillRoundRect(cx - baseW / 2, baseY - baseH, baseW, baseH, baseH, baseH);
+        g.fillRoundRect(cx - plinthW / 2, baseY - 3, plinthW, 6, 4, 4);
         g.setColor(Theme.INK);
-        g.drawRoundRect(cx - baseW / 2, baseY - baseH, baseW, baseH, baseH, baseH);
+        g.drawRoundRect(cx - plinthW / 2, baseY - 3, plinthW, 6, 4, 4);
 
-        // Collar ring where the stem meets the base.
-        g.setColor(fill);
-        g.fillOval(cx - baseW / 2 + 1, baseY - baseH - collarH / 2, baseW - 2, collarH);
-        g.setColor(Theme.INK);
-        g.drawOval(cx - baseW / 2 + 1, baseY - baseH - collarH / 2, baseW - 2, collarH);
-
-        // Head.
+        // Head with a simple ink headband.
         g.setColor(fill);
         g.fillOval(cx - headR, headCy - headR, 2 * headR, 2 * headR);
         g.setColor(Theme.INK);
         g.drawOval(cx - headR, headCy - headR, 2 * headR, 2 * headR);
+        g.setStroke(new java.awt.BasicStroke(2f));
+        g.drawLine(cx - headR, headCy - headR / 2 + 1, cx + headR, headCy - headR / 2 + 1);
 
-        // Masters wear the gold starburst on their head.
+        // The Master wears the wide kasa hat with the gold starburst crest.
         if (master) {
-            starburst(g, cx, headCy, Math.max(5, headR - 2));
+            int brimW = (int) (height * 0.62);
+            int brimH = Math.max(5, (int) (height * 0.10));
+            g.setColor(shade);
+            g.fillOval(cx - brimW / 2, headCy - headR - brimH, brimW, 2 * brimH);
+            g.setColor(Theme.INK);
+            g.drawOval(cx - brimW / 2, headCy - headR - brimH, brimW, 2 * brimH);
+            starburst(g, cx, headCy - headR - brimH / 2, Math.max(6, headR));
         }
+        g.dispose();
     }
 
     // ------------------------------------------------------------------
