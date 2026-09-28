@@ -297,6 +297,55 @@ public final class UiKit {
         g.drawPolygon(x, y, total);
     }
 
+    /**
+     * Draws a flat pawn silhouette — the real Onitama pieces are pawns
+     * (short students, taller masters), so the board shows pawn profiles
+     * instead of flat discs. Centered at {@code cx}, standing on
+     * {@code baseY}; filled with the player color, outlined in ink.
+     */
+    public static void drawPawn(Graphics2D g, int cx, int baseY, int height,
+                                Color fill, boolean master) {
+        int baseW = Math.max(10, (int) (height * 0.62));
+        int baseH = Math.max(4, (int) (height * 0.16));
+        int headR = Math.max(4, (int) (height * 0.18));
+        int neckW = Math.max(5, (int) (height * 0.18));
+        int collarH = Math.max(4, (int) (height * 0.10));
+        int headCy = baseY - height + headR;
+
+        // Stem (neck) from head down to the base.
+        int stemTop = headCy + headR / 2;
+        g.setColor(fill);
+        g.fillRoundRect(cx - neckW / 2, stemTop, neckW, baseY - baseH - stemTop + 2,
+                neckW, neckW);
+        g.setColor(Theme.INK);
+        g.setStroke(new java.awt.BasicStroke(2f));
+        g.drawRoundRect(cx - neckW / 2, stemTop, neckW, baseY - baseH - stemTop + 2,
+                neckW, neckW);
+
+        // Base.
+        g.setColor(fill);
+        g.fillRoundRect(cx - baseW / 2, baseY - baseH, baseW, baseH, baseH, baseH);
+        g.setColor(Theme.INK);
+        g.drawRoundRect(cx - baseW / 2, baseY - baseH, baseW, baseH, baseH, baseH);
+
+        // Collar ring where the stem meets the base.
+        g.setColor(fill);
+        g.fillOval(cx - baseW / 2 + 1, baseY - baseH - collarH / 2, baseW - 2, collarH);
+        g.setColor(Theme.INK);
+        g.drawOval(cx - baseW / 2 + 1, baseY - baseH - collarH / 2, baseW - 2, collarH);
+
+        // Head.
+        g.setColor(fill);
+        g.fillOval(cx - headR, headCy - headR, 2 * headR, 2 * headR);
+        g.setColor(Theme.INK);
+        g.drawOval(cx - headR, headCy - headR, 2 * headR, 2 * headR);
+
+        // Masters wear the gold starburst on their head.
+        if (master) {
+            starburst(g, cx, headCy, Math.max(5, headR - 2));
+        }
+    }
+
     // ------------------------------------------------------------------
     // Dialog & menu theme (UIManager defaults for JOptionPane, menus, chooser)
     // ------------------------------------------------------------------
