@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Onitama: Sumi-e Move Cards</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho+B1:wght@600;800&family=Outfit:wght@400;500;600&display=block" rel="stylesheet">
+<link rel="stylesheet" href="card.css">
+<style>
+  html, body { margin: 0; background: #111; }
+  .gallery {
+    display: grid;
+    grid-template-columns: repeat(4, 400px);
+    gap: 44px 40px;
+    justify-content: center;
+    padding: 44px 40px;
+  }
+</style>
+</head>
+<body>
+<main class="gallery" id="gallery"></main>
+<script src="card.js"></script>
+<script src="cards-data.js"></script>
+<script>
+  // Demo only: alternate owner side red/blue across the gallery.
+  const g = document.getElementById("gallery");
+  ONITAMA_CARDS.forEach((c, i) => {
+    g.appendChild(renderCard({ ...c, img: `../onitama-icons/${c.id}.png`, side: i % 2 ? "blue" : "red" }));
+  });
+</script>
+</body>
+</html>

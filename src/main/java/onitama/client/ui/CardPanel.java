@@ -1,14 +1,11 @@
 package onitama.client.ui;
 
-import onitama.core.Board;
 import onitama.core.Card;
 import onitama.core.PlayerColor;
-import onitama.core.Square;
 
 import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Dimension;
-import java.awt.Font;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
@@ -21,25 +18,22 @@ import javax.swing.JComponent;
 import javax.swing.Timer;
 
 /**
- * A premium tabletop movement card, in the retro-pop style: original animal
- * illustration on top, name, the 5x5 movement grid filled in the card's own
- * accent color, the flavor-quote band and the stamp seal. The pattern always
- * comes from the engine's {@link Card} data (single source of truth), drawn
- * from {@code viewerColor}'s perspective. Own cards hover-lift and tilt;
- * the selected card scales up with the player-colored border; opponent cards
- * are dimmed and flat.
+ * A movement card rendered from the designed full-face artwork (one variant
+ * per player color, see assets/cards/). The artwork already contains the
+ * name, movement grid, kanji seal and flavor band, so this component only
+ * composites the state: the player-colored selection frame, the hover
+ * lift/tilt, and the dimmed veil for the opponent's cards. A drawn cream
+ * card with the ink animal spirit is the fallback when a face is missing.
  */
 public final class CardPanel extends JComponent {
 
-    private static final int CELL = 15;
-    private static final int GRID = Board.SIZE * CELL;
     private static final int W = 200;
-    private static final int H = 232;
+    private static final int H = 230;
     /** Hover animation length (§11: 150–250ms). */
     private static final int HOVER_MS = 180;
 
     private final Card card;
-    private final PlayerColor viewerColor;
+    private final PlayerColor faceColor;
     private final boolean dimmed;
     private boolean selected;
 
@@ -60,17 +54,18 @@ public final class CardPanel extends JComponent {
      * Creates the card panel.
      *
      * @param card the card to render
-     * @param viewerColor the side whose orientation the pattern is drawn in
+     * @param faceColor the player color whose artwork variant to use
      * @param dimmed true for the opponent's cards (muted, no interaction)
      * @param onSelect fired when the panel is clicked (null for read-only cards)
      */
-    public CardPanel(Card card, PlayerColor viewerColor, boolean dimmed, Runnable onSelect) {
+    public CardPanel(Card card, PlayerColor faceColor, boolean dimmed, Runnable onSelect) {
         this.card = card;
-        this.viewerColor = viewerColor;
+        this.faceColor = faceColor;
         this.dimmed = dimmed;
-        setPreferredSize(new Dimension(W + 12, H + 14));
+        setPreferredSize(new Dimension((int) ((W + 12) * cardScale),
+                (int) ((H + 14) * cardScale)));
         setOpaque(false);
-        setToolTipText(card.name() + " — " + quote()
+        setToolTipText(card.name() + " — " + CardArt.flavorFor(card.id())
                 + (dimmed ? " (opponent's card)" : ""));
         if (onSelect != null) {
             setCursor(new java.awt.Cursor(java.awt.Cursor.HAND_CURSOR));
@@ -150,123 +145,53 @@ public final class CardPanel extends JComponent {
 
         if (!dimmed) {
             g.setColor(Theme.SHADOW);
-            g.fillRoundRect(x0 + shadow, y0 + shadow, W, H, 14, 14);
+            g.fillRoundRect(x0 + shadow, y0 + shadow, W, H, Theme.RADIUS_MD, Theme.RADIUS_MD);
         }
 
-        Image face = AssetStore.optional("card-face-template.png");
-        Color cardFill = dimmed ? Theme.blend(Theme.CREAM, Theme.SURFACE) : Theme.CREAM;
-        g.setColor(cardFill);
-        g.fillRoundRect(x0, y0, W, H, Theme.RADIUS_MD, Theme.RADIUS_MD);
+        Image face = AssetStore.optional(facePath());
         if (face != null) {
-            g.drawImage(face, x0, y0, W, H, null);
-        }
-        Color accent = dimmed ? Theme.blend(accent(), Theme.SURFACE) : accent();
-        g.setColor(selected ? Theme.playerColor(viewerColor) : accent);
-        g.setStroke(new BasicStroke(selected ? 3f : 2f));
-        g.drawRoundRect(x0, y0, W - 1, H - 1, Theme.RADIUS_MD, Theme.RADIUS_MD);
-
-        // TOP: the animal spirit as a mounted print (designed art when
-        // available, ink fallback otherwise).
-        int artW = W - 24;
-        int artH = 99;
-        int artX = x0 + (W - artW) / 2;
-        int artY = y0 + 8;
-        Image art = AssetStore.optional("card-art-" + card.id() + ".png");
-        if (art != null) {
-            var clip = new java.awt.geom.RoundRectangle2D.Double(
-                    artX, artY, artW, artH, Theme.RADIUS_SM, Theme.RADIUS_SM);
+            var clip = new java.awt.geom.RoundRectangle2D.Double(x0, y0, W, H,
+                    Theme.RADIUS_MD, Theme.RADIUS_MD);
             g.setClip(clip);
-            g.drawImage(art, artX, artY, artW, artH, null);
+            g.drawImage(face, x0, y0, W, H, null);
             g.setClip(null);
-            g.setColor(Theme.INK);
-            g.setStroke(new BasicStroke(1.5f));
+            g.setStroke(new BasicStroke(selected ? 3.5f : 2f));
+            g.setColor(selected ? Theme.playerColor(faceColor) : Theme.INK);
             g.draw(clip);
         } else {
-            AnimalIcon.paint(g, card.id(), artX + (artW - 64) / 2, artY + 4, 64,
-                    Theme.INK, accent(), Theme.CREAM);
+            paintFallbackCard(g, x0, y0);
         }
-        // Small kanji keeps the dojo flavor beside the art.
+
+        if (dimmed) {
+            g.setColor(new Color(15, 13, 14, 70));
+            g.fillRoundRect(x0, y0, W, H, Theme.RADIUS_MD, Theme.RADIUS_MD);
+        }
+    }
+
+    /** The designed face for this card and player color. */
+    private String facePath() {
+        return "cards/" + faceColor.name().toLowerCase() + "/"
+                + card.id() + "-" + faceColor.name().toLowerCase() + ".png";
+    }
+
+    /** Minimal drawn fallback when the designed face file is missing. */
+    private void paintFallbackCard(Graphics2D g, int x0, int y0) {
+        g.setColor(Theme.CREAM);
+        g.fillRoundRect(x0, y0, W, H, Theme.RADIUS_MD, Theme.RADIUS_MD);
+        g.setColor(Theme.INK);
+        g.setStroke(new BasicStroke(2f));
+        g.drawRoundRect(x0, y0, W - 1, H - 1, Theme.RADIUS_MD, Theme.RADIUS_MD);
+        AnimalIcon.paint(g, card.id(), x0 + (W - 90) / 2, y0 + 30, 90,
+                Theme.INK, accentFor(), Theme.CREAM);
         g.setFont(Theme.display(15f));
-        g.setColor(Theme.blend(accent(), cardFill));
-        var kanjiMetrics = g.getFontMetrics();
-        String kanji = kanjiFor(card.id());
-        g.drawString(kanji, x0 + W - 20 - kanjiMetrics.stringWidth(kanji) / 2, y0 + artH + 12);
-
-        // CENTER: name + movement grid (engine data, viewer perspective).
-        g.setFont(Theme.display(14f));
-        g.setColor(Theme.INK);
-        var nameMetrics = g.getFontMetrics();
-        String name = card.name().toUpperCase();
-        g.drawString(name, x0 + (W - nameMetrics.stringWidth(name)) / 2, y0 + artH + 26);
-
-        int gridX = x0 + (W - GRID) / 2;
-        int gridY = y0 + artH + 34;
-        Color fill = accent();
-        for (int row = 0; row < Board.SIZE; row++) {
-            for (int col = 0; col < Board.SIZE; col++) {
-                int px = gridX + col * CELL;
-                int py = gridY + row * CELL;
-                g.setColor(dimmed ? Theme.blend(Theme.BOARD_LIGHT, Theme.SURFACE)
-                        : Theme.BOARD_LIGHT);
-                g.fillRect(px, py, CELL, CELL);
-                g.setColor(new Color(35, 31, 32, 60));
-                g.drawRect(px, py, CELL, CELL);
-            }
-        }
-        g.setColor(Theme.INK);
-        g.setStroke(new BasicStroke(2.5f));
-        g.drawOval(gridX + 2 * CELL + 3, gridY + 2 * CELL + 3, CELL - 6, CELL - 6);
-        for (Square destination : card.destinationsFrom(new Square(2, 2), viewerColor)) {
-            int px = gridX + destination.x() * CELL;
-            int py = gridY + (Board.SIZE - 1 - destination.y()) * CELL;
-            g.setColor(fill);
-            g.fillRect(px + 1, py + 1, CELL - 2, CELL - 2);
-            g.setColor(Theme.INK);
-            g.setStroke(new BasicStroke(1.5f));
-            g.drawRect(px + 1, py + 1, CELL - 3, CELL - 3);
-        }
-
-        // BOTTOM: flavor-quote band + stamp seal.
-        int bandY = y0 + H - 30;
-        g.setColor(dimmed ? Theme.blend(Theme.AMBER, Theme.SURFACE) : Theme.AMBER);
-        g.fillRoundRect(x0 + 6, bandY, W - 12, 24, Theme.RADIUS_SM, Theme.RADIUS_SM);
-        g.setColor(Theme.INK);
-        g.setFont(Theme.normal(8f));
-        var metrics = g.getFontMetrics();
-        String quote = quote();
-        String first = quote;
-        String second = "";
-        int space = quote.lastIndexOf(' ', quote.length() / 2 + 4);
-        if (space > 0 && metrics.stringWidth(quote) > W - 30) {
-            first = quote.substring(0, space);
-            second = quote.substring(space + 1);
-        }
-        g.drawString(first, x0 + 12, bandY + 10);
-        if (!second.isEmpty()) {
-            g.drawString(second, x0 + 12, bandY + 20);
-        }
-        int sealX = x0 + W - 16;
-        int sealY = bandY + 12;
-        g.setColor(dimmed ? Theme.blend(sealColor(), Theme.SURFACE) : sealColor());
-        g.fillOval(sealX - 6, sealY - 6, 12, 12);
-        g.setColor(Theme.INK);
-        g.setStroke(new BasicStroke(1.5f));
-        g.drawOval(sealX - 6, sealY - 6, 12, 12);
+        g.drawString(card.name().toUpperCase(), x0 + 16, y0 + 150);
+        g.setFont(Theme.normal(9f));
+        g.drawString(CardArt.flavorFor(card.id()), x0 + 16, y0 + 180);
+        g.setColor(accentFor());
+        g.fillRoundRect(x0 + 16, y0 + 195, W - 32, 20, 8, 8);
     }
 
-    private Color sealColor() {
-        return card.stamp() == PlayerColor.BLUE ? Theme.SKY : Theme.CORAL;
-    }
-
-    private Color accent() {
+    private Color accentFor() {
         return CardArt.of(card.id());
-    }
-
-    private String quote() {
-        return CardArt.flavorFor(card.id());
-    }
-
-    private String kanjiFor(String id) {
-        return CardArt.kanjiFor(id);
     }
 }

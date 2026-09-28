@@ -322,7 +322,7 @@ public final class GamePanel extends JPanel {
         state.hand(model.myColor().opponent()).forEach(card -> {
             // Opponent patterns are drawn from MY perspective (pre-rotated)
             // and dimmed so your own cards stand out.
-            opponentCards.add(new CardPanel(card, model.myColor(), true, null));
+            opponentCards.add(new CardPanel(card, model.myColor().opponent(), true, null));
         });
 
         myCards.removeAll();
