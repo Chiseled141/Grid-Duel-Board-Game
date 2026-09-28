@@ -48,6 +48,12 @@ public final class BoardPanel extends JComponent {
     private int originY;
 
     private Move lastMove;
+    private Square hoveredSquare;
+    private CaptureEffect captureEffect;
+
+    /** A short expanding-ring animation where a piece was captured. */
+    private record CaptureEffect(Square square, Color color, long startMillis) {
+    }
 
     /** Creates the panel and wires the mouse click mapping. */
     public BoardPanel() {
@@ -60,6 +66,34 @@ public final class BoardPanel extends JComponent {
                 }
             }
         });
+        addMouseMotionListener(new MouseAdapter() {
+            @Override
+            public void mouseMoved(MouseEvent event) {
+                Square square = squareAt(event.getX(), event.getY());
+                if (square != hoveredSquare
+                        && (square == null || !square.equals(hoveredSquare))) {
+                    hoveredSquare = square;
+                    repaint();
+                }
+            }
+        });
+    }
+
+    /**
+     * Plays a brief expanding-ring effect where a piece was just captured,
+     * in the capturing player's color (§23: tasteful, no neon).
+     */
+    public void playCaptureEffect(Square square, PlayerColor byColor) {
+        captureEffect = new CaptureEffect(square, Theme.playerColor(byColor),
+                System.currentTimeMillis());
+        javax.swing.Timer animation = new javax.swing.Timer(40, event -> {
+            if (System.currentTimeMillis() - captureEffect.startMillis > 450) {
+                ((javax.swing.Timer) event.getSource()).stop();
+                captureEffect = null;
+            }
+            repaint();
+        });
+        animation.start();
     }
 
     /**
@@ -144,7 +178,23 @@ public final class BoardPanel extends JComponent {
         if (selectedSquare != null) {
             drawSelectionRing(g, selectedSquare);
         }
+        if (captureEffect != null) {
+            drawCaptureEffect(g, captureEffect);
+        }
         g.dispose();
+    }
+
+    /** Expanding, fading ring at the capture square. */
+    private void drawCaptureEffect(Graphics2D g, CaptureEffect effect) {
+        long elapsed = System.currentTimeMillis() - effect.startMillis();
+        double progress = Math.min(1.0, elapsed / 450.0);
+        int cx = displayX(effect.square().x()) * cell + originX + cell / 2;
+        int cy = displayY(effect.square().y()) * cell + originY + cell / 2;
+        int radius = (int) (cell * 0.3 + cell * 0.45 * progress);
+        g.setColor(new Color(effect.color().getRed(), effect.color().getGreen(),
+                effect.color().getBlue(), (int) (200 * (1 - progress))));
+        g.setStroke(new BasicStroke(4f));
+        g.drawOval(cx - radius, cy - radius, 2 * radius, 2 * radius);
     }
 
     private void drawSquare(Graphics2D g, int x, int y) {
@@ -186,14 +236,23 @@ public final class BoardPanel extends JComponent {
         int cx = displayX(target.x()) * cell + originX + cell / 2;
         int cy = displayY(target.y()) * cell + originY + cell / 2;
         Piece occupant = state.board().pieceAt(target);
-        g.setColor(Theme.TEAL);
+        boolean hovered = target.equals(hoveredSquare);
+        // Legal moves glow in the player's own accent color (§23).
+        Color accent = Theme.playerColor(viewColor);
+        if (hovered) {
+            accent = UiKit.lighten(accent);
+        }
+        g.setColor(accent);
         if (occupant == null) {
-            int dot = Math.max(12, cell / 4);
+            int dot = hovered ? Math.max(16, cell / 3) : Math.max(12, cell / 4);
             g.fillOval(cx - dot / 2, cy - dot / 2, dot, dot);
+            g.setColor(Theme.INK);
+            g.setStroke(new BasicStroke(1.5f));
+            g.drawOval(cx - dot / 2, cy - dot / 2, dot, dot);
         } else {
             // Enemy piece: double ring signals a capture.
-            g.setStroke(new BasicStroke(3f));
-            int radius = cell / 2 - 6;
+            g.setStroke(new BasicStroke(hovered ? 4f : 3f));
+            int radius = cell / 2 - (hovered ? 4 : 6);
             g.drawOval(cx - radius, cy - radius, 2 * radius, 2 * radius);
             g.drawOval(cx - radius + 4, cy - radius + 4, 2 * radius - 8, 2 * radius - 8);
         }
@@ -202,7 +261,7 @@ public final class BoardPanel extends JComponent {
     private void drawSelectionRing(Graphics2D g, Square square) {
         int px = displayX(square.x()) * cell + originX;
         int py = displayY(square.y()) * cell + originY;
-        g.setColor(Theme.AMBER);
+        g.setColor(Theme.playerColor(viewColor));
         g.setStroke(new BasicStroke(3.5f));
         g.drawRect(px + 2, py + 2, cell - 4, cell - 4);
     }

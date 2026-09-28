@@ -34,6 +34,13 @@ public final class UiKit {
     // Buttons
     // ------------------------------------------------------------------
 
+    /** Lightens a color slightly for hover states. */
+    public static Color lighten(Color color) {
+        return new Color(Math.min(255, color.getRed() + 38),
+                Math.min(255, color.getGreen() + 38),
+                Math.min(255, color.getBlue() + 38));
+    }
+
     /** Pill variants matching fireship.dev's button styles. */
     public enum Pill {
         /** Gold fill, ink text — the primary action. */
@@ -60,7 +67,8 @@ public final class UiKit {
 
     /**
      * Creates a pill button: fully rounded, uppercase display font, and a
-     * hard charcoal shadow that the button "sinks" into when pressed.
+     * hard charcoal shadow that the button "sinks" into when pressed and
+     * lifts slightly on hover.
      */
     public static JButton pill(String text, Pill variant) {
         JButton button = new JButton(text.toUpperCase()) {
@@ -69,15 +77,18 @@ public final class UiKit {
                 Graphics2D g = (Graphics2D) graphics.create();
                 g.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
                         RenderingHints.VALUE_ANTIALIAS_ON);
-                int w = getWidth() - SHADOW;
-                int h = getHeight() - SHADOW;
+                boolean pressed = getModel().isPressed();
+                boolean hover = getModel().isRollover() && isEnabled();
+                int shadow = pressed ? 1 : hover ? SHADOW + 2 : SHADOW;
+                int w = getWidth() - shadow;
+                int h = getHeight() - shadow;
                 int arc = h;
-                if (!getModel().isPressed()) {
+                if (!pressed) {
                     g.setColor(Theme.SHADOW);
-                    g.fillRoundRect(SHADOW, SHADOW, w, h, arc, arc);
+                    g.fillRoundRect(shadow, shadow, w, h, arc, arc);
                 }
-                int sink = getModel().isPressed() ? 2 : 0;
-                g.setColor(variant.fill);
+                int sink = pressed ? 2 : 0;
+                g.setColor(hover && !pressed ? lighten(variant.fill) : variant.fill);
                 g.fillRoundRect(sink, sink, w, h, arc, arc);
                 g.setColor(variant.border);
                 g.setStroke(new java.awt.BasicStroke(2f));
@@ -89,6 +100,7 @@ public final class UiKit {
         button.setContentAreaFilled(false);
         button.setFocusPainted(false);
         button.setOpaque(false);
+        button.setRolloverEnabled(true);
         button.setBorder(BorderFactory.createEmptyBorder(8, 22, 8 + SHADOW, 22 + SHADOW));
         button.setForeground(variant.text);
         button.setFont(Theme.display(14f));
@@ -312,9 +324,11 @@ public final class UiKit {
         int collarH = Math.max(4, (int) (height * 0.10));
         int headCy = baseY - height + headR;
 
-        // Stem (neck) from head down to the base.
+        // Stem (neck) from head down to the base, in a darker shade so the
+        // pawn reads as two-tone rather than a flat blob.
+        Color shade = fill.darker();
         int stemTop = headCy + headR / 2;
-        g.setColor(fill);
+        g.setColor(shade);
         g.fillRoundRect(cx - neckW / 2, stemTop, neckW, baseY - baseH - stemTop + 2,
                 neckW, neckW);
         g.setColor(Theme.INK);
@@ -323,7 +337,7 @@ public final class UiKit {
                 neckW, neckW);
 
         // Base.
-        g.setColor(fill);
+        g.setColor(shade);
         g.fillRoundRect(cx - baseW / 2, baseY - baseH, baseW, baseH, baseH, baseH);
         g.setColor(Theme.INK);
         g.drawRoundRect(cx - baseW / 2, baseY - baseH, baseW, baseH, baseH, baseH);

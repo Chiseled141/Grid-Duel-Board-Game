@@ -44,6 +44,8 @@ public final class GamePanel extends JPanel {
     private final JList<String> historyList = new JList<>();
     private final PieceTray myCapturesTray = new PieceTray("—");
     private final PieceTray enemyCapturesTray = new PieceTray("—");
+    private JPanel myColumn;
+    private int lastEffectMove = -1;
 
     /** Builds the game screen and subscribes it to the model. */
     public GamePanel(ClientModel model) {
@@ -153,24 +155,24 @@ public final class GamePanel extends JPanel {
 
     /** The left column: your name, your two hand cards, the transit card. */
     private JPanel buildMyColumn() {
-        JPanel column = UiKit.surface(12);
-        column.setLayout(new BorderLayout(8, 8));
-        column.setPreferredSize(new java.awt.Dimension(230, 100));
+        myColumn = UiKit.surface(12);
+        myColumn.setLayout(new BorderLayout(8, 8));
+        myColumn.setPreferredSize(new java.awt.Dimension(230, 100));
 
         youLabel.setHorizontalAlignment(javax.swing.SwingConstants.CENTER);
-        column.add(youLabel, BorderLayout.NORTH);
+        myColumn.add(youLabel, BorderLayout.NORTH);
 
         myCards.setLayout(new GridLayout(2, 1, 8, 8));
         myCards.setBackground(Theme.SURFACE);
         myCards.setOpaque(true);
-        column.add(myCards, BorderLayout.CENTER);
+        myColumn.add(myCards, BorderLayout.CENTER);
 
         JPanel transitRow = new JPanel(new FlowLayout(FlowLayout.CENTER, 4, 2));
         transitRow.setBackground(Theme.SURFACE);
         transitLabel.setFont(Theme.bold(12f));
         transitRow.add(transitLabel);
-        column.add(transitRow, BorderLayout.SOUTH);
-        return column;
+        myColumn.add(transitRow, BorderLayout.SOUTH);
+        return myColumn;
     }
 
     private JPanel buildSouthPanel() {
@@ -198,7 +200,14 @@ public final class GamePanel extends JPanel {
             return;
         }
         opponentLabel.setText("vs  " + model.opponentName().toUpperCase());
+        opponentLabel.setForeground(Theme.playerColor(model.myColor().opponent()));
         youLabel.setText(model.me() == null ? "" : model.me().username().toUpperCase());
+        youLabel.setForeground(Theme.playerColor(model.myColor()));
+        // Player identity: your column carries your color's top border.
+        myColumn.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createMatteBorder(3, 0, 0, 0,
+                        Theme.playerColor(model.myColor())),
+                BorderFactory.createEmptyBorder(4, 4, 4, 4)));
 
         opponentCards.removeAll();
         state.hand(model.myColor().opponent()).forEach(card -> {
@@ -227,6 +236,13 @@ public final class GamePanel extends JPanel {
         boardPanel.setView(state, model.myColor());
         boardPanel.setSelection(model.selectedSquare(), model.highlightedTargets());
         boardPanel.setLastMove(state.lastMove());
+        if (state.moveNumber() != lastEffectMove) {
+            lastEffectMove = state.moveNumber();
+            if (model.lastCaptureSquare() != null) {
+                boardPanel.playCaptureEffect(model.lastCaptureSquare(),
+                        state.turn().opponent());
+            }
+        }
         revalidate();
         repaint();
     }
