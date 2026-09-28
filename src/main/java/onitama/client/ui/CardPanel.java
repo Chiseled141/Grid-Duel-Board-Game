@@ -34,7 +34,7 @@ public final class CardPanel extends JComponent {
     private static final int CELL = 15;
     private static final int GRID = Board.SIZE * CELL;
     private static final int W = 200;
-    private static final int H = 192;
+    private static final int H = 232;
     /** Hover animation length (§11: 150–250ms). */
     private static final int HOVER_MS = 180;
 
@@ -156,25 +156,42 @@ public final class CardPanel extends JComponent {
         g.setStroke(new BasicStroke(selected ? 3f : 2f));
         g.drawRoundRect(x0, y0, W - 1, H - 1, Theme.RADIUS_MD, Theme.RADIUS_MD);
 
-        // TOP: original animal illustration (sticker style).
-        AnimalIcon.paint(g, card.id(), x0 + (W - 56) / 2, y0 + 8, 56,
-                Theme.INK, accent(), Theme.CREAM);
-        // Small kanji keeps the dojo flavor next to the illustration.
-        g.setFont(Theme.display(16f));
+        // TOP: the animal spirit as a mounted print (designed art when
+        // available, ink fallback otherwise).
+        int artW = W - 24;
+        int artH = 99;
+        int artX = x0 + (W - artW) / 2;
+        int artY = y0 + 8;
+        Image art = AssetStore.optional("card-art-" + card.id() + ".png");
+        if (art != null) {
+            var clip = new java.awt.geom.RoundRectangle2D.Double(
+                    artX, artY, artW, artH, Theme.RADIUS_SM, Theme.RADIUS_SM);
+            g.setClip(clip);
+            g.drawImage(art, artX, artY, artW, artH, null);
+            g.setClip(null);
+            g.setColor(Theme.INK);
+            g.setStroke(new BasicStroke(1.5f));
+            g.draw(clip);
+        } else {
+            AnimalIcon.paint(g, card.id(), artX + (artW - 64) / 2, artY + 4, 64,
+                    Theme.INK, accent(), Theme.CREAM);
+        }
+        // Small kanji keeps the dojo flavor beside the art.
+        g.setFont(Theme.display(15f));
         g.setColor(Theme.blend(accent(), cardFill));
         var kanjiMetrics = g.getFontMetrics();
         String kanji = kanjiFor(card.id());
-        g.drawString(kanji, x0 + W - 22 - kanjiMetrics.stringWidth(kanji) / 2, y0 + 46);
+        g.drawString(kanji, x0 + W - 20 - kanjiMetrics.stringWidth(kanji) / 2, y0 + artH + 12);
 
         // CENTER: name + movement grid (engine data, viewer perspective).
         g.setFont(Theme.display(14f));
         g.setColor(Theme.INK);
         var nameMetrics = g.getFontMetrics();
         String name = card.name().toUpperCase();
-        g.drawString(name, x0 + (W - nameMetrics.stringWidth(name)) / 2, y0 + 86);
+        g.drawString(name, x0 + (W - nameMetrics.stringWidth(name)) / 2, y0 + artH + 26);
 
         int gridX = x0 + (W - GRID) / 2;
-        int gridY = y0 + 94;
+        int gridY = y0 + artH + 34;
         Color fill = accent();
         for (int row = 0; row < Board.SIZE; row++) {
             for (int col = 0; col < Board.SIZE; col++) {
