@@ -136,28 +136,39 @@ public final class LobbyPanel extends JPanel {
         }).start();
     }
 
-    /** Faint dojo decoration: a ghost grid and low-contrast animal kanji. */
+    /** Atmospheric dojo background: soft ink washes and paper grain (§11). */
     @Override
     protected void paintComponent(Graphics graphics) {
         super.paintComponent(graphics);
         Graphics2D g = (Graphics2D) graphics.create();
-        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
-                RenderingHints.VALUE_ANTIALIAS_ON);
-        int step = 66;
-        g.setColor(new Color(249, 244, 218, 10));
-        for (int x = step; x < getWidth(); x += step) {
-            g.drawLine(x, 0, x, getHeight());
+        // A couple of large, very faint ink washes for depth.
+        for (java.awt.geom.Point2D.Double spot : new java.awt.geom.Point2D.Double[]{
+                new java.awt.geom.Point2D.Double(getWidth() * 0.18, getHeight() * 0.3),
+                new java.awt.geom.Point2D.Double(getWidth() * 0.8, getHeight() * 0.72)}) {
+            g.setColor(new Color(249, 244, 218, 9));
+            g.fillOval((int) (spot.x - 190), (int) (spot.y - 150), 380, 300);
+            g.setColor(new Color(252, 186, 40, 6));
+            g.fillOval((int) (spot.x - 120), (int) (spot.y - 90), 240, 180);
         }
-        for (int y = step; y < getHeight(); y += step) {
-            g.drawLine(0, y, getWidth(), y);
+        // Paper grain: sparse, tiny, low-contrast flecks (cached).
+        if (grain == null) {
+            grain = new java.awt.image.BufferedImage(220, 220,
+                    java.awt.image.BufferedImage.TYPE_INT_ARGB);
+            java.util.Random random = new java.util.Random(7);
+            for (int i = 0; i < 500; i++) {
+                grain.setRGB(random.nextInt(220), random.nextInt(220),
+                        new Color(249, 244, 218, 14).getRGB());
+            }
         }
-        g.setFont(Theme.display(150f));
-        g.setColor(new Color(252, 186, 40, 14));
-        g.drawString("龍", getWidth() - 230, 200);
-        g.setColor(new Color(237, 32, 61, 12));
-        g.drawString("虎", 30, getHeight() - 40);
+        for (int x = 0; x < getWidth(); x += 220) {
+            for (int y = 0; y < getHeight(); y += 220) {
+                g.drawImage(grain, x, y, null);
+            }
+        }
         g.dispose();
     }
+
+    private java.awt.image.BufferedImage grain;
 
     // ------------------------------------------------------------------
     // Header: title + profile

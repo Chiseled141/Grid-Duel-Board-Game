@@ -116,3 +116,7 @@ thg 9 29, 2026 2:45:25 SA onitama.server.GameServer onMatchFinished
 INFO: match T8UFR finished: FORFEIT, winner=kuro, half-moves=0
 thg 9 29, 2026 2:45:25 SA onitama.server.MatchSession finish
 INFO: match T8UFR finished: FORFEIT, winner=kuro, half-moves=0
+thg 9 29, 2026 2:51:59 SA onitama.server.ClientHandler onDisconnected
+INFO: user 'kuro' disconnected
+thg 9 29, 2026 2:51:59 SA onitama.server.ClientHandler onDisconnected
+INFO: user 'shiro' disconnected
