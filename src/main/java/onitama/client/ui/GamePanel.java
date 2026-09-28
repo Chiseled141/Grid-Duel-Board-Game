@@ -329,6 +329,7 @@ public final class GamePanel extends JPanel {
         state.hand(model.myColor()).forEach(card -> {
             CardPanel panel = new CardPanel(card, model.myColor(), false,
                     () -> model.cardClicked(card.id()));
+            panel.setCardScale(0.72);
             panel.setSelected(card.id().equals(model.selectedCardId()));
             JPanel slot = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 0));
             slot.setBackground(Theme.SURFACE);

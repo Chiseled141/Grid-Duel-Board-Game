@@ -45,7 +45,16 @@ public final class CardPanel extends JComponent {
 
     private boolean hovered;
     private float hover; // 0..1 tween for lift/tilt
+    private double cardScale = 1.0;
     private Timer tween;
+
+    /** Scales the whole card (used to fit two cards in the side column). */
+    public void setCardScale(double cardScale) {
+        this.cardScale = cardScale;
+        setPreferredSize(new Dimension((int) ((W + 12) * cardScale),
+                (int) ((H + 14) * cardScale)));
+        repaint();
+    }
 
     /**
      * Creates the card panel.
@@ -125,7 +134,7 @@ public final class CardPanel extends JComponent {
 
         double lift = hover * 6 * (dimmed ? 0 : 1);
         double tilt = Math.toRadians(-1.5 * hover * (dimmed ? 0 : 1));
-        double scale = selected ? 1.04 : 1.0 + 0.02 * hover;
+        double scale = (selected ? 1.04 : 1.0 + 0.02 * hover) * cardScale;
         g.translate(getWidth() / 2.0, getHeight() / 2.0);
         g.rotate(tilt);
         g.scale(scale, scale);
