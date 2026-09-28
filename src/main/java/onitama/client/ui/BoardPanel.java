@@ -24,16 +24,17 @@ import javax.swing.JComponent;
 /**
  * The board canvas: a custom {@code paintComponent} drawing the 5x5 grid,
  * pieces, selection ring, legal-move dots and the last-move highlight. The
- * board is always drawn from the viewer's side (the viewer's home row at the
- * bottom); canonical coordinates are mapped through a 180-degree flip for
- * Red. Hand-designed tiles/pieces from the AssetStore replace the drawn
- * versions file by file. Reused by the game screen and the replay viewer.
+ * board is responsive — the cell size is recomputed from the panel's current
+ * size, so the board fills whatever space the window gives it — and always
+ * drawn from the viewer's side (own home row at the bottom); canonical
+ * coordinates are mapped through a 180-degree flip for Red. Hand-designed
+ * tiles/pieces from the AssetStore replace the drawn versions file by file.
+ * Reused by the game screen and the replay viewer.
  */
 public final class BoardPanel extends JComponent {
 
-    private static final int CELL = 64;
-    private static final int MARGIN = 8;
-    private static final int SIZE = 2 * MARGIN + Board.SIZE * CELL;
+    private static final int MARGIN = 10;
+    private static final int MIN_CELL = 30;
 
     private GameState state;
     private PlayerColor viewColor = PlayerColor.BLUE;
@@ -41,11 +42,15 @@ public final class BoardPanel extends JComponent {
     private List<Square> targets = List.of();
     private Consumer<Square> clickHandler;
 
+    // Current geometry, recomputed on every paint and reused by click mapping.
+    private int cell = 64;
+    private int originX;
+    private int originY;
+
     private Move lastMove;
 
     /** Creates the panel and wires the mouse click mapping. */
     public BoardPanel() {
-        setPreferredSize(new Dimension(SIZE, SIZE));
         addMouseListener(new MouseAdapter() {
             @Override
             public void mouseClicked(MouseEvent event) {
@@ -55,6 +60,30 @@ public final class BoardPanel extends JComponent {
                 }
             }
         });
+    }
+
+    /**
+     * Fits the board into the panel: the largest square cell size that fits
+     * both dimensions, centered.
+     */
+    private void computeGeometry() {
+        int width = Math.max(getWidth(), 2 * MARGIN + Board.SIZE * MIN_CELL);
+        int height = Math.max(getHeight(), 2 * MARGIN + Board.SIZE * MIN_CELL);
+        cell = Math.max(MIN_CELL, Math.min((width - 2 * MARGIN) / Board.SIZE,
+                (height - 2 * MARGIN) / Board.SIZE));
+        originX = (width - Board.SIZE * cell) / 2;
+        originY = (height - Board.SIZE * cell) / 2;
+    }
+
+    @Override
+    public Dimension getPreferredSize() {
+        return new Dimension(2 * MARGIN + Board.SIZE * 64, 2 * MARGIN + Board.SIZE * 64);
+    }
+
+    @Override
+    public Dimension getMinimumSize() {
+        return new Dimension(2 * MARGIN + Board.SIZE * MIN_CELL,
+                2 * MARGIN + Board.SIZE * MIN_CELL);
     }
 
     /** Sets the state to render and the side to view from. */
@@ -87,6 +116,7 @@ public final class BoardPanel extends JComponent {
         Graphics2D g = UiKit.nice(graphics);
         g.setColor(Theme.BG);
         g.fillRect(0, 0, getWidth(), getHeight());
+        computeGeometry();
         if (state == null) {
             g.dispose();
             return;
@@ -120,32 +150,33 @@ public final class BoardPanel extends JComponent {
     private void drawSquare(Graphics2D g, int x, int y) {
         Image tile = AssetStore.optional(
                 (x + y) % 2 == 0 ? "board-tile-light.png" : "board-tile-dark.png");
-        int px = displayX(x) * CELL + MARGIN;
-        int py = displayY(y) * CELL + MARGIN;
+        int px = displayX(x) * cell + originX;
+        int py = displayY(y) * cell + originY;
         if (tile != null) {
-            g.drawImage(tile, px, py, CELL, CELL, null);
+            g.drawImage(tile, px, py, cell, cell, null);
         } else {
             g.setColor((x + y) % 2 == 0 ? Theme.BOARD_LIGHT : Theme.BOARD_DARK);
-            g.fillRect(px, py, CELL, CELL);
+            g.fillRect(px, py, cell, cell);
         }
         g.setColor(Theme.OUTLINE);
         g.setStroke(new BasicStroke(1.5f));
-        g.drawRect(px, py, CELL, CELL);
+        g.drawRect(px, py, cell, cell);
     }
 
     private void drawPiece(Graphics2D g, int x, int y, Piece piece) {
         Image sprite = AssetStore.optional(
                 "piece-" + piece.color().name().toLowerCase()
                         + (piece.master() ? "-master" : "-student") + ".png");
-        int px = displayX(x) * CELL + MARGIN;
-        int py = displayY(y) * CELL + MARGIN;
-        int cx = px + CELL / 2;
-        int cy = py + CELL / 2;
+        int px = displayX(x) * cell + originX;
+        int py = displayY(y) * cell + originY;
+        int cx = px + cell / 2;
+        int cy = py + cell / 2;
         if (sprite != null) {
-            g.drawImage(sprite, px + 4, py + 4, CELL - 8, CELL - 8, null);
+            int inset = cell / 10;
+            g.drawImage(sprite, px + inset, py + inset, cell - 2 * inset, cell - 2 * inset, null);
             return;
         }
-        int radius = CELL / 2 - 12;
+        int radius = cell / 2 - 10;
         g.setColor(piece.color() == PlayerColor.BLUE ? Theme.SKY : Theme.CORAL);
         g.fillOval(cx - radius, cy - radius, 2 * radius, 2 * radius);
         g.setColor(Theme.INK);
@@ -153,10 +184,10 @@ public final class BoardPanel extends JComponent {
         g.drawOval(cx - radius, cy - radius, 2 * radius, 2 * radius);
         if (piece.master()) {
             // Masters carry the gold starburst mark.
-            UiKit.starburst(g, cx, cy, radius - 7);
+            UiKit.starburst(g, cx, cy, radius - 6);
         } else {
             g.setColor(Theme.CREAM);
-            g.setFont(Theme.bold(16f));
+            g.setFont(Theme.bold(15f));
             var metrics = g.getFontMetrics();
             g.drawString("S", cx - metrics.stringWidth("S") / 2,
                     cy + metrics.getAscent() / 2 - 2);
@@ -164,41 +195,45 @@ public final class BoardPanel extends JComponent {
     }
 
     private void drawTargetDot(Graphics2D g, Square target) {
-        int cx = displayX(target.x()) * CELL + MARGIN + CELL / 2;
-        int cy = displayY(target.y()) * CELL + MARGIN + CELL / 2;
+        int cx = displayX(target.x()) * cell + originX + cell / 2;
+        int cy = displayY(target.y()) * cell + originY + cell / 2;
         Piece occupant = state.board().pieceAt(target);
         g.setColor(Theme.TEAL);
         if (occupant == null) {
-            g.fillOval(cx - 9, cy - 9, 18, 18);
+            int dot = Math.max(12, cell / 4);
+            g.fillOval(cx - dot / 2, cy - dot / 2, dot, dot);
         } else {
             // Enemy piece: double ring signals a capture.
             g.setStroke(new BasicStroke(3f));
-            int radius = CELL / 2 - 7;
+            int radius = cell / 2 - 6;
             g.drawOval(cx - radius, cy - radius, 2 * radius, 2 * radius);
             g.drawOval(cx - radius + 4, cy - radius + 4, 2 * radius - 8, 2 * radius - 8);
         }
     }
 
     private void drawSelectionRing(Graphics2D g, Square square) {
-        int px = displayX(square.x()) * CELL + MARGIN;
-        int py = displayY(square.y()) * CELL + MARGIN;
+        int px = displayX(square.x()) * cell + originX;
+        int py = displayY(square.y()) * cell + originY;
         g.setColor(Theme.AMBER);
         g.setStroke(new BasicStroke(3.5f));
-        g.drawRect(px + 2, py + 2, CELL - 4, CELL - 4);
+        g.drawRect(px + 2, py + 2, cell - 4, cell - 4);
     }
 
     private void overlay(Graphics2D g, Square square) {
-        int px = displayX(square.x()) * CELL + MARGIN;
-        int py = displayY(square.y()) * CELL + MARGIN;
+        int px = displayX(square.x()) * cell + originX;
+        int py = displayY(square.y()) * cell + originY;
         g.setColor(new Color(252, 186, 40, 56));
-        g.fillRect(px, py, CELL, CELL);
+        g.fillRect(px, py, cell, cell);
     }
 
     /** Maps a mouse position to a canonical square, or null outside the grid. */
     private Square squareAt(int mouseX, int mouseY) {
-        int displayCol = (mouseX - MARGIN) / CELL;
-        int displayRow = (mouseY - MARGIN) / CELL;
-        if (displayCol < 0 || displayCol >= Board.SIZE || displayRow < 0 || displayRow >= Board.SIZE) {
+        computeGeometry();
+        int displayCol = (mouseX - originX) / cell;
+        int displayRow = (mouseY - originY) / cell;
+        if (mouseX < originX || mouseY < originY
+                || displayCol < 0 || displayCol >= Board.SIZE
+                || displayRow < 0 || displayRow >= Board.SIZE) {
             return null;
         }
         // Same flip as painting: the viewer's own home row (Blue y=0, Red y=4)

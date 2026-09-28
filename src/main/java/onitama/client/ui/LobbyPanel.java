@@ -3,10 +3,12 @@ package onitama.client.ui;
 import onitama.client.state.ClientModel;
 import onitama.client.state.ClientModelListener;
 import onitama.client.state.Screen;
+import onitama.net.MatchSummary;
 
 import java.awt.BorderLayout;
 import java.awt.FlowLayout;
 import java.awt.GridLayout;
+import java.util.List;
 
 import javax.swing.BorderFactory;
 import javax.swing.DefaultListModel;
@@ -164,8 +166,11 @@ public final class LobbyPanel extends JPanel {
             public void mouseClicked(java.awt.event.MouseEvent event) {
                 if (event.getClickCount() == 2) {
                     String entry = matchList.getSelectedValue();
-                    if (entry != null) {
-                        model.joinMatch(entry.split(" ")[0]);
+                    // Real entries start with a 5-character room code; the
+                    // empty-state placeholder is not joinable.
+                    if (entry != null && entry.length() >= 5
+                            && entry.matches("[A-Z2-9]{5}.*")) {
+                        model.joinMatch(entry.substring(0, 5));
                     }
                 }
             }
@@ -196,9 +201,14 @@ public final class LobbyPanel extends JPanel {
     private void refreshMatches() {
         matchListModel.clear();
         String ownCode = model.pendingRoomCode();
-        model.openMatches().stream()
+        List<MatchSummary> others = model.openMatches().stream()
                 .filter(summary -> !summary.roomCode().equals(ownCode))
-                .forEach(summary -> matchListModel.addElement(
-                        summary.roomCode() + "  —  " + summary.hostUsername()));
+                .toList();
+        if (others.isEmpty()) {
+            matchListModel.addElement("No open matches yet — create one!");
+        } else {
+            others.forEach(summary -> matchListModel.addElement(
+                    summary.roomCode() + "  —  " + summary.hostUsername()));
+        }
     }
 }
