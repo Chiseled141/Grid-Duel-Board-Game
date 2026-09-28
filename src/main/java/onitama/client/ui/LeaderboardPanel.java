@@ -64,7 +64,11 @@ public final class LeaderboardPanel extends JPanel {
             }
         }
         table.getColumnModel().getColumn(0).setMaxWidth(50);
-        add(new javax.swing.JScrollPane(table), BorderLayout.CENTER);
+        table.setFillsViewportHeight(true);
+        javax.swing.JScrollPane leaderboardScroll = new javax.swing.JScrollPane(table);
+        leaderboardScroll.setBorder(BorderFactory.createLineBorder(Theme.OUTLINE, 2));
+        leaderboardScroll.getViewport().setBackground(Theme.SURFACE);
+        add(leaderboardScroll, BorderLayout.CENTER);
 
         JPanel bottom = new JPanel(new FlowLayout(FlowLayout.RIGHT));
         bottom.setBackground(Theme.BG);

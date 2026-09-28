@@ -60,9 +60,15 @@ public final class GamePanel extends JPanel {
         north.add(opponentCards, BorderLayout.SOUTH);
         add(north, BorderLayout.NORTH);
 
-        JPanel center = new JPanel(new FlowLayout(FlowLayout.CENTER));
+        // My cards live in a left column so the board can grow big in the
+        // center on widescreen windows.
+        add(buildMyColumn(), BorderLayout.WEST);
+
+        // The board stretches to fill all remaining space (responsive).
+        JPanel center = new JPanel(new BorderLayout());
         center.setBackground(Theme.BG);
-        center.add(boardPanel);
+        center.setBorder(BorderFactory.createEmptyBorder(4, 8, 4, 8));
+        center.add(boardPanel, BorderLayout.CENTER);
         add(center, BorderLayout.CENTER);
 
         add(buildHistoryPanel(), BorderLayout.EAST);
@@ -145,31 +151,43 @@ public final class GamePanel extends JPanel {
         return panel;
     }
 
-    private JPanel buildSouthPanel() {
-        JPanel south = new JPanel(new BorderLayout());
-        south.setBackground(Theme.BG);
+    /** The left column: your name, your two hand cards, the transit card. */
+    private JPanel buildMyColumn() {
+        JPanel column = UiKit.surface(12);
+        column.setLayout(new BorderLayout(8, 8));
+        column.setPreferredSize(new java.awt.Dimension(230, 100));
+
         youLabel.setHorizontalAlignment(javax.swing.SwingConstants.CENTER);
-        south.add(youLabel, BorderLayout.NORTH);
+        column.add(youLabel, BorderLayout.NORTH);
 
-        JPanel middle = new JPanel(new FlowLayout(FlowLayout.CENTER, 18, 4));
-        middle.setBackground(Theme.BG);
-        middle.add(myCards);
-        middle.add(transitLabel);
-        south.add(middle, BorderLayout.CENTER);
+        myCards.setLayout(new GridLayout(2, 1, 8, 8));
+        myCards.setBackground(Theme.SURFACE);
+        myCards.setOpaque(true);
+        column.add(myCards, BorderLayout.CENTER);
 
-        JPanel bottom = new JPanel(new BorderLayout(10, 0));
-        bottom.setBackground(Theme.BG);
+        JPanel transitRow = new JPanel(new FlowLayout(FlowLayout.CENTER, 4, 2));
+        transitRow.setBackground(Theme.SURFACE);
+        transitLabel.setFont(Theme.bold(12f));
+        transitRow.add(transitLabel);
+        column.add(transitRow, BorderLayout.SOUTH);
+        return column;
+    }
+
+    private JPanel buildSouthPanel() {
+        JPanel south = new JPanel(new BorderLayout(10, 0));
+        south.setBackground(Theme.BG);
+
         JPanel bannerRow = new JPanel(new FlowLayout(FlowLayout.CENTER));
         bannerRow.setBackground(Theme.BG);
         bannerRow.add(turnLabel);
-        bottom.add(bannerRow, BorderLayout.CENTER);
-        JButton resign = UiKit.pill("Resign", UiKit.Pill.DANGER);
-        resign.addActionListener(event -> confirmResign());
+        south.add(bannerRow, BorderLayout.CENTER);
+
         JPanel resignRow = new JPanel(new FlowLayout(FlowLayout.RIGHT));
         resignRow.setBackground(Theme.BG);
+        JButton resign = UiKit.pill("Resign", UiKit.Pill.DANGER);
+        resign.addActionListener(event -> confirmResign());
         resignRow.add(resign);
-        bottom.add(resignRow, BorderLayout.EAST);
-        south.add(bottom, BorderLayout.SOUTH);
+        south.add(resignRow, BorderLayout.EAST);
         return south;
     }
 
@@ -194,7 +212,10 @@ public final class GamePanel extends JPanel {
             CardPanel panel = new CardPanel(card, model.myColor(), false,
                     () -> model.cardClicked(card.id()));
             panel.setSelected(card.id().equals(model.selectedCardId()));
-            myCards.add(panel);
+            JPanel slot = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 0));
+            slot.setBackground(Theme.SURFACE);
+            slot.add(panel);
+            myCards.add(slot);
         });
 
         transitLabel.setText("transit: " + state.transit().name().toUpperCase());
