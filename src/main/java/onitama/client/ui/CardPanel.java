@@ -8,32 +8,62 @@ import onitama.core.Square;
 import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Dimension;
+import java.awt.Font;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.Image;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.util.Map;
 
 import javax.swing.JComponent;
 
 /**
- * One movement card rendered as a cream sticker in the retro-pop style: a
- * gold ribbon with the card name, the 5x5 pattern grid, and a small stamp
- * seal in the player color that decided the first move. The pattern is drawn
- * from the same {@link Card} data the engine uses (single source of truth),
- * always from {@code viewerColor}'s perspective: the opponent's cards are
- * pre-rotated so the player can plan with what they will receive. Opponent
- * cards are drawn dimmed. A designed card-face template from the AssetStore
- * replaces the drawn face when present. Clicking the panel fires the given
- * callback (own cards only).
+ * One movement card rendered after the physical Onitama card template, in
+ * the retro-pop theme: the animal kanji in muted gold, the card name in
+ * display capitals, the 5x5 pattern grid with filled squares, a flavor-quote
+ * band and the player-color stamp seal. The pattern always comes from the
+ * engine's {@link Card} data (single source of truth), drawn from
+ * {@code viewerColor}'s perspective; opponent cards are dimmed. A designed
+ * card-face template from the AssetStore replaces the drawn face when
+ * present. Clicking the panel fires the given callback (own cards only).
  */
 public final class CardPanel extends JComponent {
 
-    private static final int CELL = 15;
-    private static final int PADDING = 10;
-    private static final int RIBBON = 18;
-    private static final int WIDTH = 2 * PADDING + Board.SIZE * CELL;
-    private static final int HEIGHT = RIBBON + 2 * PADDING + Board.SIZE * CELL;
+    private static final int CELL = 17;
+    private static final int GRID = Board.SIZE * CELL;
+    private static final int W = 192;
+    private static final int H = 150;
+
+    /** The animal kanji for every card id (falls back to a Latin letter). */
+    private static final Map<String, String> KANJI = Map.ofEntries(
+            Map.entry("tiger", "虎"), Map.entry("dragon", "龍"),
+            Map.entry("frog", "蛙"), Map.entry("rabbit", "兎"),
+            Map.entry("crab", "蟹"), Map.entry("elephant", "象"),
+            Map.entry("goose", "雁"), Map.entry("rooster", "鶏"),
+            Map.entry("monkey", "猴"), Map.entry("mantis", "螳"),
+            Map.entry("horse", "馬"), Map.entry("ox", "牛"),
+            Map.entry("crane", "鶴"), Map.entry("boar", "豕"),
+            Map.entry("eel", "鰻"), Map.entry("cobra", "蛇"));
+
+    /** Original flavor lines for the quote band (one per animal). */
+    private static final Map<String, String> QUOTES = Map.ofEntries(
+            Map.entry("tiger", "Strike far, or step back and pounce."),
+            Map.entry("dragon", "Leap wide from the hills, and never the same way twice."),
+            Map.entry("frog", "Hop to the side, then spring ahead."),
+            Map.entry("rabbit", "Sprint forward, then dart back out of reach."),
+            Map.entry("crab", "Sideways never loses its way."),
+            Map.entry("elephant", "Steady steps carry the greatest weight."),
+            Map.entry("goose", "Fly in lines, land in curves."),
+            Map.entry("rooster", "Circle the coop with care."),
+            Map.entry("monkey", "Swing around whatever stands in your path."),
+            Map.entry("mantis", "Bow first, then strike deep."),
+            Map.entry("horse", "Gallop ahead, shy aside."),
+            Map.entry("ox", "Push forward and hold the line."),
+            Map.entry("crane", "Rise above the pond, then descend."),
+            Map.entry("boar", "Charge, then keep the ground you take."),
+            Map.entry("eel", "Slip aside, then slide out of reach."),
+            Map.entry("cobra", "Wait patiently, then strike from afar."));
 
     private final Card card;
     private final PlayerColor viewerColor;
@@ -52,8 +82,9 @@ public final class CardPanel extends JComponent {
         this.card = card;
         this.viewerColor = viewerColor;
         this.dimmed = dimmed;
-        setPreferredSize(new Dimension(WIDTH + 6, HEIGHT + 6));
-        setToolTipText(card.name() + (dimmed ? " (opponent's card)" : ""));
+        setPreferredSize(new Dimension(W + 6, H + 6));
+        setToolTipText(card.name() + " — " + quote()
+                + (dimmed ? " (opponent's card)" : ""));
         if (onSelect != null) {
             setCursor(new java.awt.Cursor(java.awt.Cursor.HAND_CURSOR));
             addMouseListener(new MouseAdapter() {
@@ -77,84 +108,143 @@ public final class CardPanel extends JComponent {
         g.setColor(Theme.BG);
         g.fillRect(0, 0, getWidth(), getHeight());
 
-        int cardW = WIDTH;
-        int cardH = HEIGHT;
         int x0 = 2;
         int y0 = 2;
 
-        // Selected own cards lift with a hard shadow; opponents sit flat.
         if (selected) {
             g.setColor(Theme.SHADOW);
-            g.fillRoundRect(x0 + 4, y0 + 4, cardW, cardH, 12, 12);
+            g.fillRoundRect(x0 + 4, y0 + 4, W, H, 14, 14);
         }
 
         Image face = AssetStore.optional("card-face-template.png");
         g.setColor(dimmed ? new Color(0xE3DCC4) : Theme.CREAM);
-        g.fillRoundRect(x0, y0, cardW, cardH, 12, 12);
+        g.fillRoundRect(x0, y0, W, H, 14, 14);
         if (face != null) {
-            g.drawImage(face, x0, y0, cardW, cardH, null);
+            g.drawImage(face, x0, y0, W, H, null);
         }
         g.setColor(Theme.INK);
         g.setStroke(new BasicStroke(selected ? 3f : 1.8f));
         if (selected) {
             g.setColor(Theme.AMBER);
         }
-        g.drawRoundRect(x0, y0, cardW - 1, cardH - 1, 12, 12);
+        g.drawRoundRect(x0, y0, W - 1, H - 1, 14, 14);
 
-        // Gold name ribbon across the top.
-        g.setColor(dimmed ? new Color(0xD9B95F) : Theme.AMBER);
-        g.fillRoundRect(x0 + 4, y0 + 3, cardW - 8, RIBBON, 9, 9);
-        g.setColor(Theme.INK);
-        g.setStroke(new BasicStroke(1.5f));
-        g.drawRoundRect(x0 + 4, y0 + 3, cardW - 9, RIBBON, 9, 9);
-        g.setFont(Theme.display(10f));
-        var metrics = g.getFontMetrics();
-        String name = card.name().toUpperCase();
-        g.drawString(name, x0 + (cardW - metrics.stringWidth(name)) / 2,
-                y0 + 3 + (RIBBON + metrics.getAscent() - metrics.getDescent()) / 2 - 1);
-
-        // Mini pattern grid, forward = up (the engine stamps the marks).
-        int gridTop = y0 + RIBBON + PADDING;
-        for (int row = 0; row < Board.SIZE; row++) {
-            for (int col = 0; col < Board.SIZE; col++) {
-                int px = x0 + PADDING + col * CELL;
-                int py = gridTop + row * CELL;
-                g.setColor(dimmed ? new Color(0xEFE9D6) : Theme.BOARD_LIGHT);
-                g.fillRect(px, py, CELL, CELL);
-                g.setColor(new Color(35, 31, 32, 70));
-                g.drawRect(px, py, CELL, CELL);
-            }
-        }
-        drawMark(g, x0 + PADDING + 2 * CELL, gridTop + 2 * CELL, "M", Theme.INK);
-        Color markColor = dimmed ? new Color(0x5F8F7C) : Theme.TEAL;
-        for (Square destination : card.destinationsFrom(new Square(2, 2), viewerColor)) {
-            drawMark(g, x0 + PADDING + destination.x() * CELL,
-                    gridTop + (Board.SIZE - 1 - destination.y()) * CELL,
-                    "X", markColor);
-        }
-
-        // Stamp seal: the player color that decided the first move.
-        int sealX = x0 + cardW - 13;
-        int sealY = y0 + cardH - 13;
-        g.setColor(dimmed ? new Color(0xA9A396)
-                : card.stamp() == PlayerColor.BLUE ? Theme.SKY : Theme.CORAL);
-        g.fillOval(sealX - 5, sealY - 5, 10, 10);
-        g.setColor(Theme.INK);
-        g.setStroke(new BasicStroke(1.5f));
-        g.drawOval(sealX - 5, sealY - 5, 10, 10);
+        drawKanji(g, x0, y0);
+        drawGrid(g, x0, y0);
+        drawName(g, x0, y0);
+        drawQuoteBand(g, x0, y0);
+        drawSeal(g, x0, y0);
 
         if (dimmed) {
-            // Veil pulls the opponent's cards back behind your own.
             g.setColor(new Color(15, 13, 14, 70));
-            g.fillRoundRect(x0, y0, cardW, cardH, 12, 12);
+            g.fillRoundRect(x0, y0, W, H, 14, 14);
         }
         g.dispose();
     }
 
-    private void drawMark(Graphics2D g, int px, int py, String mark, Color color) {
-        g.setFont(Theme.bold(11f));
+    /** The big animal calligraphy in muted gold, upper-left. */
+    private void drawKanji(Graphics2D g, int x0, int y0) {
+        Font kanjiFont = new Font(Font.SANS_SERIF, Font.BOLD, 40);
+        String glyph = KANJI.get(card.id());
+        if (glyph == null || kanjiFont.canDisplayUpTo(glyph) != -1) {
+            // System has no CJK glyphs: fall back to the animal's initial.
+            glyph = card.name().substring(0, 1).toUpperCase();
+        }
+        g.setFont(kanjiFont);
+        g.setColor(dimmed ? new Color(0xC9BFA0) : new Color(0xD9B95F));
         var metrics = g.getFontMetrics();
-        g.drawString(mark, px + CELL / 2 - metrics.stringWidth(mark) / 2,
-                py + CELL / 2 + metrics.getAscent() / 2 - 1);
+        int cx = x0 + 6 + (84 - metrics.stringWidth(glyph)) / 2;
+        int cy = y0 + 8 + (82 - metrics.getHeight()) / 2 + metrics.getAscent();
+        g.drawString(glyph, cx, cy);
+    }
+
+    /** The 5x5 grid with filled destination squares (engine data). */
+    private void drawGrid(Graphics2D g, int x0, int y0) {
+        int gx = x0 + 94;
+        int gy = y0 + 10;
+        Color fill = dimmed ? new Color(0xB08D2E) : Theme.AMBER;
+        for (int row = 0; row < Board.SIZE; row++) {
+            for (int col = 0; col < Board.SIZE; col++) {
+                int px = gx + col * CELL;
+                int py = gy + row * CELL;
+                g.setColor(Theme.BOARD_LIGHT);
+                g.fillRect(px, py, CELL, CELL);
+                g.setColor(new Color(35, 31, 32, 60));
+                g.drawRect(px, py, CELL, CELL);
+            }
+        }
+        // The moving piece's square: ink ring on the center cell.
+        int centerX = gx + 2 * CELL;
+        int centerY = gy + 2 * CELL;
+        g.setColor(Theme.INK);
+        g.setStroke(new BasicStroke(2f));
+        g.drawOval(centerX + 4, centerY + 4, CELL - 8, CELL - 8);
+        // Destination squares in gold.
+        g.setColor(fill);
+        for (Square destination : card.destinationsFrom(new Square(2, 2), viewerColor)) {
+            g.fillRect(gx + destination.x() * CELL + 1,
+                    gy + (Board.SIZE - 1 - destination.y()) * CELL + 1,
+                    CELL - 2, CELL - 2);
+            g.setColor(Theme.INK);
+            g.setStroke(new BasicStroke(1f));
+            g.drawRect(gx + destination.x() * CELL + 1,
+                    gy + (Board.SIZE - 1 - destination.y()) * CELL + 1,
+                    CELL - 2, CELL - 2);
+            g.setColor(fill);
+        }
+    }
+
+    /** Card name in display capitals, under the kanji. */
+    private void drawName(Graphics2D g, int x0, int y0) {
+        g.setFont(Theme.display(15f));
+        g.setColor(Theme.INK);
+        var metrics = g.getFontMetrics();
+        String name = card.name().toUpperCase();
+        g.drawString(name, x0 + 8, y0 + 96 + metrics.getAscent() / 2 + 4);
+    }
+
+    /** The flavor-quote band across the bottom, on two lines. */
+    private void drawQuoteBand(Graphics2D g, int x0, int y0) {
+        int bandX = x0 + 6;
+        int bandY = y0 + 118;
+        int bandW = W - 12;
+        int bandH = 26;
+        g.setColor(dimmed ? new Color(0xD5CBA8) : new Color(0xF6E7B4));
+        g.fillRoundRect(bandX, bandY, bandW, bandH, 8, 8);
+        g.setColor(Theme.INK);
+        g.setStroke(new BasicStroke(1f));
+        g.drawRoundRect(bandX, bandY, bandW - 1, bandH - 1, 8, 8);
+
+        g.setFont(Theme.normal(8f));
+        var metrics = g.getFontMetrics();
+        String quote = quote();
+        String first = quote;
+        String second = "";
+        int space = quote.lastIndexOf(' ', quote.length() / 2 + 4);
+        if (space > 0 && metrics.stringWidth(quote) > bandW - 16) {
+            first = quote.substring(0, space);
+            second = quote.substring(space + 1);
+        }
+        g.setColor(dimmed ? new Color(0x6E685C) : Theme.INK);
+        g.drawString(first, bandX + 8, bandY + 11);
+        if (!second.isEmpty()) {
+            g.drawString(second, bandX + 8, bandY + 21);
+        }
+    }
+
+    /** The stamp seal in the color that decided the first move. */
+    private void drawSeal(Graphics2D g, int x0, int y0) {
+        int sealX = x0 + W - 16;
+        int sealY = y0 + H - 16;
+        g.setColor(dimmed ? new Color(0xA9A396)
+                : card.stamp() == PlayerColor.BLUE ? Theme.SKY : Theme.CORAL);
+        g.fillOval(sealX - 6, sealY - 6, 12, 12);
+        g.setColor(Theme.INK);
+        g.setStroke(new BasicStroke(1.5f));
+        g.drawOval(sealX - 6, sealY - 6, 12, 12);
+    }
+
+    private String quote() {
+        return QUOTES.getOrDefault(card.id(), "Move with intention.");
     }
 }

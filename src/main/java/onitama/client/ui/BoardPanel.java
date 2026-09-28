@@ -31,8 +31,8 @@ import javax.swing.JComponent;
  */
 public final class BoardPanel extends JComponent {
 
-    private static final int CELL = 72;
-    private static final int MARGIN = 16;
+    private static final int CELL = 64;
+    private static final int MARGIN = 8;
     private static final int SIZE = 2 * MARGIN + Board.SIZE * CELL;
 
     private GameState state;
