@@ -215,7 +215,12 @@ integrated through an `AssetStore` that uses each file from
 code-drawn baseline otherwise — so the game is complete before any art
 arrives and art can be delivered incrementally. Card movement patterns are
 never part of the artwork: the engine stamps them onto the card template so
-the shown pattern always matches the rules data. The redesign also fixed
+the shown pattern always matches the rules data. Following the physical
+Onitama set — where every card's pattern prints in its own color — each of
+the 16 cards has a fixed accent color (a distinct retro tone per animal,
+mapped in `CardPanel`) that colors the animal kanji, its watermark circle
+and the filled pattern squares, making every card recognizable at a glance.
+The redesign also fixed
 four real UI bugs found by driving two live client windows with a scripted
 harness: inverted board orientation, an unstyled opponent strip, clipped
 panel titles, and — most importantly — Register/Login handlers swapped in

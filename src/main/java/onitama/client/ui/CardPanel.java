@@ -46,6 +46,30 @@ public final class CardPanel extends JComponent {
             Map.entry("crane", "鶴"), Map.entry("boar", "豕"),
             Map.entry("eel", "鰻"), Map.entry("cobra", "蛇"));
 
+    /**
+     * Each card's own accent color — a fixed, distinct retro tone per animal
+     * (documented in docs/DESIGN_DECISIONS.md). It colors the kanji, the
+     * watermark and the pattern squares, so every card is recognizable at a
+     * glance.
+     */
+    private static final Map<String, Color> ACCENTS = Map.ofEntries(
+            Map.entry("tiger", new Color(0xED203D)),
+            Map.entry("dragon", new Color(0x7B5EA7)),
+            Map.entry("frog", new Color(0x0BA95B)),
+            Map.entry("rabbit", new Color(0xF38BA3)),
+            Map.entry("crab", new Color(0xFC7428)),
+            Map.entry("elephant", new Color(0x12B5E5)),
+            Map.entry("goose", new Color(0xFCBA28)),
+            Map.entry("rooster", new Color(0x8D2F23)),
+            Map.entry("monkey", new Color(0x9CCC65)),
+            Map.entry("mantis", new Color(0x00838F)),
+            Map.entry("horse", new Color(0x3949AB)),
+            Map.entry("ox", new Color(0x6D4C41)),
+            Map.entry("crane", new Color(0x26C6DA)),
+            Map.entry("boar", new Color(0xC2185B)),
+            Map.entry("eel", new Color(0x2E7D32)),
+            Map.entry("cobra", new Color(0x546E7A)));
+
     /** Original flavor lines for the quote band (one per animal). */
     private static final Map<String, String> QUOTES = Map.ofEntries(
             Map.entry("tiger", "Strike far, or step back and pounce."),
@@ -142,16 +166,32 @@ public final class CardPanel extends JComponent {
         g.dispose();
     }
 
-    /** The big animal calligraphy in muted gold, upper-left. */
+    /** The card's own accent color, muted when the card is dimmed. */
+    private Color accent() {
+        Color accent = ACCENTS.getOrDefault(card.id(), Theme.AMBER);
+        if (!dimmed) {
+            return accent;
+        }
+        Color base = new Color(0xE3DCC4);
+        return new Color((accent.getRed() + base.getRed()) / 2,
+                (accent.getGreen() + base.getGreen()) / 2,
+                (accent.getBlue() + base.getBlue()) / 2);
+    }
+
+    /** The big animal calligraphy in the card's accent color, upper-left. */
     private void drawKanji(Graphics2D g, int x0, int y0) {
-        Font kanjiFont = new Font(Font.SANS_SERIF, Font.BOLD, 40);
+        Font kanjiFont = new Font(Font.SANS_SERIF, Font.BOLD, 44);
         String glyph = KANJI.get(card.id());
         if (glyph == null || kanjiFont.canDisplayUpTo(glyph) != -1) {
             // System has no CJK glyphs: fall back to the animal's initial.
             glyph = card.name().substring(0, 1).toUpperCase();
         }
+        // Faint circular watermark behind the calligraphy, like the real cards.
+        g.setColor(new Color(accent().getRed(), accent().getGreen(),
+                accent().getBlue(), 46));
+        g.fillOval(x0 + 8, y0 + 12, 76, 76);
         g.setFont(kanjiFont);
-        g.setColor(dimmed ? new Color(0xC9BFA0) : new Color(0xD9B95F));
+        g.setColor(accent());
         var metrics = g.getFontMetrics();
         int cx = x0 + 6 + (84 - metrics.stringWidth(glyph)) / 2;
         int cy = y0 + 8 + (82 - metrics.getHeight()) / 2 + metrics.getAscent();
@@ -162,7 +202,7 @@ public final class CardPanel extends JComponent {
     private void drawGrid(Graphics2D g, int x0, int y0) {
         int gx = x0 + 94;
         int gy = y0 + 10;
-        Color fill = dimmed ? new Color(0xB08D2E) : Theme.AMBER;
+        Color fill = accent();
         for (int row = 0; row < Board.SIZE; row++) {
             for (int col = 0; col < Board.SIZE; col++) {
                 int px = gx + col * CELL;
@@ -173,24 +213,22 @@ public final class CardPanel extends JComponent {
                 g.drawRect(px, py, CELL, CELL);
             }
         }
-        // The moving piece's square: ink ring on the center cell.
+        // The moving piece's square: bold ink ring on the center cell.
         int centerX = gx + 2 * CELL;
         int centerY = gy + 2 * CELL;
         g.setColor(Theme.INK);
-        g.setStroke(new BasicStroke(2f));
-        g.drawOval(centerX + 4, centerY + 4, CELL - 8, CELL - 8);
-        // Destination squares in gold.
-        g.setColor(fill);
+        g.setStroke(new BasicStroke(2.5f));
+        g.drawOval(centerX + 3, centerY + 3, CELL - 6, CELL - 6);
+        // Destination squares in the card's accent color, full-bleed so the
+        // moves read clearly even at lobby size.
         for (Square destination : card.destinationsFrom(new Square(2, 2), viewerColor)) {
-            g.fillRect(gx + destination.x() * CELL + 1,
-                    gy + (Board.SIZE - 1 - destination.y()) * CELL + 1,
-                    CELL - 2, CELL - 2);
-            g.setColor(Theme.INK);
-            g.setStroke(new BasicStroke(1f));
-            g.drawRect(gx + destination.x() * CELL + 1,
-                    gy + (Board.SIZE - 1 - destination.y()) * CELL + 1,
-                    CELL - 2, CELL - 2);
+            int px = gx + destination.x() * CELL;
+            int py = gy + (Board.SIZE - 1 - destination.y()) * CELL;
             g.setColor(fill);
+            g.fillRect(px + 1, py + 1, CELL - 2, CELL - 2);
+            g.setColor(Theme.INK);
+            g.setStroke(new BasicStroke(1.5f));
+            g.drawRect(px + 1, py + 1, CELL - 3, CELL - 3);
         }
     }
 
