@@ -51,9 +51,10 @@ public final class ClientFrame extends JFrame {
                 message -> onIncomingMessage(message),
                 reason -> SwingUtilities.invokeLater(this::onConnectionLost));
         this.model = new ClientModel(client);
+        BoardPanel.setDefaultPieceStyle(settings.pieceStyle());
 
         LoginPanel loginPanel = new LoginPanel(model, settings);
-        LobbyPanel lobbyPanel = new LobbyPanel(model,
+        LobbyPanel lobbyPanel = new LobbyPanel(model, settings,
                 this::openLeaderboard, this::openReplayViewer);
         GamePanel gamePanel = new GamePanel(model);
         LeaderboardPanel leaderboardPanel = new LeaderboardPanel(model, () -> model.leaveToLobby());
