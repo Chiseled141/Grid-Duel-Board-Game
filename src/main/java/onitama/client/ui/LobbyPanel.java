@@ -9,6 +9,7 @@ import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
+import java.awt.Component;
 import java.awt.Font;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
@@ -25,6 +26,8 @@ import javax.swing.JComponent;
 import javax.swing.JLabel;
 import javax.swing.JList;
 import javax.swing.JPanel;
+import javax.swing.BoxLayout;
+import javax.swing.Box;
 import javax.swing.JScrollPane;
 import javax.swing.JTextField;
 import javax.swing.Timer;
@@ -304,10 +307,10 @@ public final class LobbyPanel extends JPanel {
     private JPanel buildActionsColumn() {
         JPanel column = new JPanel(new BorderLayout(0, 14));
         column.setOpaque(false);
-        column.setPreferredSize(new java.awt.Dimension(430, 100));
+        column.setPreferredSize(new java.awt.Dimension(440, 100));
 
         // RETURN TO MATCH: shown while a live match is parked in the background.
-        returnPill = UiKit.pill("", UiKit.Pill.GOLD);
+        returnPill = UiKit.pill("RETURN TO MATCH", UiKit.Pill.GOLD);
         returnPill.addActionListener(event -> model.returnToParkedMatch());
         returnPill.setVisible(false);
         returnWrap = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 0));
@@ -315,56 +318,77 @@ public final class LobbyPanel extends JPanel {
         returnWrap.add(returnPill);
         returnWrap.setVisible(false);
 
-        JPanel createCard = UiKit.sticker(18);
-        createCard.setLayout(new BorderLayout(10, 10));
-        createCard.add(UiKit.inkLabel("CREATE A MATCH", 17f), BorderLayout.NORTH);
-        JPanel createBody = new JPanel(new BorderLayout(10, 10));
-        createBody.setOpaque(false);
-        createBody.add(UiKit.label("Challenge another master to a duel.", 13f),
-                BorderLayout.NORTH);
+        // CREATE card: title, subtitle, button, and the waiting ticket.
+        JPanel createCard = UiKit.sticker(16);
+        createCard.setLayout(new BorderLayout(10, 12));
+        JPanel createHead = new JPanel(new BorderLayout(8, 2));
+        createHead.setOpaque(false);
+        createHead.add(UiKit.inkLabel("CREATE A MATCH", 15f), BorderLayout.NORTH);
+        createHead.add(UiKit.label("Challenge another master to a duel.", 12f),
+                BorderLayout.SOUTH);
+        createCard.add(createHead, BorderLayout.NORTH);
+
+        JPanel createCenter = new JPanel(new BorderLayout(10, 12));
+        createCenter.setOpaque(false);
         JButton create = UiKit.pill("Create match", UiKit.Pill.GOLD);
         create.addActionListener(event -> model.createMatch());
-        JPanel createRow = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 0));
+        JPanel createRow = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 2));
         createRow.setOpaque(false);
         createRow.add(create);
-        createBody.add(createRow, BorderLayout.SOUTH);
+        createCenter.add(createRow, BorderLayout.NORTH);
 
         // The ticket: the room code becomes the major waiting object.
-        ticket = new JPanel(new GridLayout(3, 1, 4, 4));
+        ticket = new JPanel(new BorderLayout(6, 8));
         ticket.setBackground(Theme.BOARD_LIGHT);
         ticket.setBorder(BorderFactory.createCompoundBorder(
                 BorderFactory.createDashedBorder(Theme.INK, 6, 4),
-                BorderFactory.createEmptyBorder(8, 12, 8, 12)));
-        roomCodeLabel.setFont(Theme.display(30f));
+                BorderFactory.createEmptyBorder(10, 12, 10, 12)));
+        roomCodeLabel.setFont(Theme.display(32f));
         roomCodeLabel.setForeground(Theme.INK);
         roomCodeLabel.setHorizontalAlignment(JLabel.CENTER);
         roomCaption.setHorizontalAlignment(JLabel.CENTER);
         roomCaption.setForeground(Theme.INK);
-        ticket.add(roomCodeLabel);
-        JPanel copyRow = new JPanel(new FlowLayout(FlowLayout.CENTER, 8, 0));
-        copyRow.setOpaque(false);
+        ticket.add(roomCodeLabel, BorderLayout.CENTER);
+        JPanel ticketRow = new JPanel(new FlowLayout(FlowLayout.CENTER, 8, 0));
+        ticketRow.setOpaque(false);
         JButton copy = UiKit.pill("Copy code", UiKit.Pill.GOLD_OUTLINE);
         copy.addActionListener(event -> Toolkit.getDefaultToolkit()
                 .getSystemClipboard()
                 .setContents(new StringSelection(roomCodeLabel.getText()), null));
-        copyRow.add(copy);
+        ticketRow.add(copy);
+        waitingLabel.setHorizontalAlignment(JLabel.CENTER);
         waitingLabel.setForeground(Theme.INK);
-        copyRow.add(waitingLabel);
-        ticket.add(copyRow);
-        createBody.add(ticket, BorderLayout.CENTER);
-        createCard.add(createBody, BorderLayout.CENTER);
+        waitingLabel.setFont(Theme.normal(10f));
+        ticketRow.add(waitingLabel);
+        ticket.add(ticketRow, BorderLayout.SOUTH);
+        ticket.setVisible(false);
+        createCenter.add(ticket, BorderLayout.CENTER);
+        createCard.add(createCenter, BorderLayout.CENTER);
 
+        // JOIN card: unified input row, list, refresh.
         JPanel joinCard = buildJoinCard();
 
+        // Nav row: two equal secondary cards.
         JPanel nav = new JPanel(new GridLayout(1, 2, 14, 0));
         nav.setOpaque(false);
         nav.add(navCard("LEADERBOARD", "Top masters", () -> openLeaderboard.run()));
         nav.add(navCard("REPLAY VIEWER", "Watch matches", () -> openReplays.run()));
 
-        column.add(returnWrap, BorderLayout.NORTH);
-        column.add(createCard, BorderLayout.CENTER);
-        column.add(joinCard, BorderLayout.SOUTH);
-        column.add(nav, BorderLayout.EAST);
+        JPanel stack = new JPanel();
+        stack.setOpaque(false);
+        stack.setLayout(new BoxLayout(stack, BoxLayout.Y_AXIS));
+        returnWrap.setAlignmentX(Component.CENTER_ALIGNMENT);
+        stack.add(returnWrap);
+        stack.add(Box.createVerticalStrut(14));
+        createCard.setAlignmentX(Component.CENTER_ALIGNMENT);
+        stack.add(createCard);
+        stack.add(Box.createVerticalStrut(14));
+        joinCard.setAlignmentX(Component.CENTER_ALIGNMENT);
+        stack.add(joinCard);
+        stack.add(Box.createVerticalStrut(14));
+        nav.setAlignmentX(Component.CENTER_ALIGNMENT);
+        stack.add(nav);
+        column.add(stack, BorderLayout.NORTH);
         return column;
     }
 
