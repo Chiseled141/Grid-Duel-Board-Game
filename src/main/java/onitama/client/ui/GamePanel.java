@@ -338,7 +338,7 @@ public final class GamePanel extends JPanel {
         controls.setMaximumSize(new Dimension(230, 52));
         controls.setAlignmentX(Component.CENTER_ALIGNMENT);
         JButton menu = UiKit.pill("Menu", UiKit.Pill.CREAM_OUTLINE);
-        menu.addActionListener(event -> model.leaveToLobby());
+        menu.addActionListener(event -> showInMatchMenu());
         controls.add(menu);
         JButton resign = UiKit.pill("Resign", UiKit.Pill.DANGER);
         resign.addActionListener(event -> confirmResign());
@@ -544,6 +544,23 @@ public final class GamePanel extends JPanel {
             return cardName + " selected — pick a piece.";
         }
         return "Pick a card, then a piece.";
+    }
+
+    /**
+     * The in-match pause menu: the player never falls out of the game view
+     * by accident — returning is always the first option.
+     */
+    private void showInMatchMenu() {
+        Object[] options = {"BACK TO GAME", "RESIGN MATCH", "LEAVE TO LOBBY"};
+        int choice = JOptionPane.showOptionDialog(this,
+                "ONITAMA — " + (model.roomCode() == null ? "" : model.roomCode()),
+                "Menu", JOptionPane.DEFAULT_OPTION, JOptionPane.INFORMATION_MESSAGE,
+                null, options, options[0]);
+        if (choice == 1) {
+            confirmResign();
+        } else if (choice == 2) {
+            model.leaveToLobby();
+        }
     }
 
     private void confirmResign() {

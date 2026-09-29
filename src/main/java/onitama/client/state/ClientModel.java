@@ -87,6 +87,12 @@ public final class ClientModel {
     /** The square where the most recent half-move captured a piece (or null). */
     private Square lastCaptureSquare;
 
+    // A parked ongoing match: the player opened the lobby mid-game and can
+    // return without leaving the table. The state keeps live-updating via
+    // MoveApplied broadcasts, so returning is always in sync.
+    private boolean matchParked;
+    private String parkedRoomCode;
+
     /** One compact move-history row (§17 of the design spec). */
     public record MoveInfo(int number, String cardName, String fromSquare,
                            String toSquare, boolean capture, boolean pass) {
@@ -171,11 +177,43 @@ public final class ClientModel {
         connection.send(new RematchRequest());
     }
 
-    /** Leaves a finished match locally and returns to the lobby. */
+    /**
+     * Opens the lobby. An ongoing match is parked (kept live in the
+     * background) so the player can return to it; a finished one is cleared.
+     */
     public void leaveToLobby() {
+        if (state != null && state.isOngoing()) {
+            matchParked = true;
+            parkedRoomCode = roomCode;
+            clearSelection();
+            setScreen(Screen.LOBBY);
+            refreshMatches();
+            return;
+        }
         clearMatchState();
+        matchParked = false;
+        parkedRoomCode = null;
         setScreen(Screen.LOBBY);
         refreshMatches();
+    }
+
+    /** True while an ongoing match is parked in the background. */
+    public boolean hasParkedMatch() {
+        return matchParked && parkedRoomCode != null;
+    }
+
+    public String parkedRoomCode() {
+        return parkedRoomCode;
+    }
+
+    /** Returns to the parked match screen. */
+    public void returnToParkedMatch() {
+        if (!hasParkedMatch()) {
+            return;
+        }
+        matchParked = false;
+        setScreen(Screen.GAME);
+        fire(ClientModelListener::onMatchChanged);
     }
 
     /** Called when the user clicks a board square. */
@@ -327,6 +365,8 @@ public final class ClientModel {
         enemyCaptures.clear();
         rematchOfferedByOpponent = false;
         gameOverAnnounced = false;
+        matchParked = false;
+        parkedRoomCode = null;
         clearSelection();
         setScreen(Screen.GAME);
         autoPassIfNeeded();

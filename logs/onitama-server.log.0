@@ -612,3 +612,33 @@ thg 9 29, 2026 1:24:44 CH onitama.server.GameServer onMatchFinished
 INFO: match CMXZC finished: FORFEIT, winner=shiro, half-moves=0
 thg 9 29, 2026 1:24:44 CH onitama.server.MatchSession finish
 INFO: match CMXZC finished: FORFEIT, winner=shiro, half-moves=0
+thg 9 29, 2026 1:37:29 CH onitama.server.ClientHandler onDisconnected
+INFO: user 'kuro' disconnected
+thg 9 29, 2026 1:37:29 CH onitama.server.ClientHandler handleReconnect
+INFO: user 'kuro' reconnected
+thg 9 29, 2026 1:46:34 CH onitama.server.ClientHandler onDisconnected
+INFO: user 'kuro' disconnected
+thg 9 29, 2026 2:02:13 CH onitama.server.ClientHandler onDisconnected
+INFO: user 'shiro' disconnected
+thg 9 29, 2026 2:02:41 CH onitama.server.MatchPersistence record
+INFO: recorded match EFDGR as id 43 with replay replays/match-20260929-140241-EFDGR.onitama-replay
+thg 9 29, 2026 2:02:41 CH onitama.server.GameServer onMatchFinished
+INFO: match EFDGR finished: FORFEIT, winner=shiro, half-moves=0
+thg 9 29, 2026 2:02:41 CH onitama.server.MatchSession finish
+INFO: match EFDGR finished: FORFEIT, winner=shiro, half-moves=0
+thg 9 29, 2026 2:36:03 CH onitama.server.GameServer start
+INFO: Onitama server listening on port 5555
+thg 9 29, 2026 2:43:35 CH onitama.server.GameServer start
+INFO: Onitama server listening on port 5555
+thg 9 29, 2026 2:43:55 CH onitama.server.ClientHandler completeLogin
+INFO: user 'user01' logged in
+thg 9 29, 2026 2:46:06 CH onitama.server.GameServer start
+INFO: Onitama server listening on port 5555
+thg 9 29, 2026 2:47:25 CH onitama.server.ClientHandler completeLogin
+INFO: user 'user1' logged in
+thg 9 29, 2026 2:50:23 CH onitama.server.GameServer start
+INFO: Onitama server listening on port 5555
+thg 9 29, 2026 2:50:41 CH onitama.server.ClientHandler completeLogin
+INFO: user 'user1' logged in
+thg 9 29, 2026 2:53:35 CH onitama.server.GameServer start
+INFO: Onitama server listening on port 5555

@@ -89,6 +89,8 @@ public final class LobbyPanel extends JPanel {
     private final UiKit.PillButton[] styleButtons = new UiKit.PillButton[3];
     private Runnable openLeaderboard;
     private Runnable openReplays;
+    private JButton returnPill;
+    private JPanel returnWrap;
 
     /** Builds the lobby and subscribes it to the model. */
     public LobbyPanel(ClientModel model, onitama.client.ClientSettings settings,
@@ -115,6 +117,14 @@ public final class LobbyPanel extends JPanel {
                     refreshProfile();
                     setWaitingVisible(false);
                     refreshMatches();
+                    if (model.hasParkedMatch()) {
+                        returnPill.setText("RETURN TO MATCH · " + model.parkedRoomCode());
+                        returnPill.setVisible(true);
+                        returnWrap.setVisible(true);
+                    } else {
+                        returnPill.setVisible(false);
+                        returnWrap.setVisible(false);
+                    }
                 }
             }
 
@@ -246,10 +256,18 @@ public final class LobbyPanel extends JPanel {
     // ------------------------------------------------------------------
 
     private JPanel buildActionsColumn() {
-        JPanel column = new JPanel();
+        JPanel column = new JPanel(new BorderLayout(0, 14));
         column.setOpaque(false);
-        column.setLayout(new BorderLayout(0, 16));
         column.setPreferredSize(new java.awt.Dimension(430, 100));
+
+        // RETURN TO MATCH: shown while a live match is parked in the background.
+        returnPill = UiKit.pill("", UiKit.Pill.GOLD);
+        returnPill.addActionListener(event -> model.returnToParkedMatch());
+        returnPill.setVisible(false);
+        returnWrap = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 0));
+        returnWrap.setOpaque(false);
+        returnWrap.add(returnPill);
+        returnWrap.setVisible(false);
 
         JPanel createCard = UiKit.sticker(18);
         createCard.setLayout(new BorderLayout(10, 10));
@@ -276,6 +294,7 @@ public final class LobbyPanel extends JPanel {
         roomCodeLabel.setHorizontalAlignment(JLabel.CENTER);
         roomCaption.setHorizontalAlignment(JLabel.CENTER);
         roomCaption.setForeground(Theme.INK);
+        ticket.add(roomCodeLabel);
         JPanel copyRow = new JPanel(new FlowLayout(FlowLayout.CENTER, 8, 0));
         copyRow.setOpaque(false);
         JButton copy = UiKit.pill("Copy code", UiKit.Pill.GOLD_OUTLINE);
@@ -285,10 +304,7 @@ public final class LobbyPanel extends JPanel {
         copyRow.add(copy);
         waitingLabel.setForeground(Theme.INK);
         copyRow.add(waitingLabel);
-        ticket.add(roomCodeLabel);
-        ticket.add(roomCaption);
         ticket.add(copyRow);
-        ticket.setVisible(false);
         createBody.add(ticket, BorderLayout.CENTER);
         createCard.add(createBody, BorderLayout.CENTER);
 
@@ -299,9 +315,10 @@ public final class LobbyPanel extends JPanel {
         nav.add(navCard("LEADERBOARD", "Top masters", () -> openLeaderboard.run()));
         nav.add(navCard("REPLAY VIEWER", "Watch matches", () -> openReplays.run()));
 
-        column.add(createCard, BorderLayout.NORTH);
-        column.add(joinCard, BorderLayout.CENTER);
-        column.add(nav, BorderLayout.SOUTH);
+        column.add(returnWrap, BorderLayout.NORTH);
+        column.add(createCard, BorderLayout.CENTER);
+        column.add(joinCard, BorderLayout.SOUTH);
+        column.add(nav, BorderLayout.EAST);
         return column;
     }
 

@@ -3,7 +3,6 @@ package onitama.client.ui;
 import onitama.core.Piece;
 import onitama.core.PlayerColor;
 
-import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.Graphics;
