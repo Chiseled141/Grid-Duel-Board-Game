@@ -24,6 +24,7 @@ public final class ClientSettings {
     private int port = 5555;
     private int windowWidth = 1100;
     private int windowHeight = 880;
+    private int pieceStyle = 1;
 
     /** Loads the settings file; keeps defaults when it does not exist. */
     public static ClientSettings load() {
@@ -42,6 +43,7 @@ public final class ClientSettings {
         settings.port = parseInt(properties.getProperty("port"), settings.port);
         settings.windowWidth = parseInt(properties.getProperty("windowWidth"), settings.windowWidth);
         settings.windowHeight = parseInt(properties.getProperty("windowHeight"), settings.windowHeight);
+        settings.pieceStyle = parseInt(properties.getProperty("pieceStyle"), settings.pieceStyle);
         return settings;
     }
 
@@ -52,6 +54,7 @@ public final class ClientSettings {
         properties.setProperty("port", String.valueOf(port));
         properties.setProperty("windowWidth", String.valueOf(windowWidth));
         properties.setProperty("windowHeight", String.valueOf(windowHeight));
+        properties.setProperty("pieceStyle", String.valueOf(pieceStyle));
         try {
             Files.createDirectories(FILE.getParent());
             try (OutputStream out = Files.newOutputStream(FILE)) {
@@ -97,5 +100,14 @@ public final class ClientSettings {
     public void setWindowSize(int width, int height) {
         this.windowWidth = width;
         this.windowHeight = height;
+    }
+
+    /** The preferred board-piece style (1 ink tokens, 2 seal stones, 3 ink silhouettes). */
+    public int pieceStyle() {
+        return pieceStyle;
+    }
+
+    public void setPieceStyle(int pieceStyle) {
+        this.pieceStyle = pieceStyle;
     }
 }

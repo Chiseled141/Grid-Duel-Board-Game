@@ -85,12 +85,16 @@ public final class LobbyPanel extends JPanel {
 
     private int waitingDots;
     private Timer waitingTimer;
+    private final onitama.client.ClientSettings settings;
+    private final UiKit.PillButton[] styleButtons = new UiKit.PillButton[3];
     private Runnable openLeaderboard;
     private Runnable openReplays;
 
     /** Builds the lobby and subscribes it to the model. */
-    public LobbyPanel(ClientModel model, Runnable openLeaderboard, Runnable openReplays) {
+    public LobbyPanel(ClientModel model, onitama.client.ClientSettings settings,
+                      Runnable openLeaderboard, Runnable openReplays) {
         this.model = model;
+        this.settings = settings;
         this.openLeaderboard = openLeaderboard;
         this.openReplays = openReplays;
         setLayout(new BorderLayout(16, 12));
@@ -174,6 +178,9 @@ public final class LobbyPanel extends JPanel {
         titleBlock.add(tagline);
         header.add(titleBlock, BorderLayout.WEST);
 
+        JPanel east = new JPanel(new BorderLayout(0, 10));
+        east.setOpaque(false);
+
         JPanel profile = UiKit.sticker(10);
         profile.setLayout(new FlowLayout(FlowLayout.LEFT, 8, 2));
         profile.add(profileAvatar);
@@ -183,8 +190,51 @@ public final class LobbyPanel extends JPanel {
         profileText.add(profileStats);
         profile.add(profileText);
         profile.add(onlineDot);
-        header.add(profile, BorderLayout.EAST);
+        east.add(profile, BorderLayout.NORTH);
+
+        east.add(buildSettingsCard(), BorderLayout.CENTER);
+        header.add(east, BorderLayout.EAST);
         return header;
+    }
+
+    /** The settings card: choose the board-piece style (§: user preference). */
+    private JPanel buildSettingsCard() {
+        JPanel card = UiKit.surface(10);
+        card.setLayout(new BorderLayout(6, 6));
+
+        card.add(UiKit.boldLabel("SETTINGS", 12f), BorderLayout.NORTH);
+
+        JPanel styleBlock = new JPanel(new BorderLayout(4, 4));
+        styleBlock.setBackground(Theme.SURFACE);
+        styleBlock.add(UiKit.label("PIECE STYLE", 10f), BorderLayout.NORTH);
+
+        JPanel styleRow = new JPanel(new GridLayout(3, 1, 4, 4));
+        styleRow.setBackground(Theme.SURFACE);
+        String[] names = {"1 · INK TOKENS", "2 · SEAL STONES", "3 · INK SILHOUETTES"};
+        for (int i = 0; i < 3; i++) {
+            UiKit.PillButton button = UiKit.miniPill(names[i],
+                    i + 1 == settings.pieceStyle() ? UiKit.Pill.GOLD : UiKit.Pill.CREAM_OUTLINE);
+            int style = i + 1;
+            button.addActionListener(event -> {
+                settings.setPieceStyle(style);
+                settings.save();
+                BoardPanel.setDefaultPieceStyle(style);
+                updateStyleSelection();
+            });
+            styleButtons[i] = button;
+            styleRow.add(button);
+        }
+        styleBlock.add(styleRow, BorderLayout.CENTER);
+        card.add(styleBlock, BorderLayout.CENTER);
+        return card;
+    }
+
+    /** Highlights the style button matching the current preference. */
+    private void updateStyleSelection() {
+        for (int i = 0; i < styleButtons.length; i++) {
+            boolean selected = i + 1 == settings.pieceStyle();
+            styleButtons[i].setVariant(selected ? UiKit.Pill.GOLD : UiKit.Pill.CREAM_OUTLINE);
+        }
     }
 
     // ------------------------------------------------------------------

@@ -3,6 +3,7 @@ package onitama.client.ui;
 import onitama.client.state.ClientModel;
 import onitama.client.state.ClientModelListener;
 import onitama.client.state.Screen;
+import onitama.core.Board;
 import onitama.core.GameState;
 import onitama.core.Piece;
 import onitama.net.GameOver;
@@ -10,32 +11,37 @@ import onitama.net.GameOver;
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Component;
-import java.awt.Graphics2D;
+import java.awt.Dimension;
 import java.awt.FlowLayout;
+import java.awt.Font;
 import java.awt.Graphics;
-import java.awt.RenderingHints;
+import java.awt.Graphics2D;
 import java.awt.GridLayout;
+import java.awt.RenderingHints;
 import java.awt.event.KeyEvent;
 import java.util.List;
 
 import javax.swing.BorderFactory;
+import javax.swing.DefaultListCellRenderer;
 import javax.swing.JButton;
 import javax.swing.JComponent;
 import javax.swing.JLabel;
 import javax.swing.JList;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
-import javax.swing.DefaultListCellRenderer;
 import javax.swing.JScrollPane;
 import javax.swing.KeyStroke;
 import javax.swing.ScrollPaneConstants;
+import javax.swing.SwingConstants;
 
 /**
- * The game screen: opponent cards on top (patterns drawn from your own
- * perspective), the board in the center, your hand cards, the transit card,
- * the turn banner, move history and captured trays. Click a card and a piece
- * (either order) to see legal destinations, then click a destination to move.
- * ESC clears the selection.
+ * The game screen, composed like the physical tabletop (§18): the opponent's
+ * cards on top with their identity chip, the big board in the center, the
+ * player panel on the left (turn state, stats, contextual help, controls and
+ * the compact move list), the NEXT CARD panel on the right, and your hand
+ * with your identity chip at the bottom. Click a card and a piece (either
+ * order) to see legal destinations, then click a destination to move. ESC
+ * clears the selection.
  */
 public final class GamePanel extends JPanel {
 
@@ -44,9 +50,32 @@ public final class GamePanel extends JPanel {
     private final BoardPanel boardPanel = new BoardPanel();
     private final UiKit.HeadingLabel turnLabel = new UiKit.HeadingLabel(15f);
     private final JLabel opponentLabel = UiKit.label("", 14f);
+    private final JLabel nameLabel = UiKit.boldLabel("", 14f);
+    private final JLabel statsLabel = UiKit.label("", 10f);
+    private final JLabel helpLabel = new JLabel(" ", SwingConstants.CENTER);
+    private final JLabel turnCountLabel = new JLabel("00", SwingConstants.CENTER);
+    private final JLabel turnCaption = new JLabel("TURN", SwingConstants.CENTER);
+    private final JLabel redPiecesLabel = new JLabel("5", SwingConstants.CENTER);
+    private final JLabel bluePiecesLabel = new JLabel("5", SwingConstants.CENTER);
+    private final JLabel transitGoesLabel = UiKit.label(" ", 11f);
+    private final JPanel opponentCards = new JPanel(new FlowLayout(FlowLayout.CENTER, 10, 4));
+    private final JPanel myCards = new JPanel(new FlowLayout(FlowLayout.CENTER, 10, 4));
+    private final JPanel transitHolder = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 4));
+    private final JList<ClientModel.MoveInfo> historyList = new JList<>();
+    private final PieceTray myCapturesTray = new PieceTray("—");
+    private final PieceTray enemyCapturesTray = new PieceTray("—");
+    private final JComponent opponentDot = chipDot();
+    private final JLabel opponentChipLabel = UiKit.inkLabel("OPPONENT", 11f);
+    private final JComponent myDot = chipDot();
+    private final JLabel myChipLabel = UiKit.inkLabel("YOU", 11f);
+    private JPanel myColumn;
+    private JPanel historyViews;
+    private int lastEffectMove = -1;
+
+    /** The avatar: a mini Master figurine in the player's color. */
     private final JComponent avatar = new JComponent() {
         {
-            setPreferredSize(new java.awt.Dimension(40, 44));
+            setPreferredSize(new Dimension(40, 44));
             setOpaque(false);
         }
 
@@ -55,17 +84,18 @@ public final class GamePanel extends JPanel {
             Graphics2D g = (Graphics2D) graphics.create();
             g.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
                     RenderingHints.VALUE_ANTIALIAS_ON);
-            Color fill = myColor() == null ? Theme.AMBER : Theme.playerColor(myColor());
+            var color = myColor();
             UiKit.drawFigurine(g, getWidth() / 2, getHeight() - 6,
-                    getHeight() - 12, fill, true);
+                    getHeight() - 12,
+                    color == null ? Theme.AMBER : Theme.playerColor(color), true);
             g.dispose();
         }
     };
-    private final JLabel nameLabel = UiKit.boldLabel("", 14f);
-    private final JLabel statsLabel = UiKit.label("", 10f);
+
+    /** The online indicator dot. */
     private final JComponent onlineDot = new JComponent() {
         {
-            setPreferredSize(new java.awt.Dimension(10, 10));
+            setPreferredSize(new Dimension(10, 10));
             setOpaque(false);
         }
 
@@ -82,46 +112,58 @@ public final class GamePanel extends JPanel {
         }
     };
 
-    private onitama.core.PlayerColor myColor() {
-        return model.myColor();
+    /** A small cream chip with a colored dot, used for player identity. */
+    private static JComponent chipDot() {
+        return new JComponent() {
+            {
+                setPreferredSize(new Dimension(14, 14));
+                setOpaque(false);
+            }
+
+            @Override
+            protected void paintComponent(Graphics graphics) {
+                Graphics2D g = (Graphics2D) graphics.create();
+                g.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
+                        RenderingHints.VALUE_ANTIALIAS_ON);
+                g.setColor(getForeground());
+                g.fillOval(1, 1, 12, 12);
+                g.setColor(Theme.INK);
+                g.drawOval(1, 1, 12, 12);
+                g.dispose();
+            }
+        };
     }
-    private final JLabel transitLabel = UiKit.label("", 14f);
-    private final JPanel opponentCards = new JPanel(new FlowLayout(FlowLayout.CENTER, 10, 4));
-    private final JPanel myCards = new JPanel(new FlowLayout(FlowLayout.CENTER, 10, 4));
-    private final JList<ClientModel.MoveInfo> historyList = new JList<>();
-    private final PieceTray myCapturesTray = new PieceTray("—");
-    private final PieceTray enemyCapturesTray = new PieceTray("—");
-    private JPanel myColumn;
-    private int lastEffectMove = -1;
 
     /** Builds the game screen and subscribes it to the model. */
     public GamePanel(ClientModel model) {
         this.model = model;
-        setLayout(new BorderLayout(8, 8));
-        setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
+        setLayout(new BorderLayout(10, 8));
+        setBorder(BorderFactory.createEmptyBorder(8, 10, 8, 10));
         setBackground(Theme.BG);
 
         JPanel north = new JPanel(new BorderLayout());
         north.setBackground(Theme.BG);
-        opponentLabel.setHorizontalAlignment(javax.swing.SwingConstants.CENTER);
+        opponentLabel.setHorizontalAlignment(SwingConstants.CENTER);
+        opponentLabel.setFont(Theme.bold(13f));
         opponentCards.setBackground(Theme.BG);
         north.add(opponentLabel, BorderLayout.NORTH);
-        north.add(opponentCards, BorderLayout.SOUTH);
+        north.add(opponentCards, BorderLayout.CENTER);
+        JPanel opponentChipRow = new JPanel(new FlowLayout(FlowLayout.CENTER, 6, 6));
+        opponentChipRow.setBackground(Theme.BG);
+        opponentChipRow.add(opponentDot);
+        opponentChipRow.add(opponentChipLabel);
+        north.add(opponentChipRow, BorderLayout.SOUTH);
         add(north, BorderLayout.NORTH);
-
-        // My cards live in a left column so the board can grow big in the
-        // center on widescreen windows.
-        add(buildMyColumn(), BorderLayout.WEST);
 
         // The board stretches to fill all remaining space (responsive).
         JPanel center = new JPanel(new BorderLayout());
         center.setBackground(Theme.BG);
-        center.setBorder(BorderFactory.createEmptyBorder(4, 8, 4, 8));
         center.add(boardPanel, BorderLayout.CENTER);
         add(center, BorderLayout.CENTER);
 
-        add(buildHistoryPanel(), BorderLayout.EAST);
-        add(buildSouthPanel(), BorderLayout.SOUTH);
+        add(buildPlayerPanel(), BorderLayout.WEST);
+        add(buildNextCardPanel(), BorderLayout.EAST);
+        add(buildBottom(), BorderLayout.SOUTH);
 
         boardPanel.onClick(model::boardClicked);
         // ESC clears the card/piece selection.
@@ -165,6 +207,117 @@ public final class GamePanel extends JPanel {
         });
     }
 
+    // ------------------------------------------------------------------
+    // Left: player panel
+    // ------------------------------------------------------------------
+
+    private JPanel buildPlayerPanel() {
+        JPanel panel = UiKit.sticker(14);
+        panel.setLayout(new BorderLayout(8, 8));
+        panel.setPreferredSize(new Dimension(285, 100));
+
+        JPanel bannerRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 2));
+        bannerRow.setOpaque(false);
+        bannerRow.add(turnLabel);
+        panel.add(bannerRow, BorderLayout.NORTH);
+
+        // Middle stack: stats + help + moves.
+        JPanel middle = new JPanel(new BorderLayout(6, 6));
+        middle.setOpaque(false);
+        middle.add(buildPlayerBadge(), BorderLayout.NORTH);
+
+        // Dark stats block: turn counter and both piece counts.
+        JPanel stats = new JPanel(new GridLayout(1, 2, 8, 4));
+        stats.setBackground(Theme.INK);
+        stats.setBorder(BorderFactory.createEmptyBorder(8, 10, 8, 10));
+        JPanel turnBox = new JPanel(new GridLayout(2, 1, 0, 0));
+        turnBox.setBackground(Theme.INK);
+        turnCountLabel.setForeground(Theme.AMBER);
+        turnCountLabel.setFont(Theme.display(18f));
+        turnCaption.setFont(Theme.normal(10f));
+        turnCaption.setForeground(Theme.CREAM);
+        turnBox.add(turnCountLabel);
+        turnBox.add(turnCaption);
+        JPanel piecesBox = new JPanel(new GridLayout(2, 1, 0, 0));
+        piecesBox.setBackground(Theme.INK);
+        redPiecesLabel.setForeground(Theme.P2);
+        redPiecesLabel.setFont(Theme.display(15f));
+        bluePiecesLabel.setForeground(Theme.P1);
+        bluePiecesLabel.setFont(Theme.display(15f));
+        JPanel redRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
+        redRow.setBackground(Theme.INK);
+        redRow.add(redPiecesLabel);
+        redRow.add(smallCaption("RED PIECES", Theme.P2));
+        JPanel blueRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
+        blueRow.setBackground(Theme.INK);
+        blueRow.add(bluePiecesLabel);
+        blueRow.add(smallCaption("BLUE PIECES", Theme.P1));
+        piecesBox.add(redRow);
+        piecesBox.add(blueRow);
+        stats.add(turnBox);
+        stats.add(piecesBox);
+
+        JPanel stack = new JPanel(new BorderLayout(6, 6));
+        stack.setOpaque(false);
+        stack.add(stats, BorderLayout.NORTH);
+        helpLabel.setFont(Theme.normal(11.5f));
+        helpLabel.setForeground(Theme.INK);
+        helpLabel.setVerticalAlignment(SwingConstants.TOP);
+        stack.add(helpLabel, BorderLayout.CENTER);
+
+        // Compact move history with a themed empty state (§30).
+        historyList.setBackground(Theme.SURFACE);
+        historyList.setForeground(Theme.CREAM);
+        historyList.setCellRenderer(new MoveRowRenderer());
+        historyList.setFixedCellHeight(26);
+        JScrollPane scroll = new JScrollPane(historyList);
+        scroll.setBorder(BorderFactory.createEmptyBorder());
+        scroll.getViewport().setBackground(Theme.SURFACE);
+        scroll.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
+        scroll.setPreferredSize(new Dimension(240, 150));
+
+        JPanel emptyState = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 4));
+        emptyState.setBackground(Theme.SURFACE);
+        JLabel emptyLabel = UiKit.label("Waiting for the first move…", 11f);
+        emptyLabel.setForeground(Theme.MUTED);
+        var emptyIcon = new java.awt.image.BufferedImage(24, 24,
+                java.awt.image.BufferedImage.TYPE_INT_ARGB);
+        AnimalIcon.paint((Graphics2D) emptyIcon.getGraphics(), "frog", 0, 0, 24,
+                Theme.MUTED, Theme.INK, Theme.CREAM);
+        emptyLabel.setIcon(new javax.swing.ImageIcon(emptyIcon));
+        emptyState.add(emptyLabel);
+
+        historyViews = new JPanel(new java.awt.CardLayout());
+        historyViews.setOpaque(false);
+        historyViews.add(scroll, "moves");
+        historyViews.add(emptyState, "empty");
+        stack.add(historyViews, BorderLayout.SOUTH);
+        middle.add(stack, BorderLayout.CENTER);
+        panel.add(middle, BorderLayout.CENTER);
+
+        // Controls.
+        JPanel controls = new JPanel(new FlowLayout(FlowLayout.CENTER, 10, 2));
+        controls.setOpaque(false);
+        JButton menu = UiKit.pill("Menu", UiKit.Pill.CREAM_OUTLINE);
+        menu.addActionListener(event -> model.leaveToLobby());
+        controls.add(menu);
+        JButton resign = UiKit.pill("Resign", UiKit.Pill.DANGER);
+        resign.addActionListener(event -> confirmResign());
+        controls.add(resign);
+        panel.add(controls, BorderLayout.SOUTH);
+        return panel;
+    }
+
+    private onitama.core.PlayerColor myColor() {
+        return model.myColor();
+    }
+
+    /** Swaps between the move list and the themed empty state. */
+    private void showHistory(boolean hasMoves) {
+        ((java.awt.CardLayout) historyViews.getLayout()).show(historyViews,
+                hasMoves ? "moves" : "empty");
+    }
+
     /** The player profile panel: avatar, name, ELO/record, online dot (§16). */
     private JPanel buildPlayerBadge() {
         JPanel badge = new JPanel(new BorderLayout(8, 2));
@@ -182,120 +335,68 @@ public final class GamePanel extends JPanel {
         return badge;
     }
 
-    private JPanel buildHistoryPanel() {
-        JPanel panel = UiKit.surface(10);
-        panel.setLayout(new BorderLayout(6, 6));
-        panel.setPreferredSize(new java.awt.Dimension(262, 120));
+    /** A dark caption block: big value over a small label. */
+    private JPanel statBox(JComponent value, JLabel caption, Color valueColor) {
+        JPanel box = new JPanel(new GridLayout(2, 1, 0, 0));
+        box.setBackground(Theme.INK);
+        value.setForeground(valueColor);
+        value.setFont(Theme.display(18f));
+        caption.setFont(Theme.normal(10f));
+        caption.setForeground(Theme.CREAM);
+        box.add(value);
+        box.add(caption);
+        return box;
+    }
 
-        JLabel title = UiKit.boldLabel("MOVES", 13f);
-        panel.add(title, BorderLayout.NORTH);
+    private JLabel smallCaption(String text, Color color) {
+        JLabel label = new JLabel(text);
+        label.setFont(Theme.normal(9f));
+        label.setForeground(color);
+        return label;
+    }
 
-        historyList.setBackground(Theme.SURFACE);
-        historyList.setForeground(Theme.CREAM);
-        historyList.setCellRenderer(new MoveRowRenderer());
-        historyList.setFixedCellHeight(30);
-        JScrollPane scroll = new JScrollPane(historyList);
-        scroll.setBorder(BorderFactory.createEmptyBorder());
-        scroll.getViewport().setBackground(Theme.SURFACE);
-        scroll.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
-        panel.add(scroll, BorderLayout.CENTER);
+    // ------------------------------------------------------------------
+    // Right: next-card panel
+    // ------------------------------------------------------------------
 
-        // Capture trays: tiny figurines instead of words.
-        JPanel trays = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 2));
-        trays.setBackground(Theme.SURFACE);
-        trays.add(UiKit.label("TOOK", 10f));
-        trays.add(myCapturesTray);
-        JPanel separator = new JPanel() { };
-        separator.setBackground(Theme.SURFACE);
-        separator.setPreferredSize(new java.awt.Dimension(2, 18));
-        trays.add(separator);
-        trays.add(UiKit.label("LOST", 10f));
-        trays.add(enemyCapturesTray);
-        panel.add(trays, BorderLayout.SOUTH);
+    private JPanel buildNextCardPanel() {
+        JPanel panel = UiKit.sticker(14);
+        panel.setLayout(new BorderLayout(8, 8));
+        panel.setPreferredSize(new Dimension(240, 120));
+
+        JPanel nextHeader = new JPanel(new GridLayout(2, 1, 0, 0));
+        nextHeader.setBackground(Theme.CREAM);
+        nextHeader.add(UiKit.inkLabel("NEXT CARD", 15f));
+        transitGoesLabel.setForeground(Theme.INK);
+        nextHeader.add(transitGoesLabel);
+        panel.add(nextHeader, BorderLayout.NORTH);
+        JPanel transitCenter = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 4));
+        transitCenter.setOpaque(false);
+        transitCenter.add(transitHolder);
+        panel.add(transitCenter, BorderLayout.CENTER);
         return panel;
     }
 
-    /**
-     * Compact move rows (§17): "01 TIGER C3 → D4", the latest move
-     * highlighted, and a friendly illustrated empty state.
-     */
-    private final class MoveRowRenderer extends DefaultListCellRenderer {
-        @Override
-        public Component getListCellRendererComponent(JList<?> list, Object value,
-                int index, boolean selected, boolean focused) {
-            ClientModel.MoveInfo row = (ClientModel.MoveInfo) value;
-            JLabel label = (JLabel) super.getListCellRendererComponent(list,
-                    row.cardName(), index, selected, focused);
-            setFont(Theme.normal(12f));
-            setBorder(BorderFactory.createEmptyBorder(2, 6, 2, 6));
-            if (row.pass() && row.number() == 0) {
-                setText(row.cardName());
-                setForeground(Theme.MUTED);
-                setBackground(Theme.SURFACE);
-                setIcon(placeholderIcon());
-                setHorizontalTextPosition(javax.swing.SwingConstants.RIGHT);
-                return this;
-            }
-            String text = String.format("%02d  %s  %s → %s%s",
-                    row.number(), row.cardName().toUpperCase(),
-                    row.fromSquare(), row.toSquare(),
-                    row.capture() ? "  ✕" : "");
-            boolean latest = index == list.getModel().getSize() - 1;
-            setText(text);
-            setForeground(latest ? Theme.INK : Theme.CREAM);
-            setBackground(latest ? Theme.AMBER : Theme.SURFACE);
-            setOpaque(true);
-            setIcon(null);
-            return this;
-        }
+    // ------------------------------------------------------------------
+    // Bottom: my hand + identity chip
+    // ------------------------------------------------------------------
 
-        private javax.swing.Icon placeholderIcon() {
-            var image = new java.awt.image.BufferedImage(22, 22,
-                    java.awt.image.BufferedImage.TYPE_INT_ARGB);
-            AnimalIcon.paint((Graphics2D) image.getGraphics(), "frog", 0, 0, 22,
-                    Theme.MUTED, Theme.INK, Theme.CREAM);
-            return new javax.swing.ImageIcon(image);
-        }
-    }
-
-    /** The left column: your name, your two hand cards, the transit card. */
-    private JPanel buildMyColumn() {
-        myColumn = UiKit.surface(12);
-        myColumn.setLayout(new BorderLayout(8, 8));
-        myColumn.setPreferredSize(new java.awt.Dimension(230, 100));
-
-        myColumn.add(buildPlayerBadge(), BorderLayout.NORTH);
-
-        myCards.setLayout(new GridLayout(2, 1, 8, 8));
-        myCards.setBackground(Theme.SURFACE);
-        myCards.setOpaque(true);
-        myColumn.add(myCards, BorderLayout.CENTER);
-
-        JPanel transitRow = new JPanel(new FlowLayout(FlowLayout.CENTER, 4, 2));
-        transitRow.setBackground(Theme.SURFACE);
-        transitLabel.setFont(Theme.bold(12f));
-        transitRow.add(transitLabel);
-        myColumn.add(transitRow, BorderLayout.SOUTH);
-        return myColumn;
-    }
-
-    private JPanel buildSouthPanel() {
+    private JPanel buildBottom() {
         JPanel south = new JPanel(new BorderLayout(10, 0));
         south.setBackground(Theme.BG);
 
-        JPanel bannerRow = new JPanel(new FlowLayout(FlowLayout.CENTER));
-        bannerRow.setBackground(Theme.BG);
-        bannerRow.add(turnLabel);
-        south.add(bannerRow, BorderLayout.CENTER);
-
-        JPanel resignRow = new JPanel(new FlowLayout(FlowLayout.RIGHT));
-        resignRow.setBackground(Theme.BG);
-        JButton resign = UiKit.pill("Resign", UiKit.Pill.DANGER);
-        resign.addActionListener(event -> confirmResign());
-        resignRow.add(resign);
-        south.add(resignRow, BorderLayout.EAST);
+        south.add(myCards, BorderLayout.CENTER);
+        JPanel chipRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 10));
+        chipRow.setBackground(Theme.BG);
+        chipRow.add(myDot);
+        chipRow.add(myChipLabel);
+        south.add(chipRow, BorderLayout.EAST);
         return south;
     }
+
+    // ------------------------------------------------------------------
+    // Refresh (every model change)
+    // ------------------------------------------------------------------
 
     /** Redraws everything from the model (called on every match change). */
     private void refresh() {
@@ -303,51 +404,78 @@ public final class GamePanel extends JPanel {
         if (state == null) {
             return;
         }
-        opponentLabel.setText("vs  " + model.opponentName().toUpperCase());
-        opponentLabel.setForeground(Theme.playerColor(model.myColor().opponent()));
+        var myColor = model.myColor();
+        var opponent = myColor.opponent();
+
+        opponentLabel.setText("VS  " + model.opponentName().toUpperCase());
+        opponentLabel.setForeground(Theme.playerColor(opponent));
+        opponentDot.setForeground(Theme.playerColor(opponent));
+        opponentChipLabel.setText(opponent.name().toUpperCase() + "  ·  OPPONENT");
+        myDot.setForeground(Theme.playerColor(myColor));
+        myChipLabel.setText(myColor.name().toUpperCase() + "  ·  YOU");
+
         nameLabel.setText(model.me() == null ? "" : model.me().username().toUpperCase());
-        nameLabel.setForeground(Theme.playerColor(model.myColor()));
+        nameLabel.setForeground(Theme.playerColor(myColor));
         if (model.me() != null) {
             statsLabel.setText("ELO " + model.me().elo() + "   ·   "
                     + model.me().wins() + "W · " + model.me().losses() + "L");
         }
         avatar.repaint();
-        // Player identity: your column carries your color's top border.
-        myColumn.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createMatteBorder(3, 0, 0, 0,
-                        Theme.playerColor(model.myColor())),
-                BorderFactory.createEmptyBorder(4, 4, 4, 4)));
 
+        // Opponent cards: their color variant, dimmed, my perspective.
         opponentCards.removeAll();
-        state.hand(model.myColor().opponent()).forEach(card -> {
-            // Opponent patterns are drawn from MY perspective (pre-rotated)
-            // and dimmed so your own cards stand out.
-            opponentCards.add(new CardPanel(card, model.myColor().opponent(), true, null));
+        state.hand(opponent).forEach(card -> {
+            CardPanel oppCard = new CardPanel(card, opponent, true, null);
+            oppCard.setCardScale(0.50);
+            opponentCards.add(oppCard);
         });
 
+        // My cards: my color variant, hoverable, scaled for the bottom row.
         myCards.removeAll();
-        state.hand(model.myColor()).forEach(card -> {
-            CardPanel panel = new CardPanel(card, model.myColor(), false,
+        state.hand(myColor).forEach(card -> {
+            CardPanel panel = new CardPanel(card, myColor, false,
                     () -> model.cardClicked(card.id()));
-            panel.setCardScale(0.72);
+            panel.setCardScale(0.50);
             panel.setSelected(card.id().equals(model.selectedCardId()));
             JPanel slot = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 0));
-            slot.setBackground(Theme.SURFACE);
+            slot.setBackground(Theme.BG);
             slot.add(panel);
             myCards.add(slot);
         });
 
-        transitLabel.setText("transit: " + state.transit().name().toUpperCase());
-        turnLabel.setText(model.statusLine().toUpperCase());
-        turnLabel.setAccent(Theme.playerColor(state.turn()));
-        java.util.List<ClientModel.MoveInfo> moves = model.historyMoves();
-        historyList.setListData((moves.isEmpty()
-                ? new ClientModel.MoveInfo[]{ClientModel.MoveInfo.PLACEHOLDER}
-                : moves.toArray(new ClientModel.MoveInfo[0])));
-        myCapturesTray.setPieces(model.myCaptures());
-        enemyCapturesTray.setPieces(model.enemyCaptures());
+        // NEXT CARD panel: the transit card, headed for the current player.
+        transitHolder.removeAll();
+        CardPanel transit = new CardPanel(state.transit(), state.turn(), true, null);
+        transit.setCardScale(0.55);
+        transitHolder.add(transit);
+        transitGoesLabel.setText("GOES TO " + state.turn().name().toUpperCase());
 
-        boardPanel.setView(state, model.myColor());
+        turnLabel.setText(bannerText(state, myColor));
+        turnLabel.setAccent(Theme.playerColor(state.turn()));
+        turnCountLabel.setText(String.format("%02d", state.moveNumber()));
+        int redCount = 0;
+        int blueCount = 0;
+        for (int y = 0; y < Board.SIZE; y++) {
+            for (int x = 0; x < Board.SIZE; x++) {
+                Piece piece = state.board().pieceAt(x, y);
+                if (piece != null) {
+                    if (piece.color() == onitama.core.PlayerColor.BLUE) {
+                        blueCount++;
+                    } else {
+                        redCount++;
+                    }
+                }
+            }
+        }
+        redPiecesLabel.setText(String.valueOf(redCount));
+        bluePiecesLabel.setText(String.valueOf(blueCount));
+        helpLabel.setText(helpText(state, myColor));
+
+        List<ClientModel.MoveInfo> moves = model.historyMoves();
+        historyList.setListData(moves.toArray(new ClientModel.MoveInfo[0]));
+        showHistory(!moves.isEmpty());
+
+        boardPanel.setView(state, myColor);
         boardPanel.setSelection(model.selectedSquare(), model.highlightedTargets());
         boardPanel.setLastMove(state.lastMove());
         if (state.moveNumber() != lastEffectMove) {
@@ -356,9 +484,47 @@ public final class GamePanel extends JPanel {
                 boardPanel.playCaptureEffect(model.lastCaptureSquare(),
                         state.turn().opponent());
             }
+            if (state.lastMove() != null) {
+                Piece moved = state.board().pieceAt(state.lastMove().to());
+                if (moved != null) {
+                    boardPanel.animateMove(state.lastMove(), moved.color(), moved.master());
+                }
+            }
         }
         revalidate();
         repaint();
+    }
+
+    /** Short banner text: the game state in two words. */
+    private String bannerText(GameState state, onitama.core.PlayerColor myColor) {
+        if (!state.isOngoing()) {
+            return "GAME OVER";
+        }
+        if (state.turn() == myColor) {
+            return "YOUR TURN";
+        }
+        return "WAITING FOR " + model.opponentName().toUpperCase() + "…";
+    }
+
+    /** Contextual help line for the left panel (§13/§34 feedback). */
+    private String helpText(GameState state, onitama.core.PlayerColor myColor) {
+        if (!state.isOngoing()) {
+            return "The game is over.";
+        }
+        if (state.turn() != myColor) {
+            return "Waiting for " + model.opponentName() + "…";
+        }
+        if (model.selectedSquare() != null && model.selectedCardId() != null) {
+            Piece piece = state.board().pieceAt(model.selectedSquare());
+            String kind = piece != null && piece.master() ? "Master" : "Student";
+            return kind + " selected. Dots mark open squares; a ring marks a capture.";
+        }
+        if (model.selectedCardId() != null) {
+            String cardName = onitama.core.CardDeck
+                    .cardById(model.selectedCardId()).name();
+            return cardName + " selected — now pick a piece.";
+        }
+        return "Pick a card, then a piece. Dots mark where it can go.";
     }
 
     private void confirmResign() {
@@ -404,5 +570,48 @@ public final class GamePanel extends JPanel {
     private int opponentEloAfter(GameOver over) {
         return model.myColor() == onitama.core.PlayerColor.BLUE
                 ? over.redEloAfter() : over.blueEloAfter();
+    }
+
+    /**
+     * Compact move rows (§17): "01 TIGER C3 → D4", the latest move
+     * highlighted, and a friendly illustrated empty state.
+     */
+    private final class MoveRowRenderer extends DefaultListCellRenderer {
+        @Override
+        public Component getListCellRendererComponent(JList<?> list, Object value,
+                int index, boolean selected, boolean focused) {
+            ClientModel.MoveInfo row = (ClientModel.MoveInfo) value;
+            JLabel label = (JLabel) super.getListCellRendererComponent(list,
+                    row.cardName(), index, selected, focused);
+            setFont(Theme.normal(12f));
+            setBorder(BorderFactory.createEmptyBorder(2, 6, 2, 6));
+            if (row.pass() && row.number() == 0) {
+                setText(row.cardName());
+                setForeground(Theme.MUTED);
+                setBackground(Theme.SURFACE);
+                setIcon(placeholderIcon());
+                setHorizontalTextPosition(javax.swing.SwingConstants.RIGHT);
+                return this;
+            }
+            String text = String.format("%02d  %s  %s → %s%s",
+                    row.number(), row.cardName().toUpperCase(),
+                    row.fromSquare(), row.toSquare(),
+                    row.capture() ? "  ✕" : "");
+            boolean latest = index == list.getModel().getSize() - 1;
+            setText(text);
+            setForeground(latest ? Theme.INK : Theme.CREAM);
+            setBackground(latest ? Theme.AMBER : Theme.SURFACE);
+            setOpaque(true);
+            setIcon(null);
+            return this;
+        }
+
+        private javax.swing.Icon placeholderIcon() {
+            var image = new java.awt.image.BufferedImage(22, 22,
+                    java.awt.image.BufferedImage.TYPE_INT_ARGB);
+            AnimalIcon.paint((Graphics2D) image.getGraphics(), "frog", 0, 0, 22,
+                    Theme.MUTED, Theme.INK, Theme.CREAM);
+            return new javax.swing.ImageIcon(image);
+        }
     }
 }

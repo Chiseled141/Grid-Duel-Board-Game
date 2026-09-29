@@ -16,25 +16,29 @@ import java.awt.Image;
 import java.awt.RenderingHints;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.awt.event.MouseMotionAdapter;
 import java.util.List;
 import java.util.function.Consumer;
 
 import javax.swing.JComponent;
+import javax.swing.Timer;
 
 /**
- * The board canvas: a custom {@code paintComponent} drawing the 5x5 grid,
- * pieces, selection ring, legal-move dots and the last-move highlight. The
- * board is responsive — the cell size is recomputed from the panel's current
- * size, so the board fills whatever space the window gives it — and always
- * drawn from the viewer's side (own home row at the bottom); canonical
- * coordinates are mapped through a 180-degree flip for Red. Hand-designed
- * tiles/pieces from the AssetStore replace the drawn versions file by file.
- * Reused by the game screen and the replay viewer.
+ * The board canvas, rendered from the designed mat artwork (board-empty.png:
+ * parchment tiles, ink grid, torii temple marks and the wooden frame are all
+ * baked into the image). Pieces are the designed figurine sprites. The board
+ * is responsive — geometry is recomputed from the panel's current size — and
+ * always drawn from the viewer's side (own home row at the bottom). Highlights
+ * (selection, legal moves, last move, capture effect, move animation) layer
+ * on top; the drawn tiles/figurines remain the fallback when the artwork is
+ * missing. Reused by the game screen and the replay viewer.
  */
 public final class BoardPanel extends JComponent {
 
-    private static final int MARGIN = 10;
     private static final int MIN_CELL = 30;
+    /** The playfield's share of the board image (measured from the artwork). */
+    private static final double GRID_SHARE = 0.89;
+    private static final double GRID_INSET = 0.053;
 
     private GameState state;
     private PlayerColor viewColor = PlayerColor.BLUE;
@@ -46,13 +50,16 @@ public final class BoardPanel extends JComponent {
     private int cell = 64;
     private int originX;
     private int originY;
+    private int imgX;
+    private int imgY;
+    private int imgSize;
 
     private Move lastMove;
     private Square hoveredSquare;
     private CaptureEffect captureEffect;
     private Move animMove;
     private long animStart;
-    private Color animFill;
+    private PlayerColor animPlayer;
     private boolean animMaster;
 
     /** A short expanding-ring animation where a piece was captured. */
@@ -70,7 +77,7 @@ public final class BoardPanel extends JComponent {
                 }
             }
         });
-        addMouseMotionListener(new MouseAdapter() {
+        addMouseMotionListener(new MouseMotionAdapter() {
             @Override
             public void mouseMoved(MouseEvent event) {
                 Square square = squareAt(event.getX(), event.getY());
@@ -84,44 +91,31 @@ public final class BoardPanel extends JComponent {
     }
 
     /**
-     * Plays a brief expanding-ring effect where a piece was just captured,
-     * in the capturing player's color (§23: tasteful, no neon).
-     */
-    public void playCaptureEffect(Square square, PlayerColor byColor) {
-        captureEffect = new CaptureEffect(square, Theme.playerColor(byColor),
-                System.currentTimeMillis());
-        javax.swing.Timer animation = new javax.swing.Timer(40, event -> {
-            if (System.currentTimeMillis() - captureEffect.startMillis > 450) {
-                ((javax.swing.Timer) event.getSource()).stop();
-                captureEffect = null;
-            }
-            repaint();
-        });
-        animation.start();
-    }
-
-    /**
-     * Fits the board into the panel: the largest square cell size that fits
-     * both dimensions, centered.
+     * Fits the board: the mat image scales to the panel, and the playfield
+     * (its inner grid) defines the cell size and origin.
      */
     private void computeGeometry() {
-        int width = Math.max(getWidth(), 2 * MARGIN + Board.SIZE * MIN_CELL);
-        int height = Math.max(getHeight(), 2 * MARGIN + Board.SIZE * MIN_CELL);
-        cell = Math.max(MIN_CELL, Math.min((width - 2 * MARGIN) / Board.SIZE,
-                (height - 2 * MARGIN) / Board.SIZE));
-        originX = (width - Board.SIZE * cell) / 2;
-        originY = (height - Board.SIZE * cell) / 2;
+        int width = Math.max(getWidth(), 2 * MIN_CELL * Board.SIZE);
+        int height = Math.max(getHeight(), 2 * MIN_CELL * Board.SIZE);
+        imgSize = Math.min(width, height) - 12;
+        int gridPx = (int) (imgSize * GRID_SHARE);
+        cell = Math.max(MIN_CELL, gridPx / Board.SIZE);
+        int span = cell * Board.SIZE;
+        originX = (width - span) / 2;
+        originY = (height - span) / 2;
+        imgX = originX - (int) (imgSize * GRID_INSET);
+        imgY = originY - (int) (imgSize * GRID_INSET);
     }
 
     @Override
     public Dimension getPreferredSize() {
-        return new Dimension(2 * MARGIN + Board.SIZE * 64, 2 * MARGIN + Board.SIZE * 64);
+        return new Dimension(2 * MIN_CELL * Board.SIZE + 40,
+                2 * MIN_CELL * Board.SIZE + 40);
     }
 
     @Override
     public Dimension getMinimumSize() {
-        return new Dimension(2 * MARGIN + Board.SIZE * MIN_CELL,
-                2 * MARGIN + Board.SIZE * MIN_CELL);
+        return new Dimension(2 * MIN_CELL * Board.SIZE, 2 * MIN_CELL * Board.SIZE);
     }
 
     /** Sets the state to render and the side to view from. */
@@ -149,6 +143,27 @@ public final class BoardPanel extends JComponent {
         this.clickHandler = clickHandler;
     }
 
+    // The app-wide piece style (1 ink tokens, 2 seal stones, 3 ink
+    // silhouettes); shared by every board in the application.
+    private static volatile int pieceStyle = 1;
+
+    /** Sets the piece style used by all boards (lobby setting). */
+    public static void setDefaultPieceStyle(int style) {
+        pieceStyle = Math.max(1, Math.min(3, style));
+    }
+
+    /** The piece sprite for the current style, falling back to the legacy set. */
+    private static Image pieceSprite(boolean master, PlayerColor color) {
+        String kind = master ? "master" : "student";
+        String colorName = color.name().toLowerCase();
+        Image styled = AssetStore.optional("pieces/style" + pieceStyle
+                + "-" + kind + "-" + colorName + ".png");
+        if (styled != null) {
+            return styled;
+        }
+        return AssetStore.optional("piece-" + kind + "-" + colorName + ".png");
+    }
+
     /**
      * Animates the latest half-move: the moving figurine slides from its
      * origin to the destination instead of teleporting (§13).
@@ -156,12 +171,29 @@ public final class BoardPanel extends JComponent {
     public void animateMove(Move move, PlayerColor mover, boolean master) {
         animMove = move;
         animStart = System.currentTimeMillis();
-        animFill = Theme.playerColor(mover);
+        animPlayer = mover;
         animMaster = master;
-        javax.swing.Timer animation = new javax.swing.Timer(16, event -> {
+        Timer animation = new Timer(16, event -> {
             if (System.currentTimeMillis() - animStart > 240) {
-                ((javax.swing.Timer) event.getSource()).stop();
+                ((Timer) event.getSource()).stop();
                 animMove = null;
+            }
+            repaint();
+        });
+        animation.start();
+    }
+
+    /**
+     * Plays a brief expanding-ring effect where a piece was just captured,
+     * in the capturing player's color (§23: tasteful, no neon).
+     */
+    public void playCaptureEffect(Square square, PlayerColor byColor) {
+        captureEffect = new CaptureEffect(square, Theme.playerColor(byColor),
+                System.currentTimeMillis());
+        Timer animation = new Timer(40, event -> {
+            if (System.currentTimeMillis() - captureEffect.startMillis > 450) {
+                ((Timer) event.getSource()).stop();
+                captureEffect = null;
             }
             repaint();
         });
@@ -178,36 +210,12 @@ public final class BoardPanel extends JComponent {
             g.dispose();
             return;
         }
-        // Premium tabletop frame: shadow, warm wooden band, inner rim, rivets.
-        int grid = Board.SIZE * cell;
-        int frameOut = 12;
-        g.setColor(Theme.SHADOW);
-        g.fillRoundRect(originX - frameOut + 6, originY - frameOut + 6,
-                grid + 2 * frameOut, grid + 2 * frameOut, 22, 22);
-        g.setColor(Theme.BOARD_FRAME);
-        g.fillRoundRect(originX - frameOut, originY - frameOut,
-                grid + 2 * frameOut, grid + 2 * frameOut, 22, 22);
-        g.setColor(Theme.INK);
-        g.setStroke(new BasicStroke(2.5f));
-        g.drawRoundRect(originX - frameOut, originY - frameOut,
-                grid + 2 * frameOut, grid + 2 * frameOut, 22, 22);
-        g.setColor(Theme.BOARD_DARK);
-        g.drawRoundRect(originX - frameOut + 4, originY - frameOut + 4,
-                grid + 2 * frameOut - 8, grid + 2 * frameOut - 8, 16, 16);
-        for (int[] corner : new int[][]{{0, 0}, {1, 0}, {0, 1}, {1, 1}}) {
-            int rivetX = originX - frameOut / 2 + corner[0] * (grid + frameOut);
-            int rivetY = originY - frameOut / 2 + corner[1] * (grid + frameOut);
-            g.setColor(Theme.INK);
-            g.fillOval(rivetX - 3, rivetY - 3, 6, 6);
+        Image mat = AssetStore.optional("board-empty.png");
+        if (mat != null) {
+            g.drawImage(mat, imgX, imgY, imgSize, imgSize, null);
+        } else {
+            paintFallbackFrame(g);
         }
-        for (int y = 0; y < Board.SIZE; y++) {
-            for (int x = 0; x < Board.SIZE; x++) {
-                drawSquare(g, x, y);
-            }
-        }
-        // Temple arch markers on the two home-row center squares.
-        drawTempleMark(g, new Square(2, 0));
-        drawTempleMark(g, new Square(2, 4));
         if (lastMove != null) {
             overlay(g, lastMove.from());
             overlay(g, lastMove.to());
@@ -226,7 +234,7 @@ public final class BoardPanel extends JComponent {
             }
         }
         if (animating) {
-            drawMovingFigurine(g);
+            drawMovingPiece(g);
         }
         for (Square target : targets) {
             drawTargetDot(g, target);
@@ -240,36 +248,35 @@ public final class BoardPanel extends JComponent {
         g.dispose();
     }
 
-    /** Expanding, fading ring at the capture square. */
-    private void drawCaptureEffect(Graphics2D g, CaptureEffect effect) {
-        long elapsed = System.currentTimeMillis() - effect.startMillis();
-        double progress = Math.min(1.0, elapsed / 450.0);
-        int cx = displayX(effect.square().x()) * cell + originX + cell / 2;
-        int cy = displayY(effect.square().y()) * cell + originY + cell / 2;
-        int radius = (int) (cell * 0.3 + cell * 0.45 * progress);
-        g.setColor(new Color(effect.color().getRed(), effect.color().getGreen(),
-                effect.color().getBlue(), (int) (200 * (1 - progress))));
-        g.setStroke(new BasicStroke(4f));
-        g.drawOval(cx - radius, cy - radius, 2 * radius, 2 * radius);
+    /** Drawn wooden frame + parchment tiles when the mat artwork is absent. */
+    private void paintFallbackFrame(Graphics2D g) {
+        int grid = Board.SIZE * cell;
+        int frameOut = 12;
+        g.setColor(Theme.SHADOW);
+        g.fillRoundRect(originX - frameOut + 6, originY - frameOut + 6,
+                grid + 2 * frameOut, grid + 2 * frameOut, 22, 22);
+        g.setColor(Theme.BOARD_FRAME);
+        g.fillRoundRect(originX - frameOut, originY - frameOut,
+                grid + 2 * frameOut, grid + 2 * frameOut, 22, 22);
+        g.setColor(Theme.INK);
+        g.setStroke(new BasicStroke(2.5f));
+        g.drawRoundRect(originX - frameOut, originY - frameOut,
+                grid + 2 * frameOut, grid + 2 * frameOut, 22, 22);
+        for (int y = 0; y < Board.SIZE; y++) {
+            for (int x = 0; x < Board.SIZE; x++) {
+                int px = displayX(x) * cell + originX;
+                int py = displayY(y) * cell + originY;
+                g.setColor((x + y) % 2 == 0 ? Theme.BOARD_LIGHT : Theme.BOARD_LIGHT.darker());
+                g.fillRect(px, py, cell, cell);
+                g.setColor(new Color(35, 31, 32, 70));
+                g.drawRect(px, py, cell, cell);
+            }
+        }
+        drawTempleMark(g, new Square(2, 0));
+        drawTempleMark(g, new Square(2, 4));
     }
 
-    /** Draws the sliding figurine between origin and destination. */
-    private void drawMovingFigurine(Graphics2D g) {
-        long elapsed = System.currentTimeMillis() - animStart;
-        double progress = Math.min(1.0, elapsed / 240.0);
-        double eased = 1 - (1 - progress) * (1 - progress); // ease-out
-        int fromX = displayX(animMove.from().x()) * cell + originX + cell / 2;
-        int fromY = displayY(animMove.from().y()) * cell + originY;
-        int toX = displayX(animMove.to().x()) * cell + originX + cell / 2;
-        int toY = displayY(animMove.to().y()) * cell + originY;
-        int cx = (int) (fromX + (toX - fromX) * eased);
-        int baseY = (int) (fromY + (toY - fromY) * eased + cell - 7
-                - Math.sin(progress * Math.PI) * cell * 0.18);
-        UiKit.drawFigurine(g, cx, baseY, (int) (cell * (animMaster ? 0.82 : 0.64)),
-                animFill, animMaster);
-    }
-
-    /** A subtle torii-style marker on the temple arch squares. */
+    /** A subtle torii-style marker on the temple arch squares (fallback only). */
     private void drawTempleMark(Graphics2D g, Square square) {
         int px = displayX(square.x()) * cell + originX;
         int py = displayY(square.y()) * cell + originY;
@@ -281,39 +288,42 @@ public final class BoardPanel extends JComponent {
         g.drawLine(px + cell - cell / 3, top + 3, px + cell - cell / 3, top + cell / 4);
     }
 
-    private void drawSquare(Graphics2D g, int x, int y) {
-        Image tile = AssetStore.optional(
-                (x + y) % 2 == 0 ? "board-tile-light.png" : "board-tile-dark.png");
-        int px = displayX(x) * cell + originX;
-        int py = displayY(y) * cell + originY;
-        if (tile != null) {
-            g.drawImage(tile, px, py, cell, cell, null);
-        } else {
-            g.setColor((x + y) % 2 == 0 ? Theme.BOARD_LIGHT : Theme.BOARD_DARK);
-            g.fillRect(px, py, cell, cell);
-        }
-        g.setColor(Theme.OUTLINE);
-        g.setStroke(new BasicStroke(1.5f));
-        g.drawRect(px, py, cell, cell);
-    }
-
     private void drawPiece(Graphics2D g, int x, int y, Piece piece) {
-        Image sprite = AssetStore.optional(
-                "piece-" + piece.color().name().toLowerCase()
-                        + (piece.master() ? "-master" : "-student") + ".png");
+        Image sprite = pieceSprite(piece.master(), piece.color());
         int px = displayX(x) * cell + originX;
         int py = displayY(y) * cell + originY;
-        int cx = px + cell / 2;
         if (sprite != null) {
-            int inset = cell / 10;
-            g.drawImage(sprite, px + inset, py + inset, cell - 2 * inset, cell - 2 * inset, null);
+            int inset = (int) (cell * (piece.master() ? 0.06 : 0.12));
+            g.drawImage(sprite, px + inset, py + inset,
+                    cell - 2 * inset, cell - 2 * inset, null);
             return;
         }
-        // Pawn silhouettes: shorter students, taller masters (like the real game).
-        int height = (int) (cell * (piece.master() ? 0.82 : 0.64));
-        int baseY = py + cell - 7;
-        Color fill = piece.color() == PlayerColor.BLUE ? Theme.SKY : Theme.CORAL;
-        UiKit.drawFigurine(g, cx, baseY, height, fill, piece.master());
+        Color fill = piece.color() == PlayerColor.BLUE ? Theme.P1 : Theme.P2;
+        UiKit.drawFigurine(g, px + cell / 2, py + cell - 7,
+                (int) (cell * (piece.master() ? 0.82 : 0.64)), fill, piece.master());
+    }
+
+    /** Draws the sliding figurine between origin and destination. */
+    private void drawMovingPiece(Graphics2D g) {
+        long elapsed = System.currentTimeMillis() - animStart;
+        double progress = Math.min(1.0, elapsed / 240.0);
+        double eased = 1 - (1 - progress) * (1 - progress); // ease-out
+        boolean master = animMaster;
+        Image sprite = pieceSprite(master, animPlayer);
+        int fromX = displayX(animMove.from().x()) * cell + originX + cell / 2;
+        int fromY = displayY(animMove.from().y()) * cell + originY;
+        int toX = displayX(animMove.to().x()) * cell + originX + cell / 2;
+        int toY = displayY(animMove.to().y()) * cell + originY;
+        int cx = (int) (fromX + (toX - fromX) * eased);
+        int cy = (int) (fromY + (toY - fromY) * eased - Math.sin(progress * Math.PI) * cell * 0.15);
+        if (sprite != null) {
+            int size = (int) (cell * (master ? 0.88 : 0.76));
+            g.drawImage(sprite, cx - size / 2, cy - size / 2, size, size, null);
+        } else {
+            UiKit.drawFigurine(g, cx, cy + cell / 2 - 7,
+                    (int) (cell * (master ? 0.82 : 0.64)),
+                    Theme.playerColor(animPlayer), master);
+        }
     }
 
     private void drawTargetDot(Graphics2D g, Square target) {
@@ -347,7 +357,7 @@ public final class BoardPanel extends JComponent {
         int py = displayY(square.y()) * cell + originY;
         g.setColor(Theme.playerColor(viewColor));
         g.setStroke(new BasicStroke(3.5f));
-        g.drawRect(px + 2, py + 2, cell - 4, cell - 4);
+        g.drawOval(px + 3, py + 3, cell - 6, cell - 6);
     }
 
     private void overlay(Graphics2D g, Square square) {
@@ -355,6 +365,19 @@ public final class BoardPanel extends JComponent {
         int py = displayY(square.y()) * cell + originY;
         g.setColor(new Color(252, 186, 40, 56));
         g.fillRect(px, py, cell, cell);
+    }
+
+    /** Expanding, fading ring at the capture square. */
+    private void drawCaptureEffect(Graphics2D g, CaptureEffect effect) {
+        long elapsed = System.currentTimeMillis() - effect.startMillis();
+        double progress = Math.min(1.0, elapsed / 450.0);
+        int cx = displayX(effect.square().x()) * cell + originX + cell / 2;
+        int cy = displayY(effect.square().y()) * cell + originY + cell / 2;
+        int radius = (int) (cell * 0.3 + cell * 0.45 * progress);
+        g.setColor(new Color(effect.color().getRed(), effect.color().getGreen(),
+                effect.color().getBlue(), (int) (200 * (1 - progress))));
+        g.setStroke(new BasicStroke(4f));
+        g.drawOval(cx - radius, cy - radius, 2 * radius, 2 * radius);
     }
 
     /** Maps a mouse position to a canonical square, or null outside the grid. */

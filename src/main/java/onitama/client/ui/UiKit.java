@@ -68,37 +68,58 @@ public final class UiKit {
     }
 
     /**
-     * Creates a pill button: fully rounded, uppercase display font, and a
-     * hard charcoal shadow that the button "sinks" into when pressed and
-     * lifts slightly on hover.
+     * A pill button: fully rounded, uppercase display font, and a hard
+     * charcoal shadow that the button "sinks" into when pressed and lifts
+     * slightly on hover. The variant can be changed after construction.
      */
-    public static JButton pill(String text, Pill variant) {
-        JButton button = new JButton(text.toUpperCase()) {
-            @Override
-            protected void paintComponent(Graphics graphics) {
-                Graphics2D g = (Graphics2D) graphics.create();
-                g.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
-                        RenderingHints.VALUE_ANTIALIAS_ON);
-                boolean pressed = getModel().isPressed();
-                boolean hover = getModel().isRollover() && isEnabled();
-                int shadow = pressed ? 1 : hover ? SHADOW + 2 : SHADOW;
-                int w = getWidth() - shadow;
-                int h = getHeight() - shadow;
-                int arc = Math.min(h, 22);
-                if (!pressed) {
-                    g.setColor(Theme.SHADOW);
-                    g.fillRoundRect(shadow, shadow, w, h, arc, arc);
-                }
-                int sink = pressed ? 2 : 0;
-                g.setColor(hover && !pressed ? lighten(variant.fill) : variant.fill);
-                g.fillRoundRect(sink, sink, w, h, arc, arc);
-                g.setColor(variant.border);
-                g.setStroke(new java.awt.BasicStroke(2f));
-                g.drawRoundRect(sink, sink, w - 1, h - 1, arc, arc);
-                g.dispose();
-                super.paintComponent(graphics);
+    public static class PillButton extends JButton {
+        private Pill variant;
+        private float fontScale = 1f;
+
+        public PillButton(String text, Pill variant) {
+            super(text.toUpperCase());
+            this.variant = variant;
+            setRolloverEnabled(true);
+        }
+
+        public void setVariant(Pill variant) {
+            this.variant = variant;
+            repaint();
+        }
+
+        public void setFontScale(float fontScale) {
+            this.fontScale = fontScale;
+            setFont(Theme.display(14f * fontScale));
+        }
+
+        @Override
+        protected void paintComponent(Graphics graphics) {
+            Graphics2D g = (Graphics2D) graphics.create();
+            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
+                    RenderingHints.VALUE_ANTIALIAS_ON);
+            boolean pressed = getModel().isPressed();
+            boolean hover = getModel().isRollover() && isEnabled();
+            int shadow = pressed ? 1 : hover ? SHADOW + 2 : SHADOW;
+            int w = getWidth() - shadow;
+            int h = getHeight() - shadow;
+            int arc = Math.min(h, 22);
+            if (!pressed) {
+                g.setColor(Theme.SHADOW);
+                g.fillRoundRect(shadow, shadow, w, h, arc, arc);
             }
-        };
+            int sink = pressed ? 2 : 0;
+            g.setColor(hover && !pressed ? lighten(variant.fill) : variant.fill);
+            g.fillRoundRect(sink, sink, w, h, arc, arc);
+            g.setColor(variant.border);
+            g.setStroke(new java.awt.BasicStroke(2f));
+            g.drawRoundRect(sink, sink, w - 1, h - 1, arc, arc);
+            g.dispose();
+            super.paintComponent(graphics);
+        }
+    }
+
+    public static PillButton pill(String text, Pill variant) {
+        PillButton button = new PillButton(text, variant);
         button.setContentAreaFilled(false);
         button.setFocusPainted(false);
         button.setOpaque(false);
@@ -113,6 +134,18 @@ public final class UiKit {
         String label = text.toUpperCase();
         button.setPreferredSize(new java.awt.Dimension(
                 metrics.stringWidth(label) + 62, metrics.getHeight() + 24 + SHADOW));
+        return button;
+    }
+
+    /** A smaller pill for compact cards like the lobby settings. */
+    public static PillButton miniPill(String text, Pill variant) {
+        PillButton button = pill(text, variant);
+        button.setFont(Theme.display(9f));
+        FontMetrics metrics = button.getFontMetrics(button.getFont());
+        button.setPreferredSize(new java.awt.Dimension(
+                metrics.stringWidth(text.toUpperCase()) + 30,
+                metrics.getHeight() + 16 + SHADOW));
+        button.setBorder(BorderFactory.createEmptyBorder(4, 10, 4 + SHADOW, 10 + SHADOW));
         return button;
     }
 
