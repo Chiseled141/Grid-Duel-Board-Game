@@ -144,6 +144,23 @@ public final class GamePanel extends JPanel {
         };
     }
 
+    /** The sumi-e painting behind the match (same artwork as the lobby). */
+    @Override
+    protected void paintComponent(Graphics graphics) {
+        super.paintComponent(graphics);
+        java.awt.Image background = AssetStore.optional("menu-background.png");
+        if (background == null) {
+            return;
+        }
+        Graphics2D g = (Graphics2D) graphics.create();
+        double scale = Math.max(getWidth() / (double) background.getWidth(null),
+                getHeight() / (double) background.getHeight(null));
+        int w = (int) (background.getWidth(null) * scale);
+        int h = (int) (background.getHeight(null) * scale);
+        g.drawImage(background, (getWidth() - w) / 2, (getHeight() - h) / 2, w, h, null);
+        g.dispose();
+    }
+
     /** Builds the game screen and subscribes it to the model. */
     public GamePanel(ClientModel model) {
         this.model = model;
