@@ -1,6 +1,5 @@
 package onitama.client.ui;
 
-import javax.swing.AbstractButton;
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
 import javax.swing.JComponent;
@@ -464,7 +463,4 @@ public final class UiKit {
         return g;
     }
 
-    static RoundRectangle2D roundRect(double x, double y, double w, double h, double r) {
-        return new RoundRectangle2D.Double(x, y, w, h, r, r);
-    }
 }

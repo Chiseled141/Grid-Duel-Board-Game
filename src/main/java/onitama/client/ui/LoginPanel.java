@@ -64,13 +64,11 @@ public final class LoginPanel extends JPanel {
         card.add(title, constraints);
 
         constraints.gridwidth = 1;
-        addFieldRow(card, constraints, 1, "SERVER HOST", hostField);
-        addFieldRow(card, constraints, 2, "SERVER PORT", portField);
-        addFieldRow(card, constraints, 3, "USERNAME", usernameField);
-        addFieldRow(card, constraints, 4, "PASSWORD", passwordField);
+        addFieldRow(card, constraints, 1, "USERNAME", usernameField);
+        addFieldRow(card, constraints, 2, "PASSWORD", passwordField);
 
         constraints.gridx = 0;
-        constraints.gridy = 5;
+        constraints.gridy = 3;
         JButton register = UiKit.pill("Register", UiKit.Pill.GOLD);
         register.addActionListener(event -> submit(false));
         card.add(register, constraints);
@@ -80,7 +78,7 @@ public final class LoginPanel extends JPanel {
         card.add(login, constraints);
 
         constraints.gridx = 0;
-        constraints.gridy = 6;
+        constraints.gridy = 4;
         constraints.gridwidth = 2;
         errorLabel.setForeground(Theme.CORAL);
         errorLabel.setFont(Theme.bold(13f));
