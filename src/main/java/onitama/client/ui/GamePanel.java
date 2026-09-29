@@ -22,6 +22,8 @@ import java.awt.event.KeyEvent;
 import java.util.List;
 
 import javax.swing.BorderFactory;
+import javax.swing.Box;
+import javax.swing.BoxLayout;
 import javax.swing.DefaultListCellRenderer;
 import javax.swing.JButton;
 import javax.swing.JComponent;
@@ -35,13 +37,12 @@ import javax.swing.ScrollPaneConstants;
 import javax.swing.SwingConstants;
 
 /**
- * The game screen, composed like the physical tabletop (§18): the opponent's
- * cards on top with their identity chip, the big board in the center, the
- * player panel on the left (turn state, stats, contextual help, controls and
- * the compact move list), the NEXT CARD panel on the right, and your hand
- * with your identity chip at the bottom. Click a card and a piece (either
- * order) to see legal destinations, then click a destination to move. ESC
- * clears the selection.
+ * The game screen, composed like the physical tabletop: your hand cards big
+ * on the left, the turn banner + player badge + stats + NEXT CARD + controls
+ * + move history stacked on the right, the opponent's cards on top with
+ * their identity chip, and the big board in the center. Click a card and a
+ * piece (either order) to see legal destinations, then click a destination
+ * to move. ESC clears the selection.
  */
 public final class GamePanel extends JPanel {
 
@@ -57,9 +58,9 @@ public final class GamePanel extends JPanel {
     private final JLabel turnCaption = new JLabel("TURN", SwingConstants.CENTER);
     private final JLabel redPiecesLabel = new JLabel("5", SwingConstants.CENTER);
     private final JLabel bluePiecesLabel = new JLabel("5", SwingConstants.CENTER);
-    private final JLabel transitGoesLabel = UiKit.label(" ", 11f);
-    private final JPanel opponentCards = new JPanel(new FlowLayout(FlowLayout.CENTER, 10, 4));
-    private final JPanel myCards = new JPanel(new FlowLayout(FlowLayout.CENTER, 10, 4));
+    private final JLabel transitGoesLabel = UiKit.inkLabel(" ", 11f);
+    private final JPanel opponentCards = new JPanel(new FlowLayout(FlowLayout.CENTER, 12, 4));
+    private final JPanel myCards = new JPanel(new GridLayout(2, 1, 12, 12));
     private final JPanel transitHolder = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 4));
     private final JList<ClientModel.MoveInfo> historyList = new JList<>();
     private final PieceTray myCapturesTray = new PieceTray("—");
@@ -68,9 +69,18 @@ public final class GamePanel extends JPanel {
     private final JLabel opponentChipLabel = UiKit.inkLabel("OPPONENT", 11f);
     private final JComponent myDot = chipDot();
     private final JLabel myChipLabel = UiKit.inkLabel("YOU", 11f);
-    private JPanel myColumn;
     private JPanel historyViews;
     private int lastEffectMove = -1;
+
+    private onitama.core.PlayerColor myColor() {
+        return model.myColor();
+    }
+
+    /** Swaps between the move list and the themed empty state. */
+    private void showHistory(boolean hasMoves) {
+        ((java.awt.CardLayout) historyViews.getLayout()).show(historyViews,
+                hasMoves ? "moves" : "empty");
+    }
 
     /** The avatar: a mini Master figurine in the player's color. */
     private final JComponent avatar = new JComponent() {
@@ -161,9 +171,8 @@ public final class GamePanel extends JPanel {
         center.add(boardPanel, BorderLayout.CENTER);
         add(center, BorderLayout.CENTER);
 
-        add(buildPlayerPanel(), BorderLayout.WEST);
-        add(buildNextCardPanel(), BorderLayout.EAST);
-        add(buildBottom(), BorderLayout.SOUTH);
+        add(buildHandColumn(), BorderLayout.WEST);
+        add(buildRightColumn(), BorderLayout.EAST);
 
         boardPanel.onClick(model::boardClicked);
         // ESC clears the card/piece selection.
@@ -208,28 +217,45 @@ public final class GamePanel extends JPanel {
     }
 
     // ------------------------------------------------------------------
-    // Left: player panel
+    // Left: your hand cards, big
     // ------------------------------------------------------------------
 
-    private JPanel buildPlayerPanel() {
-        JPanel panel = UiKit.sticker(14);
-        panel.setLayout(new BorderLayout(8, 8));
-        panel.setPreferredSize(new Dimension(285, 100));
+    private JPanel buildHandColumn() {
+        JPanel column = new JPanel(new BorderLayout());
+        column.setBackground(Theme.BG);
+        column.setPreferredSize(new Dimension(230, 100));
+        myCards.setOpaque(false);
+        column.add(myCards, BorderLayout.NORTH);
+        return column;
+    }
 
-        JPanel bannerRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 2));
-        bannerRow.setOpaque(false);
+    // ------------------------------------------------------------------
+    // Right: banner + badge + stats + help + next card + controls + moves
+    // ------------------------------------------------------------------
+
+    private java.awt.Component buildRightColumn() {
+        JPanel column = new JPanel();
+        column.setBackground(Theme.BG);
+        column.setLayout(new BoxLayout(column, BoxLayout.Y_AXIS));
+        column.setPreferredSize(new Dimension(255, 100));
+
+        // Turn banner.
+        JPanel bannerRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+        bannerRow.setBackground(Theme.BG);
         bannerRow.add(turnLabel);
-        panel.add(bannerRow, BorderLayout.NORTH);
+        bannerRow.setAlignmentX(Component.CENTER_ALIGNMENT);
+        column.add(bannerRow);
 
-        // Middle stack: stats + help + moves.
-        JPanel middle = new JPanel(new BorderLayout(6, 6));
-        middle.setOpaque(false);
-        middle.add(buildPlayerBadge(), BorderLayout.NORTH);
+        // Player badge.
+        JPanel badge = buildPlayerBadge();
+        badge.setAlignmentX(Component.CENTER_ALIGNMENT);
+        column.add(badge);
 
-        // Dark stats block: turn counter and both piece counts.
+        // Stats block.
         JPanel stats = new JPanel(new GridLayout(1, 2, 8, 4));
         stats.setBackground(Theme.INK);
         stats.setBorder(BorderFactory.createEmptyBorder(8, 10, 8, 10));
+        stats.setAlignmentX(Component.CENTER_ALIGNMENT);
         JPanel turnBox = new JPanel(new GridLayout(2, 1, 0, 0));
         turnBox.setBackground(Theme.INK);
         turnCountLabel.setForeground(Theme.AMBER);
@@ -256,14 +282,41 @@ public final class GamePanel extends JPanel {
         piecesBox.add(blueRow);
         stats.add(turnBox);
         stats.add(piecesBox);
+        column.add(stats);
 
-        JPanel stack = new JPanel(new BorderLayout(6, 6));
-        stack.setOpaque(false);
-        stack.add(stats, BorderLayout.NORTH);
-        helpLabel.setFont(Theme.normal(11.5f));
-        helpLabel.setForeground(Theme.INK);
-        helpLabel.setVerticalAlignment(SwingConstants.TOP);
-        stack.add(helpLabel, BorderLayout.CENTER);
+        // Contextual help line.
+        helpLabel.setFont(Theme.normal(11f));
+        helpLabel.setForeground(Theme.MUTED);
+        helpLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+        column.add(helpLabel);
+
+        // NEXT CARD: the transit card, headed for the current player.
+        JPanel nextCard = UiKit.sticker(12);
+        nextCard.setLayout(new BorderLayout(8, 4));
+        JPanel nextHeader = new JPanel(new GridLayout(2, 1, 0, 0));
+        nextHeader.setBackground(Theme.CREAM);
+        nextHeader.add(UiKit.inkLabel("NEXT CARD", 14f));
+        transitGoesLabel.setForeground(Theme.INK);
+        nextHeader.add(transitGoesLabel);
+        nextCard.add(nextHeader, BorderLayout.NORTH);
+        JPanel transitCenter = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 0));
+        transitCenter.setOpaque(false);
+        transitCenter.add(transitHolder);
+        nextCard.add(transitCenter, BorderLayout.CENTER);
+        nextCard.setAlignmentX(Component.CENTER_ALIGNMENT);
+        column.add(nextCard);
+
+        // Controls.
+        JPanel controls = new JPanel(new FlowLayout(FlowLayout.CENTER, 10, 2));
+        controls.setOpaque(false);
+        JButton menu = UiKit.pill("Menu", UiKit.Pill.CREAM_OUTLINE);
+        menu.addActionListener(event -> model.leaveToLobby());
+        controls.add(menu);
+        JButton resign = UiKit.pill("Resign", UiKit.Pill.DANGER);
+        resign.addActionListener(event -> confirmResign());
+        controls.add(resign);
+        controls.setAlignmentX(Component.CENTER_ALIGNMENT);
+        column.add(controls);
 
         // Compact move history with a themed empty state (§30).
         historyList.setBackground(Theme.SURFACE);
@@ -274,7 +327,7 @@ public final class GamePanel extends JPanel {
         scroll.setBorder(BorderFactory.createEmptyBorder());
         scroll.getViewport().setBackground(Theme.SURFACE);
         scroll.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
-        scroll.setPreferredSize(new Dimension(240, 150));
+        scroll.setPreferredSize(new Dimension(230, 96));
 
         JPanel emptyState = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 4));
         emptyState.setBackground(Theme.SURFACE);
@@ -287,35 +340,24 @@ public final class GamePanel extends JPanel {
         emptyLabel.setIcon(new javax.swing.ImageIcon(emptyIcon));
         emptyState.add(emptyLabel);
 
+        JPanel movesCard = UiKit.surface(10);
+        movesCard.setLayout(new BorderLayout(6, 6));
+        movesCard.add(UiKit.boldLabel("MOVES", 13f), BorderLayout.NORTH);
         historyViews = new JPanel(new java.awt.CardLayout());
         historyViews.setOpaque(false);
         historyViews.add(scroll, "moves");
         historyViews.add(emptyState, "empty");
-        stack.add(historyViews, BorderLayout.SOUTH);
-        middle.add(stack, BorderLayout.CENTER);
-        panel.add(middle, BorderLayout.CENTER);
+        movesCard.add(historyViews, BorderLayout.CENTER);
+        movesCard.setAlignmentX(Component.CENTER_ALIGNMENT);
+        column.add(movesCard);
 
-        // Controls.
-        JPanel controls = new JPanel(new FlowLayout(FlowLayout.CENTER, 10, 2));
-        controls.setOpaque(false);
-        JButton menu = UiKit.pill("Menu", UiKit.Pill.CREAM_OUTLINE);
-        menu.addActionListener(event -> model.leaveToLobby());
-        controls.add(menu);
-        JButton resign = UiKit.pill("Resign", UiKit.Pill.DANGER);
-        resign.addActionListener(event -> confirmResign());
-        controls.add(resign);
-        panel.add(controls, BorderLayout.SOUTH);
-        return panel;
-    }
-
-    private onitama.core.PlayerColor myColor() {
-        return model.myColor();
-    }
-
-    /** Swaps between the move list and the themed empty state. */
-    private void showHistory(boolean hasMoves) {
-        ((java.awt.CardLayout) historyViews.getLayout()).show(historyViews,
-                hasMoves ? "moves" : "empty");
+        // The right column scrolls if the window is too short — children
+        // must never overlap each other.
+        JScrollPane eastScroll = new JScrollPane(column);
+        eastScroll.setBorder(BorderFactory.createEmptyBorder());
+        eastScroll.getVerticalScrollBar().setUnitIncrement(24);
+        eastScroll.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
+        return eastScroll;
     }
 
     /** The player profile panel: avatar, name, ELO/record, online dot (§16). */
@@ -356,45 +398,6 @@ public final class GamePanel extends JPanel {
     }
 
     // ------------------------------------------------------------------
-    // Right: next-card panel
-    // ------------------------------------------------------------------
-
-    private JPanel buildNextCardPanel() {
-        JPanel panel = UiKit.sticker(14);
-        panel.setLayout(new BorderLayout(8, 8));
-        panel.setPreferredSize(new Dimension(240, 120));
-
-        JPanel nextHeader = new JPanel(new GridLayout(2, 1, 0, 0));
-        nextHeader.setBackground(Theme.CREAM);
-        nextHeader.add(UiKit.inkLabel("NEXT CARD", 15f));
-        transitGoesLabel.setForeground(Theme.INK);
-        nextHeader.add(transitGoesLabel);
-        panel.add(nextHeader, BorderLayout.NORTH);
-        JPanel transitCenter = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 4));
-        transitCenter.setOpaque(false);
-        transitCenter.add(transitHolder);
-        panel.add(transitCenter, BorderLayout.CENTER);
-        return panel;
-    }
-
-    // ------------------------------------------------------------------
-    // Bottom: my hand + identity chip
-    // ------------------------------------------------------------------
-
-    private JPanel buildBottom() {
-        JPanel south = new JPanel(new BorderLayout(10, 0));
-        south.setBackground(Theme.BG);
-
-        south.add(myCards, BorderLayout.CENTER);
-        JPanel chipRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 10));
-        chipRow.setBackground(Theme.BG);
-        chipRow.add(myDot);
-        chipRow.add(myChipLabel);
-        south.add(chipRow, BorderLayout.EAST);
-        return south;
-    }
-
-    // ------------------------------------------------------------------
     // Refresh (every model change)
     // ------------------------------------------------------------------
 
@@ -426,16 +429,15 @@ public final class GamePanel extends JPanel {
         opponentCards.removeAll();
         state.hand(opponent).forEach(card -> {
             CardPanel oppCard = new CardPanel(card, opponent, true, null);
-            oppCard.setCardScale(0.50);
+            oppCard.setCardScale(0.55);
             opponentCards.add(oppCard);
         });
 
-        // My cards: my color variant, hoverable, scaled for the bottom row.
+        // My cards: my color variant, hoverable, stacked on the left.
         myCards.removeAll();
         state.hand(myColor).forEach(card -> {
             CardPanel panel = new CardPanel(card, myColor, false,
                     () -> model.cardClicked(card.id()));
-            panel.setCardScale(0.50);
             panel.setSelected(card.id().equals(model.selectedCardId()));
             JPanel slot = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 0));
             slot.setBackground(Theme.BG);
@@ -446,7 +448,7 @@ public final class GamePanel extends JPanel {
         // NEXT CARD panel: the transit card, headed for the current player.
         transitHolder.removeAll();
         CardPanel transit = new CardPanel(state.transit(), state.turn(), true, null);
-        transit.setCardScale(0.55);
+        transit.setCardScale(0.7);
         transitHolder.add(transit);
         transitGoesLabel.setText("GOES TO " + state.turn().name().toUpperCase());
 
@@ -503,10 +505,10 @@ public final class GamePanel extends JPanel {
         if (state.turn() == myColor) {
             return "YOUR TURN";
         }
-        return "WAITING FOR " + model.opponentName().toUpperCase() + "…";
+        return "WAITING…";
     }
 
-    /** Contextual help line for the left panel (§13/§34 feedback). */
+    /** Contextual help line for the right column (§13/§34 feedback). */
     private String helpText(GameState state, onitama.core.PlayerColor myColor) {
         if (!state.isOngoing()) {
             return "The game is over.";
@@ -517,14 +519,14 @@ public final class GamePanel extends JPanel {
         if (model.selectedSquare() != null && model.selectedCardId() != null) {
             Piece piece = state.board().pieceAt(model.selectedSquare());
             String kind = piece != null && piece.master() ? "Master" : "Student";
-            return kind + " selected. Dots mark open squares; a ring marks a capture.";
+            return kind + " selected · dots = moves";
         }
         if (model.selectedCardId() != null) {
             String cardName = onitama.core.CardDeck
                     .cardById(model.selectedCardId()).name();
-            return cardName + " selected — now pick a piece.";
+            return cardName + " selected — pick a piece.";
         }
-        return "Pick a card, then a piece. Dots mark where it can go.";
+        return "Pick a card, then a piece.";
     }
 
     private void confirmResign() {

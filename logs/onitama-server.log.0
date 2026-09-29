@@ -384,3 +384,115 @@ thg 9 29, 2026 11:44:37 SA onitama.server.ClientHandler completeLogin
 INFO: user 'kuro' logged in
 thg 9 29, 2026 11:44:39 SA onitama.server.ClientHandler completeLogin
 INFO: user 'shiro' logged in
+thg 9 29, 2026 11:52:42 SA onitama.server.ClientHandler onDisconnected
+INFO: user 'kuro' disconnected
+thg 9 29, 2026 11:52:42 SA onitama.server.ClientHandler onDisconnected
+INFO: user 'shiro' disconnected
+thg 9 29, 2026 11:52:45 SA onitama.server.ClientHandler completeLogin
+INFO: user 'kuro' logged in
+thg 9 29, 2026 11:52:46 SA onitama.server.ClientHandler completeLogin
+INFO: user 'shiro' logged in
+thg 9 29, 2026 11:53:42 SA onitama.server.MatchPersistence record
+INFO: recorded match XSEZ9 as id 27 with replay replays/match-20260929-115342-XSEZ9.onitama-replay
+thg 9 29, 2026 11:53:42 SA onitama.server.GameServer onMatchFinished
+INFO: match XSEZ9 finished: FORFEIT, winner=shiro, half-moves=0
+thg 9 29, 2026 11:53:42 SA onitama.server.MatchSession finish
+INFO: match XSEZ9 finished: FORFEIT, winner=shiro, half-moves=0
+thg 9 29, 2026 11:55:28 SA onitama.server.ClientHandler onDisconnected
+INFO: user 'shiro' disconnected
+thg 9 29, 2026 11:55:28 SA onitama.server.ClientHandler onDisconnected
+INFO: user 'kuro' disconnected
+thg 9 29, 2026 11:55:31 SA onitama.server.ClientHandler completeLogin
+INFO: user 'kuro' logged in
+thg 9 29, 2026 11:55:33 SA onitama.server.ClientHandler completeLogin
+INFO: user 'shiro' logged in
+thg 9 29, 2026 11:56:28 SA onitama.server.MatchPersistence record
+INFO: recorded match F4W7X as id 28 with replay replays/match-20260929-115628-F4W7X.onitama-replay
+thg 9 29, 2026 11:56:28 SA onitama.server.GameServer onMatchFinished
+INFO: match F4W7X finished: FORFEIT, winner=kuro, half-moves=0
+thg 9 29, 2026 11:56:28 SA onitama.server.MatchSession finish
+INFO: match F4W7X finished: FORFEIT, winner=kuro, half-moves=0
+thg 9 29, 2026 11:57:21 SA onitama.server.ClientHandler onDisconnected
+INFO: user 'kuro' disconnected
+thg 9 29, 2026 11:57:21 SA onitama.server.ClientHandler onDisconnected
+INFO: user 'shiro' disconnected
+thg 9 29, 2026 11:57:23 SA onitama.server.ClientHandler completeLogin
+INFO: user 'kuro' logged in
+thg 9 29, 2026 11:57:24 SA onitama.server.ClientHandler completeLogin
+INFO: user 'shiro' logged in
+thg 9 29, 2026 11:58:21 SA onitama.server.MatchPersistence record
+INFO: recorded match Z2XZD as id 29 with replay replays/match-20260929-115821-Z2XZD.onitama-replay
+thg 9 29, 2026 11:58:21 SA onitama.server.GameServer onMatchFinished
+INFO: match Z2XZD finished: FORFEIT, winner=kuro, half-moves=0
+thg 9 29, 2026 11:58:21 SA onitama.server.MatchSession finish
+INFO: match Z2XZD finished: FORFEIT, winner=kuro, half-moves=0
+thg 9 29, 2026 12:01:34 CH onitama.server.ClientHandler onDisconnected
+INFO: user 'kuro' disconnected
+thg 9 29, 2026 12:01:34 CH onitama.server.ClientHandler onDisconnected
+INFO: user 'shiro' disconnected
+thg 9 29, 2026 12:01:37 CH onitama.server.ClientHandler completeLogin
+INFO: user 'kuro' logged in
+thg 9 29, 2026 12:01:38 CH onitama.server.ClientHandler completeLogin
+INFO: user 'shiro' logged in
+thg 9 29, 2026 12:02:34 CH onitama.server.MatchPersistence record
+INFO: recorded match 6EN94 as id 30 with replay replays/match-20260929-120234-6EN94.onitama-replay
+thg 9 29, 2026 12:02:34 CH onitama.server.GameServer onMatchFinished
+INFO: match 6EN94 finished: FORFEIT, winner=kuro, half-moves=0
+thg 9 29, 2026 12:02:34 CH onitama.server.MatchSession finish
+INFO: match 6EN94 finished: FORFEIT, winner=kuro, half-moves=0
+thg 9 29, 2026 12:08:03 CH onitama.server.MatchPersistence record
+INFO: recorded match UFTJY as id 31 with replay replays/match-20260929-120803-UFTJY.onitama-replay
+thg 9 29, 2026 12:08:03 CH onitama.server.GameServer onMatchFinished
+INFO: match UFTJY finished: FORFEIT, winner=shiro, half-moves=0
+thg 9 29, 2026 12:08:03 CH onitama.server.MatchSession finish
+INFO: match UFTJY finished: FORFEIT, winner=shiro, half-moves=0
+thg 9 29, 2026 12:08:36 CH onitama.server.ClientHandler onDisconnected
+INFO: user 'kuro' disconnected
+thg 9 29, 2026 12:08:36 CH onitama.server.ClientHandler onDisconnected
+INFO: user 'shiro' disconnected
+thg 9 29, 2026 12:08:39 CH onitama.server.ClientHandler completeLogin
+INFO: user 'kuro' logged in
+thg 9 29, 2026 12:08:41 CH onitama.server.ClientHandler completeLogin
+INFO: user 'shiro' logged in
+thg 9 29, 2026 12:10:51 CH onitama.server.ClientHandler onDisconnected
+INFO: user 'shiro' disconnected
+thg 9 29, 2026 12:10:51 CH onitama.server.ClientHandler onDisconnected
+INFO: user 'kuro' disconnected
+thg 9 29, 2026 12:10:54 CH onitama.server.ClientHandler completeLogin
+INFO: user 'kuro' logged in
+thg 9 29, 2026 12:10:55 CH onitama.server.ClientHandler completeLogin
+INFO: user 'shiro' logged in
+thg 9 29, 2026 12:11:51 CH onitama.server.MatchPersistence record
+INFO: recorded match H63RV as id 32 with replay replays/match-20260929-121151-H63RV.onitama-replay
+thg 9 29, 2026 12:11:51 CH onitama.server.GameServer onMatchFinished
+INFO: match H63RV finished: FORFEIT, winner=kuro, half-moves=0
+thg 9 29, 2026 12:11:51 CH onitama.server.MatchSession finish
+INFO: match H63RV finished: FORFEIT, winner=kuro, half-moves=0
+thg 9 29, 2026 12:12:01 CH onitama.server.ClientHandler onDisconnected
+INFO: user 'kuro' disconnected
+thg 9 29, 2026 12:12:01 CH onitama.server.ClientHandler onDisconnected
+INFO: user 'shiro' disconnected
+thg 9 29, 2026 12:12:05 CH onitama.server.ClientHandler completeLogin
+INFO: user 'kuro' logged in
+thg 9 29, 2026 12:12:06 CH onitama.server.ClientHandler completeLogin
+INFO: user 'shiro' logged in
+thg 9 29, 2026 12:13:01 CH onitama.server.MatchPersistence record
+INFO: recorded match NL9ZL as id 33 with replay replays/match-20260929-121301-NL9ZL.onitama-replay
+thg 9 29, 2026 12:13:01 CH onitama.server.GameServer onMatchFinished
+INFO: match NL9ZL finished: FORFEIT, winner=shiro, half-moves=0
+thg 9 29, 2026 12:13:01 CH onitama.server.MatchSession finish
+INFO: match NL9ZL finished: FORFEIT, winner=shiro, half-moves=0
+thg 9 29, 2026 12:15:18 CH onitama.server.ClientHandler onDisconnected
+INFO: user 'kuro' disconnected
+thg 9 29, 2026 12:15:18 CH onitama.server.ClientHandler onDisconnected
+INFO: user 'shiro' disconnected
+thg 9 29, 2026 12:15:21 CH onitama.server.ClientHandler completeLogin
+INFO: user 'kuro' logged in
+thg 9 29, 2026 12:15:23 CH onitama.server.ClientHandler completeLogin
+INFO: user 'shiro' logged in
+thg 9 29, 2026 12:16:18 CH onitama.server.MatchPersistence record
+INFO: recorded match C74VZ as id 34 with replay replays/match-20260929-121618-C74VZ.onitama-replay
+thg 9 29, 2026 12:16:18 CH onitama.server.GameServer onMatchFinished
+INFO: match C74VZ finished: FORFEIT, winner=kuro, half-moves=0
+thg 9 29, 2026 12:16:18 CH onitama.server.MatchSession finish
+INFO: match C74VZ finished: FORFEIT, winner=kuro, half-moves=0
