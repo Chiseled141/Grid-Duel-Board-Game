@@ -83,7 +83,7 @@ public final class ClientFrame extends JFrame {
         // the window below a composable size (sliver windows break the layout).
         setSize(Math.max(settings.windowWidth(), 1100),
                 Math.max(settings.windowHeight(), 880));
-        setMinimumSize(new java.awt.Dimension(760, 640));
+        setMinimumSize(new java.awt.Dimension(780, 720));
         setLocationRelativeTo(null);
         setJMenuBar(buildMenuBar());
         setDefaultCloseOperation(DO_NOTHING_ON_CLOSE);
