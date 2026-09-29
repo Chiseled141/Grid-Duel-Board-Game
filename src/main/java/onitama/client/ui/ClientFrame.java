@@ -79,10 +79,11 @@ public final class ClientFrame extends JFrame {
             }
         });
 
-        // The game screen needs ~1100x880; never open smaller than that even
-        // if a previous session saved a smaller window.
+        // Desktop board-game target: open big, but never let the user shrink
+        // the window below a composable size (sliver windows break the layout).
         setSize(Math.max(settings.windowWidth(), 1100),
                 Math.max(settings.windowHeight(), 880));
+        setMinimumSize(new java.awt.Dimension(760, 640));
         setLocationRelativeTo(null);
         setJMenuBar(buildMenuBar());
         setDefaultCloseOperation(DO_NOTHING_ON_CLOSE);
