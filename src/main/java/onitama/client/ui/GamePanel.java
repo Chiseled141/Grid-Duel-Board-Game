@@ -144,6 +144,23 @@ public final class GamePanel extends JPanel {
         };
     }
 
+    /** The sumi-e painting behind the match (same artwork as the lobby). */
+    @Override
+    protected void paintComponent(Graphics graphics) {
+        super.paintComponent(graphics);
+        java.awt.Image background = AssetStore.optional("menu-background.png");
+        if (background == null) {
+            return;
+        }
+        Graphics2D g = (Graphics2D) graphics.create();
+        double scale = Math.max(getWidth() / (double) background.getWidth(null),
+                getHeight() / (double) background.getHeight(null));
+        int w = (int) (background.getWidth(null) * scale);
+        int h = (int) (background.getHeight(null) * scale);
+        g.drawImage(background, (getWidth() - w) / 2, (getHeight() - h) / 2, w, h, null);
+        g.dispose();
+    }
+
     /** Builds the game screen and subscribes it to the model. */
     public GamePanel(ClientModel model) {
         this.model = model;
@@ -152,22 +169,30 @@ public final class GamePanel extends JPanel {
         setBackground(Theme.BG);
 
         JPanel north = new JPanel(new BorderLayout());
-        north.setBackground(Theme.BG);
+        north.setOpaque(false);
         opponentLabel.setHorizontalAlignment(SwingConstants.CENTER);
         opponentLabel.setFont(Theme.bold(13f));
-        opponentCards.setBackground(Theme.BG);
+        opponentCards.setOpaque(false);
         north.add(opponentLabel, BorderLayout.NORTH);
         north.add(opponentCards, BorderLayout.CENTER);
-        JPanel opponentChipRow = new JPanel(new FlowLayout(FlowLayout.CENTER, 6, 6));
-        opponentChipRow.setBackground(Theme.BG);
+        JPanel opponentChipRow = new JPanel(new FlowLayout(FlowLayout.CENTER, 6, 4));
+        opponentChipRow.setBackground(Theme.CREAM);
+        opponentChipRow.setBorder(BorderFactory.createLineBorder(Theme.INK, 2));
+        opponentDot.setForeground(Theme.P2);
         opponentChipRow.add(opponentDot);
+        opponentChipLabel.setForeground(Theme.INK);
         opponentChipRow.add(opponentChipLabel);
+        // Wrap in a centering parent so the chip sizes to its content.
+        JPanel chipWrap = new JPanel(new FlowLayout(FlowLayout.CENTER));
+        chipWrap.setOpaque(false);
+        chipWrap.add(opponentChipRow);
+        north.add(chipWrap, BorderLayout.SOUTH);
         north.add(opponentChipRow, BorderLayout.SOUTH);
         add(north, BorderLayout.NORTH);
 
         // The board stretches to fill all remaining space (responsive).
         JPanel center = new JPanel(new BorderLayout());
-        center.setBackground(Theme.BG);
+        center.setOpaque(false);
         center.add(boardPanel, BorderLayout.CENTER);
         add(center, BorderLayout.CENTER);
 
@@ -222,7 +247,7 @@ public final class GamePanel extends JPanel {
 
     private JPanel buildHandColumn() {
         JPanel column = new JPanel(new BorderLayout());
-        column.setBackground(Theme.BG);
+        column.setOpaque(false);
         column.setPreferredSize(new Dimension(230, 100));
         myCards.setOpaque(false);
         column.add(myCards, BorderLayout.NORTH);
@@ -235,7 +260,7 @@ public final class GamePanel extends JPanel {
 
     private java.awt.Component buildRightColumn() {
         JPanel column = new JPanel();
-        column.setBackground(Theme.BG);
+        column.setOpaque(false);
         column.setLayout(new BoxLayout(column, BoxLayout.Y_AXIS));
         column.setPreferredSize(new Dimension(255, 100));
 
@@ -286,7 +311,7 @@ public final class GamePanel extends JPanel {
 
         // Contextual help line.
         helpLabel.setFont(Theme.normal(11f));
-        helpLabel.setForeground(Theme.MUTED);
+        helpLabel.setForeground(Theme.blend(Theme.INK, Theme.MUTED));
         helpLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
         column.add(helpLabel);
 
@@ -307,6 +332,16 @@ public final class GamePanel extends JPanel {
         column.add(nextCard);
 
         // Controls.
+        // Your identity chip under the next card.
+        JPanel myChipRow = new JPanel(new FlowLayout(FlowLayout.CENTER, 6, 4));
+        myChipRow.setBackground(Theme.CREAM);
+        myChipRow.setBorder(BorderFactory.createLineBorder(Theme.INK, 2));
+        myChipRow.setAlignmentX(Component.CENTER_ALIGNMENT);
+        myChipRow.add(myDot);
+        myChipLabel.setForeground(Theme.INK);
+        myChipRow.add(myChipLabel);
+        column.add(myChipRow);
+
         JPanel controls = new JPanel(new FlowLayout(FlowLayout.CENTER, 10, 2));
         controls.setOpaque(false);
         JButton menu = UiKit.pill("Menu", UiKit.Pill.CREAM_OUTLINE);
@@ -416,6 +451,7 @@ public final class GamePanel extends JPanel {
         opponentChipLabel.setText(opponent.name().toUpperCase() + "  ·  OPPONENT");
         myDot.setForeground(Theme.playerColor(myColor));
         myChipLabel.setText(myColor.name().toUpperCase() + "  ·  YOU");
+        myChipLabel.setForeground(Theme.INK);
 
         nameLabel.setText(model.me() == null ? "" : model.me().username().toUpperCase());
         nameLabel.setForeground(Theme.playerColor(myColor));
@@ -440,7 +476,7 @@ public final class GamePanel extends JPanel {
                     () -> model.cardClicked(card.id()));
             panel.setSelected(card.id().equals(model.selectedCardId()));
             JPanel slot = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 0));
-            slot.setBackground(Theme.BG);
+            slot.setOpaque(false);
             slot.add(panel);
             myCards.add(slot);
         });
