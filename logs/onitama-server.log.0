@@ -642,3 +642,19 @@ thg 9 29, 2026 2:50:41 CH onitama.server.ClientHandler completeLogin
 INFO: user 'user1' logged in
 thg 9 29, 2026 2:53:35 CH onitama.server.GameServer start
 INFO: Onitama server listening on port 5555
+thg 9 29, 2026 3:57:44 CH onitama.server.ClientHandler completeLogin
+INFO: user 'user1' logged in
+thg 9 29, 2026 3:58:00 CH onitama.server.ClientHandler onDisconnected
+INFO: user 'user1' disconnected
+thg 9 29, 2026 6:39:20 CH onitama.server.ClientHandler completeLogin
+INFO: user 'user1' logged in
+thg 9 29, 2026 6:39:23 CH onitama.server.ClientHandler onDisconnected
+INFO: user 'user1' disconnected
+thg 9 30, 2026 2:23:42 SA onitama.server.ClientHandler completeLogin
+INFO: user 'user1' logged in
+thg 9 30, 2026 2:23:52 SA onitama.server.ClientHandler onDisconnected
+INFO: user 'user1' disconnected
+thg 9 30, 2026 2:25:24 SA onitama.server.ClientHandler completeLogin
+INFO: user 'kuro' logged in
+thg 9 30, 2026 2:25:26 SA onitama.server.ClientHandler completeLogin
+INFO: user 'shiro' logged in

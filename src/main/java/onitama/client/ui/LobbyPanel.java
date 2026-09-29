@@ -28,6 +28,7 @@ import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JTextField;
 import javax.swing.Timer;
+import java.awt.Dimension;
 
 /**
  * The lobby, composed like the front page of an indie board game (§19-31):
@@ -85,6 +86,10 @@ public final class LobbyPanel extends JPanel {
 
     private int waitingDots;
     private Timer waitingTimer;
+    private JComponent heroPanel;
+    private JPanel actionsColumn;
+    private JPanel actionsWrap;
+    private boolean wideLayout = true;
     private final onitama.client.ClientSettings settings;
     private final UiKit.PillButton[] styleButtons = new UiKit.PillButton[3];
     private Runnable openLeaderboard;
@@ -147,6 +152,47 @@ public final class LobbyPanel extends JPanel {
                 model.refreshMatches();
             }
         }).start();
+
+        addComponentListener(new java.awt.event.ComponentAdapter() {
+            @Override
+            public void componentResized(java.awt.event.ComponentEvent event) {
+                relayout();
+            }
+
+            @Override
+            public void componentShown(java.awt.event.ComponentEvent event) {
+                relayout();
+            }
+        });
+    }
+
+    /**
+     * Responsive layout (§31): wide windows show the hero beside the action
+     * cards; narrow ones stack the hero band on top so nothing collapses.
+     */
+    private void relayout() {
+        boolean wide = getWidth() >= 950;
+        if (wide == wideLayout) {
+            return;
+        }
+        wideLayout = wide;
+        remove(heroPanel);
+        remove(actionsColumn);
+        if (wide) {
+            heroPanel.setVisible(true);
+            remove(actionsWrap);
+            add(heroPanel, BorderLayout.CENTER);
+            add(actionsWrap, BorderLayout.EAST);
+        } else {
+            // Narrow: the painting is the backdrop, so the hero band would
+            // only squeeze — hide it and center a capped actions column.
+            heroPanel.setVisible(false);
+            remove(heroPanel);
+            remove(actionsWrap);
+            add(actionsWrap, BorderLayout.CENTER);
+        }
+        revalidate();
+        repaint();
     }
 
     /** The sumi-e temple painting as the lobby background (cover, left-anchored). */
