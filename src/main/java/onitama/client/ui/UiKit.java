@@ -79,6 +79,30 @@ public final class UiKit {
             super(text.toUpperCase());
             this.variant = variant;
             setRolloverEnabled(true);
+            refit();
+        }
+
+        /** Keeps the button sized to its label so long text never truncates. */
+        private void refit() {
+            if (getFont() == null || getText() == null) {
+                return;
+            }
+            FontMetrics metrics = getFontMetrics(getFont());
+            setPreferredSize(new java.awt.Dimension(
+                    metrics.stringWidth(getText()) + 62,
+                    metrics.getHeight() + 24 + SHADOW));
+        }
+
+        @Override
+        public void setText(String text) {
+            super.setText(text);
+            refit();
+        }
+
+        @Override
+        public void setFont(Font font) {
+            super.setFont(font);
+            refit();
         }
 
         public void setVariant(Pill variant) {

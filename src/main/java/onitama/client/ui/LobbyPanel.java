@@ -377,19 +377,25 @@ public final class LobbyPanel extends JPanel {
         JPanel stack = new JPanel();
         stack.setOpaque(false);
         stack.setLayout(new BoxLayout(stack, BoxLayout.Y_AXIS));
-        returnWrap.setAlignmentX(Component.CENTER_ALIGNMENT);
-        stack.add(returnWrap);
+        // Each section sits in a centering wrapper at its natural size, so
+        // tall or short windows never stretch the cards into sparse boxes.
+        stack.add(wrap(returnWrap));
         stack.add(Box.createVerticalStrut(14));
-        createCard.setAlignmentX(Component.CENTER_ALIGNMENT);
-        stack.add(createCard);
+        stack.add(wrap(createCard));
         stack.add(Box.createVerticalStrut(14));
-        joinCard.setAlignmentX(Component.CENTER_ALIGNMENT);
-        stack.add(joinCard);
+        stack.add(wrap(joinCard));
         stack.add(Box.createVerticalStrut(14));
-        nav.setAlignmentX(Component.CENTER_ALIGNMENT);
-        stack.add(nav);
+        stack.add(wrap(nav));
         column.add(stack, BorderLayout.NORTH);
         return column;
+    }
+
+    /** Centers a component at its preferred size inside the column. */
+    private JPanel wrap(JComponent inner) {
+        JPanel holder = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 0));
+        holder.setOpaque(false);
+        holder.add(inner);
+        return holder;
     }
 
     private JPanel ticket;
