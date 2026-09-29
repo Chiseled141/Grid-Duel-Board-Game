@@ -584,3 +584,31 @@ thg 9 29, 2026 1:14:39 CH onitama.server.GameServer onMatchFinished
 INFO: match LNHF4 finished: FORFEIT, winner=shiro, half-moves=0
 thg 9 29, 2026 1:14:39 CH onitama.server.MatchSession finish
 INFO: match LNHF4 finished: FORFEIT, winner=shiro, half-moves=0
+thg 9 29, 2026 1:17:28 CH onitama.server.MatchPersistence record
+INFO: recorded match K9W3U as id 41 with replay replays/match-20260929-131728-K9W3U.onitama-replay
+thg 9 29, 2026 1:17:28 CH onitama.server.GameServer onMatchFinished
+INFO: match K9W3U finished: FORFEIT, winner=shiro, half-moves=0
+thg 9 29, 2026 1:17:28 CH onitama.server.MatchSession finish
+INFO: match K9W3U finished: FORFEIT, winner=shiro, half-moves=0
+thg 9 29, 2026 1:22:00 CH onitama.server.ClientHandler onDisconnected
+INFO: user 'shiro' disconnected
+thg 9 29, 2026 1:22:00 CH onitama.server.ClientHandler onDisconnected
+INFO: user 'kuro' disconnected
+thg 9 29, 2026 1:22:04 CH onitama.server.ClientHandler completeLogin
+INFO: user 'kuro' logged in
+thg 9 29, 2026 1:22:05 CH onitama.server.ClientHandler completeLogin
+INFO: user 'shiro' logged in
+thg 9 29, 2026 1:23:44 CH onitama.server.ClientHandler onDisconnected
+INFO: user 'shiro' disconnected
+thg 9 29, 2026 1:23:44 CH onitama.server.ClientHandler onDisconnected
+INFO: user 'kuro' disconnected
+thg 9 29, 2026 1:23:47 CH onitama.server.ClientHandler completeLogin
+INFO: user 'kuro' logged in
+thg 9 29, 2026 1:23:49 CH onitama.server.ClientHandler completeLogin
+INFO: user 'shiro' logged in
+thg 9 29, 2026 1:24:44 CH onitama.server.MatchPersistence record
+INFO: recorded match CMXZC as id 42 with replay replays/match-20260929-132444-CMXZC.onitama-replay
+thg 9 29, 2026 1:24:44 CH onitama.server.GameServer onMatchFinished
+INFO: match CMXZC finished: FORFEIT, winner=shiro, half-moves=0
+thg 9 29, 2026 1:24:44 CH onitama.server.MatchSession finish
+INFO: match CMXZC finished: FORFEIT, winner=shiro, half-moves=0

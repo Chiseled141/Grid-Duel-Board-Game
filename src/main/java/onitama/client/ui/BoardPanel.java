@@ -203,15 +203,20 @@ public final class BoardPanel extends JComponent {
     @Override
     protected void paintComponent(Graphics graphics) {
         Graphics2D g = UiKit.nice(graphics);
-        g.setColor(Theme.BG);
-        g.fillRect(0, 0, getWidth(), getHeight());
+        Image mat = AssetStore.optional("board-empty.png");
+        if (mat == null) {
+            // No mat artwork: paint the dark app background behind the
+            // drawn fallback frame.
+            g.setColor(Theme.BG);
+            g.fillRect(0, 0, getWidth(), getHeight());
+        }
         computeGeometry();
         if (state == null) {
             g.dispose();
             return;
         }
-        Image mat = AssetStore.optional("board-empty.png");
         if (mat != null) {
+            // The mat (with its own frame) lies directly on the scene.
             g.drawImage(mat, imgX, imgY, imgSize, imgSize, null);
         } else {
             paintFallbackFrame(g);
