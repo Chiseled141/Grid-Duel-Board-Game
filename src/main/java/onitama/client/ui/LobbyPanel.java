@@ -183,6 +183,8 @@ public final class LobbyPanel extends JPanel {
         remove(actionsColumn);
         if (wide) {
             heroPanel.setVisible(true);
+            actionsColumn.setPreferredSize(
+                    new Dimension(440, actionsColumn.getPreferredSize().height));
             remove(actionsWrap);
             add(heroPanel, BorderLayout.CENTER);
             add(actionsWrap, BorderLayout.EAST);
@@ -190,6 +192,9 @@ public final class LobbyPanel extends JPanel {
             // Narrow: the painting is the backdrop, so the hero band would
             // only squeeze — hide it and center a capped actions column.
             heroPanel.setVisible(false);
+            int capped = Math.min(440, Math.max(320, getWidth() - 36));
+            actionsColumn.setPreferredSize(
+                    new Dimension(capped, actionsColumn.getPreferredSize().height));
             remove(heroPanel);
             remove(actionsWrap);
             add(actionsWrap, BorderLayout.CENTER);
