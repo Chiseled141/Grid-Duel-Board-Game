@@ -144,23 +144,6 @@ public final class GamePanel extends JPanel {
         };
     }
 
-    /** The sumi-e painting behind the match (same artwork as the lobby). */
-    @Override
-    protected void paintComponent(Graphics graphics) {
-        super.paintComponent(graphics);
-        java.awt.Image background = AssetStore.optional("menu-background.png");
-        if (background == null) {
-            return;
-        }
-        Graphics2D g = (Graphics2D) graphics.create();
-        double scale = Math.max(getWidth() / (double) background.getWidth(null),
-                getHeight() / (double) background.getHeight(null));
-        int w = (int) (background.getWidth(null) * scale);
-        int h = (int) (background.getHeight(null) * scale);
-        g.drawImage(background, (getWidth() - w) / 2, (getHeight() - h) / 2, w, h, null);
-        g.dispose();
-    }
-
     /** Builds the game screen and subscribes it to the model. */
     public GamePanel(ClientModel model) {
         this.model = model;
@@ -182,12 +165,10 @@ public final class GamePanel extends JPanel {
         opponentChipRow.add(opponentDot);
         opponentChipLabel.setForeground(Theme.INK);
         opponentChipRow.add(opponentChipLabel);
-        // Wrap in a centering parent so the chip sizes to its content.
-        JPanel chipWrap = new JPanel(new FlowLayout(FlowLayout.CENTER));
-        chipWrap.setOpaque(false);
-        chipWrap.add(opponentChipRow);
-        north.add(chipWrap, BorderLayout.SOUTH);
-        north.add(opponentChipRow, BorderLayout.SOUTH);
+        JPanel opponentChipWrap = new JPanel(new FlowLayout(FlowLayout.CENTER));
+        opponentChipWrap.setOpaque(false);
+        opponentChipWrap.add(opponentChipRow);
+        north.add(opponentChipWrap, BorderLayout.SOUTH);
         add(north, BorderLayout.NORTH);
 
         // The board stretches to fill all remaining space (responsive).
@@ -259,24 +240,27 @@ public final class GamePanel extends JPanel {
     // ------------------------------------------------------------------
 
     private java.awt.Component buildRightColumn() {
-        JPanel column = new JPanel();
+        JPanel column = new JPanel(new BorderLayout(8, 8));
         column.setOpaque(false);
-        column.setLayout(new BoxLayout(column, BoxLayout.Y_AXIS));
         column.setPreferredSize(new Dimension(255, 100));
+
+        // Top stack: banner, badge, stats, help, next card, controls.
+        JPanel top = new JPanel();
+        top.setOpaque(false);
+        top.setLayout(new BoxLayout(top, BoxLayout.Y_AXIS));
 
         // Turn banner.
         JPanel bannerRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
-        bannerRow.setBackground(Theme.BG);
+        bannerRow.setOpaque(false);
         bannerRow.add(turnLabel);
-        bannerRow.setAlignmentX(Component.CENTER_ALIGNMENT);
-        column.add(bannerRow);
+        top.add(bannerRow);
 
         // Player badge.
         JPanel badge = buildPlayerBadge();
         badge.setAlignmentX(Component.CENTER_ALIGNMENT);
-        column.add(badge);
+        top.add(badge);
 
-        // Stats block.
+        // Stats block: turn counter and both piece counts.
         JPanel stats = new JPanel(new GridLayout(1, 2, 8, 4));
         stats.setBackground(Theme.INK);
         stats.setBorder(BorderFactory.createEmptyBorder(8, 10, 8, 10));
@@ -307,13 +291,13 @@ public final class GamePanel extends JPanel {
         piecesBox.add(blueRow);
         stats.add(turnBox);
         stats.add(piecesBox);
-        column.add(stats);
+        top.add(stats);
 
         // Contextual help line.
         helpLabel.setFont(Theme.normal(11f));
         helpLabel.setForeground(Theme.blend(Theme.INK, Theme.MUTED));
         helpLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
-        column.add(helpLabel);
+        top.add(helpLabel);
 
         // NEXT CARD: the transit card, headed for the current player.
         JPanel nextCard = UiKit.sticker(12);
@@ -329,29 +313,22 @@ public final class GamePanel extends JPanel {
         transitCenter.add(transitHolder);
         nextCard.add(transitCenter, BorderLayout.CENTER);
         nextCard.setAlignmentX(Component.CENTER_ALIGNMENT);
-        column.add(nextCard);
+        top.add(nextCard);
 
-        // Controls.
-        // Your identity chip under the next card.
-        JPanel myChipRow = new JPanel(new FlowLayout(FlowLayout.CENTER, 6, 4));
-        myChipRow.setBackground(Theme.CREAM);
-        myChipRow.setBorder(BorderFactory.createLineBorder(Theme.INK, 2));
-        myChipRow.setAlignmentX(Component.CENTER_ALIGNMENT);
-        myChipRow.add(myDot);
-        myChipLabel.setForeground(Theme.INK);
-        myChipRow.add(myChipLabel);
-        column.add(myChipRow);
-
-        JPanel controls = new JPanel(new FlowLayout(FlowLayout.CENTER, 10, 2));
+        // Controls: equal-width cells so MENU and RESIGN align as a pair.
+        JPanel controls = new JPanel(new GridLayout(1, 2, 10, 0));
         controls.setOpaque(false);
+        controls.setMaximumSize(new Dimension(230, 52));
+        controls.setAlignmentX(Component.CENTER_ALIGNMENT);
         JButton menu = UiKit.pill("Menu", UiKit.Pill.CREAM_OUTLINE);
         menu.addActionListener(event -> model.leaveToLobby());
         controls.add(menu);
         JButton resign = UiKit.pill("Resign", UiKit.Pill.DANGER);
         resign.addActionListener(event -> confirmResign());
         controls.add(resign);
-        controls.setAlignmentX(Component.CENTER_ALIGNMENT);
-        column.add(controls);
+        top.add(controls);
+
+        column.add(top, BorderLayout.NORTH);
 
         // Compact move history with a themed empty state (§30).
         historyList.setBackground(Theme.SURFACE);
@@ -362,7 +339,7 @@ public final class GamePanel extends JPanel {
         scroll.setBorder(BorderFactory.createEmptyBorder());
         scroll.getViewport().setBackground(Theme.SURFACE);
         scroll.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
-        scroll.setPreferredSize(new Dimension(230, 96));
+        scroll.setPreferredSize(new Dimension(230, 120));
 
         JPanel emptyState = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 4));
         emptyState.setBackground(Theme.SURFACE);
@@ -375,6 +352,7 @@ public final class GamePanel extends JPanel {
         emptyLabel.setIcon(new javax.swing.ImageIcon(emptyIcon));
         emptyState.add(emptyLabel);
 
+        // MOVES fills the remaining column height.
         JPanel movesCard = UiKit.surface(10);
         movesCard.setLayout(new BorderLayout(6, 6));
         movesCard.add(UiKit.boldLabel("MOVES", 13f), BorderLayout.NORTH);
@@ -383,17 +361,20 @@ public final class GamePanel extends JPanel {
         historyViews.add(scroll, "moves");
         historyViews.add(emptyState, "empty");
         movesCard.add(historyViews, BorderLayout.CENTER);
-        movesCard.setAlignmentX(Component.CENTER_ALIGNMENT);
-        column.add(movesCard);
+        column.add(movesCard, BorderLayout.CENTER);
 
-        // The right column scrolls if the window is too short — children
-        // must never overlap each other.
+        // The right column scrolls if the window is ever too short —
+        // children must never overlap each other.
         JScrollPane eastScroll = new JScrollPane(column);
         eastScroll.setBorder(BorderFactory.createEmptyBorder());
         eastScroll.getVerticalScrollBar().setUnitIncrement(24);
         eastScroll.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
         return eastScroll;
     }
+
+    // ------------------------------------------------------------------
+    // Right-column parts
+    // ------------------------------------------------------------------
 
     /** The player profile panel: avatar, name, ELO/record, online dot (§16). */
     private JPanel buildPlayerBadge() {
@@ -410,19 +391,6 @@ public final class GamePanel extends JPanel {
         badge.add(text, BorderLayout.CENTER);
         badge.add(onlineDot, BorderLayout.EAST);
         return badge;
-    }
-
-    /** A dark caption block: big value over a small label. */
-    private JPanel statBox(JComponent value, JLabel caption, Color valueColor) {
-        JPanel box = new JPanel(new GridLayout(2, 1, 0, 0));
-        box.setBackground(Theme.INK);
-        value.setForeground(valueColor);
-        value.setFont(Theme.display(18f));
-        caption.setFont(Theme.normal(10f));
-        caption.setForeground(Theme.CREAM);
-        box.add(value);
-        box.add(caption);
-        return box;
     }
 
     private JLabel smallCaption(String text, Color color) {
@@ -451,7 +419,6 @@ public final class GamePanel extends JPanel {
         opponentChipLabel.setText(opponent.name().toUpperCase() + "  ·  OPPONENT");
         myDot.setForeground(Theme.playerColor(myColor));
         myChipLabel.setText(myColor.name().toUpperCase() + "  ·  YOU");
-        myChipLabel.setForeground(Theme.INK);
 
         nameLabel.setText(model.me() == null ? "" : model.me().username().toUpperCase());
         nameLabel.setForeground(Theme.playerColor(myColor));
@@ -464,9 +431,7 @@ public final class GamePanel extends JPanel {
         // Opponent cards: their color variant, dimmed, my perspective.
         opponentCards.removeAll();
         state.hand(opponent).forEach(card -> {
-            CardPanel oppCard = new CardPanel(card, opponent, true, null);
-            oppCard.setCardScale(0.55);
-            opponentCards.add(oppCard);
+            opponentCards.add(new CardPanel(card, opponent, true, null));
         });
 
         // My cards: my color variant, hoverable, stacked on the left.
@@ -484,7 +449,6 @@ public final class GamePanel extends JPanel {
         // NEXT CARD panel: the transit card, headed for the current player.
         transitHolder.removeAll();
         CardPanel transit = new CardPanel(state.transit(), state.turn(), true, null);
-        transit.setCardScale(0.7);
         transitHolder.add(transit);
         transitGoesLabel.setText("GOES TO " + state.turn().name().toUpperCase());
 

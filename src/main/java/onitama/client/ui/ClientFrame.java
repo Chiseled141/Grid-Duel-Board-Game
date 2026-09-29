@@ -97,8 +97,15 @@ public final class ClientFrame extends JFrame {
     /** Game and Help menus; entries act on the current screen. */
     private javax.swing.JMenuBar buildMenuBar() {
         javax.swing.JMenuBar menuBar = new javax.swing.JMenuBar();
+        // Aqua ignores background/foreground on menus — force the Basic UI
+        // so the navigation strip can be styled like the rest of the app.
+        menuBar.setUI(new javax.swing.plaf.basic.BasicMenuBarUI());
+        menuBar.setBackground(Theme.BG);
+        menuBar.setOpaque(true);
+        menuBar.setBorder(BorderFactory.createMatteBorder(0, 0, 2, 0, Theme.OUTLINE));
+        menuBar.setFont(Theme.bold(13f));
 
-        javax.swing.JMenu game = new javax.swing.JMenu("Game");
+        javax.swing.JMenu game = styledMenu("Game");
         javax.swing.JMenuItem resign = new javax.swing.JMenuItem("Resign match");
         resign.addActionListener(event -> model.resign());
         javax.swing.JMenuItem lobby = new javax.swing.JMenuItem("Back to lobby");
@@ -111,7 +118,8 @@ public final class ClientFrame extends JFrame {
         game.add(exit);
         menuBar.add(game);
 
-        javax.swing.JMenu help = new javax.swing.JMenu("Help");
+        javax.swing.JMenu help = styledMenu("Help");
+        help.add(javax.swing.Box.createHorizontalStrut(8));
         javax.swing.JMenuItem rules = new javax.swing.JMenuItem("How to play");
         rules.addActionListener(event -> JOptionPane.showMessageDialog(this,
                 "Onitama: move one of your pieces with one of your two hand cards.\n"
@@ -128,20 +136,21 @@ public final class ClientFrame extends JFrame {
                 "About", JOptionPane.INFORMATION_MESSAGE));
         help.add(rules);
         help.add(about);
+        menuBar.add(javax.swing.Box.createHorizontalStrut(10));
         menuBar.add(help);
-
-        // macOS Aqua ignores UIManager colors for the bar — style directly.
-        menuBar.setBackground(Theme.BG);
-        menuBar.setOpaque(true);
-        menuBar.setBorder(BorderFactory.createMatteBorder(0, 0, 2, 0, Theme.OUTLINE));
-        for (int i = 0; i < menuBar.getMenuCount(); i++) {
-            javax.swing.JMenu menu = menuBar.getMenu(i);
-            menu.setForeground(Theme.CREAM);
-            menu.setFont(Theme.bold(13f));
-            menu.setOpaque(true);
-            menu.setBackground(Theme.BG);
-        }
         return menuBar;
+    }
+
+    /** A coal-styled menu with comfortable spacing between Game and Help. */
+    private javax.swing.JMenu styledMenu(String text) {
+        javax.swing.JMenu menu = new javax.swing.JMenu(text);
+        menu.setUI(new javax.swing.plaf.basic.BasicMenuUI());
+        menu.setBackground(Theme.BG);
+        menu.setForeground(Theme.CREAM);
+        menu.setFont(Theme.bold(13f));
+        menu.setOpaque(true);
+        menu.setBorder(BorderFactory.createEmptyBorder(3, 12, 3, 12));
+        return menu;
     }
 
     /** Reader-thread callback: hands the message to the model on the EDT. */
