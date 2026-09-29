@@ -282,11 +282,12 @@ public final class GamePanel extends JPanel {
     // ------------------------------------------------------------------
 
     private java.awt.Component buildRightColumn() {
+        // Fixed header column (banner, badge, stats, next card, controls) +
+        // a moves list that scrolls internally — nothing scrolls out of view.
         JPanel column = new JPanel(new BorderLayout(8, 8));
         column.setOpaque(false);
         column.setPreferredSize(new Dimension(255, 100));
 
-        // Top stack: banner, badge, stats, help, next card, controls.
         JPanel top = new JPanel();
         top.setOpaque(false);
         top.setLayout(new BoxLayout(top, BoxLayout.Y_AXIS));
@@ -335,29 +336,25 @@ public final class GamePanel extends JPanel {
         stats.add(piecesBox);
         top.add(stats);
 
-        // NEXT CARD: the transit card, headed for the current player.
+        // NEXT CARD: the transit card floats centered in the cream panel.
         JPanel nextCard = UiKit.sticker(12);
-        nextCard.setLayout(new BorderLayout(8, 4));
-        JPanel nextHeader = new JPanel(new GridLayout(2, 1, 0, 0));
-        nextHeader.setBackground(Theme.CREAM);
-        nextHeader.add(UiKit.inkLabel("NEXT CARD", 14f));
-        transitGoesLabel.setForeground(Theme.INK);
-        nextHeader.add(transitGoesLabel);
+        nextCard.setLayout(new BorderLayout(8, 8));
+        JPanel nextHeader = new JPanel(new BorderLayout());
+        nextHeader.setOpaque(false);
+        nextHeader.add(UiKit.inkLabel("NEXT CARD", 14f), BorderLayout.WEST);
+        nextHeader.add(transitGoesLabel, BorderLayout.EAST);
         nextCard.add(nextHeader, BorderLayout.NORTH);
-        JPanel transitCenter = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 0));
+        JPanel transitCenter = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 8));
         transitCenter.setOpaque(false);
         transitCenter.add(transitHolder);
         nextCard.add(transitCenter, BorderLayout.CENTER);
-        nextCard.setAlignmentX(Component.CENTER_ALIGNMENT);
         top.add(nextCard);
 
-        // Controls: equal-width cells so MENU and RESIGN align as a pair.
+        // Controls: equal-width pair directly under the card panel.
         JPanel controls = new JPanel(new GridLayout(1, 2, 10, 0));
         controls.setOpaque(false);
-        controls.setMaximumSize(new Dimension(230, 52));
-        controls.setAlignmentX(Component.CENTER_ALIGNMENT);
         JButton menu = UiKit.pill("Menu", UiKit.Pill.CREAM_OUTLINE);
-        menu.addActionListener(event -> showInMatchMenu());
+        menu.addActionListener(event -> model.leaveToLobby());
         controls.add(menu);
         JButton resign = UiKit.pill("Resign", UiKit.Pill.DANGER);
         resign.addActionListener(event -> confirmResign());
@@ -366,7 +363,11 @@ public final class GamePanel extends JPanel {
 
         column.add(top, BorderLayout.NORTH);
 
-        // Compact move history with a themed empty state (§30).
+        // MOVES fills the remaining sidebar height; the list scrolls
+        // internally so the header elements never move.
+        JPanel movesCard = UiKit.surface(10);
+        movesCard.setLayout(new BorderLayout(6, 6));
+        movesCard.add(UiKit.boldLabel("MOVES", 13f), BorderLayout.NORTH);
         historyList.setBackground(Theme.SURFACE);
         historyList.setForeground(Theme.CREAM);
         historyList.setCellRenderer(new MoveRowRenderer());
@@ -375,7 +376,9 @@ public final class GamePanel extends JPanel {
         scroll.setBorder(BorderFactory.createEmptyBorder());
         scroll.getViewport().setBackground(Theme.SURFACE);
         scroll.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
-        scroll.setPreferredSize(new Dimension(230, 84));
+        historyViews = new JPanel(new java.awt.CardLayout());
+        historyViews.setOpaque(false);
+        historyViews.add(scroll, "moves");
 
         JPanel emptyState = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 4));
         emptyState.setBackground(Theme.SURFACE);
@@ -387,26 +390,26 @@ public final class GamePanel extends JPanel {
                 Theme.MUTED, Theme.INK, Theme.CREAM);
         emptyLabel.setIcon(new javax.swing.ImageIcon(emptyIcon));
         emptyState.add(emptyLabel);
-
-        // MOVES fills the remaining column height.
-        JPanel movesCard = UiKit.surface(10);
-        movesCard.setLayout(new BorderLayout(6, 6));
-        movesCard.add(UiKit.boldLabel("MOVES", 13f), BorderLayout.NORTH);
-        historyViews = new JPanel(new java.awt.CardLayout());
-        historyViews.setOpaque(false);
-        historyViews.add(scroll, "moves");
         historyViews.add(emptyState, "empty");
         movesCard.add(historyViews, BorderLayout.CENTER);
-        column.add(movesCard, BorderLayout.CENTER);
 
-        // The right column scrolls if the window is ever too short —
-        // children must never overlap each other.
-        JScrollPane eastScroll = new JScrollPane(column);
-        eastScroll.setBorder(BorderFactory.createEmptyBorder());
-        eastScroll.getVerticalScrollBar().setUnitIncrement(24);
-        eastScroll.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
-        return eastScroll;
+        JPanel trays = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 2));
+        trays.setBackground(Theme.SURFACE);
+        trays.add(UiKit.label("TOOK", 10f));
+        trays.add(myCapturesTray);
+        JPanel separator = new JPanel() { };
+        separator.setBackground(Theme.SURFACE);
+        separator.setPreferredSize(new java.awt.Dimension(2, 18));
+        trays.add(separator);
+        trays.add(UiKit.label("LOST", 10f));
+        trays.add(enemyCapturesTray);
+        movesCard.add(trays, BorderLayout.SOUTH);
+
+        column.add(movesCard, BorderLayout.CENTER);
+        return column;
     }
+
+
 
     // ------------------------------------------------------------------
     // Right-column parts
@@ -475,6 +478,7 @@ public final class GamePanel extends JPanel {
         state.hand(myColor).forEach(card -> {
             CardPanel panel = new CardPanel(card, myColor, false,
                     () -> model.cardClicked(card.id()));
+            panel.setCardScale(0.9);
             panel.setSelected(card.id().equals(model.selectedCardId()));
             JPanel slot = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 0));
             slot.setOpaque(false);
