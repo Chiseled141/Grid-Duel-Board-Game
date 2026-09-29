@@ -111,7 +111,9 @@ public final class LobbyPanel extends JPanel {
         setBackground(Theme.BG);
         setBorder(BorderFactory.createEmptyBorder(18, 22, 14, 22));
 
-        add(buildHeader(), BorderLayout.NORTH);
+        JPanel page = new JPanel(new BorderLayout());
+        page.setOpaque(false);
+        page.add(buildHeader(), BorderLayout.NORTH);
 
         JPanel center = new JPanel(new BorderLayout(24, 0));
         center.setOpaque(false);
@@ -174,7 +176,7 @@ public final class LobbyPanel extends JPanel {
      * cards; narrow ones stack the hero band on top so nothing collapses.
      */
     private void relayout() {
-        boolean wide = getWidth() >= 950;
+        boolean wide = getWidth() >= 800;
         if (wide == wideLayout) {
             return;
         }
@@ -395,11 +397,11 @@ public final class LobbyPanel extends JPanel {
         return column;
     }
 
-    /** Centers a component at its preferred size inside the column. */
+    /** Holds a section stretched to the column width (uniform edges). */
     private JPanel wrap(JComponent inner) {
-        JPanel holder = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 0));
+        JPanel holder = new JPanel(new BorderLayout());
         holder.setOpaque(false);
-        holder.add(inner);
+        holder.add(inner, BorderLayout.CENTER);
         return holder;
     }
 

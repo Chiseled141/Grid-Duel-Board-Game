@@ -53,7 +53,6 @@ public final class GamePanel extends JPanel {
     private final JLabel opponentLabel = UiKit.label("", 14f);
     private final JLabel nameLabel = UiKit.boldLabel("", 14f);
     private final JLabel statsLabel = UiKit.label("", 10f);
-    private final JLabel helpLabel = new JLabel(" ", SwingConstants.CENTER);
     private final JLabel turnCountLabel = new JLabel("00", SwingConstants.CENTER);
     private final JLabel turnCaption = new JLabel("TURN", SwingConstants.CENTER);
     private final JLabel redPiecesLabel = new JLabel("5", SwingConstants.CENTER);
@@ -71,6 +70,10 @@ public final class GamePanel extends JPanel {
     private final JLabel myChipLabel = UiKit.inkLabel("YOU", 11f);
     private JPanel historyViews;
     private int lastEffectMove = -1;
+    private final List<CardPanel> myCardPanels = new java.util.ArrayList<>();
+    private JPanel handColumn;
+    /** A hand card's native height at scale 1 (CardPanel H + shadow room). */
+    private static final double CARD_NATIVE_H = 244;
 
     private onitama.core.PlayerColor myColor() {
         return model.myColor();
@@ -244,12 +247,34 @@ public final class GamePanel extends JPanel {
     // ------------------------------------------------------------------
 
     private JPanel buildHandColumn() {
-        JPanel column = new JPanel(new BorderLayout());
-        column.setOpaque(false);
-        column.setPreferredSize(new Dimension(230, 100));
+        handColumn = new JPanel(new BorderLayout());
+        handColumn.setOpaque(false);
+        handColumn.setPreferredSize(new Dimension(230, 100));
         myCards.setOpaque(false);
-        column.add(myCards, BorderLayout.NORTH);
-        return column;
+        handColumn.add(myCards, BorderLayout.NORTH);
+        // Cards rescale when the window height changes: two cards always
+        // fit the column exactly, so nothing clips and no space is wasted.
+        handColumn.addComponentListener(new java.awt.event.ComponentAdapter() {
+            @Override
+            public void componentResized(java.awt.event.ComponentEvent event) {
+                fitHandCards();
+            }
+        });
+        return handColumn;
+    }
+
+    /** Scales the two hand cards so the pair fills the column height. */
+    private void fitHandCards() {
+        int available = handColumn.getHeight();
+        if (available <= 0) {
+            return;
+        }
+        double perCard = (available - 12) / 2.0;
+        double scale = Math.max(0.30, Math.min(0.85, perCard / CARD_NATIVE_H));
+        for (CardPanel panel : myCardPanels) {
+            panel.setCardScale(scale);
+        }
+        handColumn.revalidate();
     }
 
     // ------------------------------------------------------------------
@@ -310,12 +335,6 @@ public final class GamePanel extends JPanel {
         stats.add(piecesBox);
         top.add(stats);
 
-        // Contextual help line.
-        helpLabel.setFont(Theme.normal(11f));
-        helpLabel.setForeground(Theme.blend(Theme.INK, Theme.MUTED));
-        helpLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
-        top.add(helpLabel);
-
         // NEXT CARD: the transit card, headed for the current player.
         JPanel nextCard = UiKit.sticker(12);
         nextCard.setLayout(new BorderLayout(8, 4));
@@ -356,7 +375,7 @@ public final class GamePanel extends JPanel {
         scroll.setBorder(BorderFactory.createEmptyBorder());
         scroll.getViewport().setBackground(Theme.SURFACE);
         scroll.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
-        scroll.setPreferredSize(new Dimension(230, 120));
+        scroll.setPreferredSize(new Dimension(230, 84));
 
         JPanel emptyState = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 4));
         emptyState.setBackground(Theme.SURFACE);
@@ -488,7 +507,6 @@ public final class GamePanel extends JPanel {
         }
         redPiecesLabel.setText(String.valueOf(redCount));
         bluePiecesLabel.setText(String.valueOf(blueCount));
-        helpLabel.setText(helpText(state, myColor));
 
         List<ClientModel.MoveInfo> moves = model.historyMoves();
         historyList.setListData(moves.toArray(new ClientModel.MoveInfo[0]));
@@ -525,26 +543,6 @@ public final class GamePanel extends JPanel {
         return "WAITING…";
     }
 
-    /** Contextual help line for the right column (§13/§34 feedback). */
-    private String helpText(GameState state, onitama.core.PlayerColor myColor) {
-        if (!state.isOngoing()) {
-            return "The game is over.";
-        }
-        if (state.turn() != myColor) {
-            return "Waiting for " + model.opponentName() + "…";
-        }
-        if (model.selectedSquare() != null && model.selectedCardId() != null) {
-            Piece piece = state.board().pieceAt(model.selectedSquare());
-            String kind = piece != null && piece.master() ? "Master" : "Student";
-            return kind + " selected · dots = moves";
-        }
-        if (model.selectedCardId() != null) {
-            String cardName = onitama.core.CardDeck
-                    .cardById(model.selectedCardId()).name();
-            return cardName + " selected — pick a piece.";
-        }
-        return "Pick a card, then a piece.";
-    }
 
     /**
      * The in-match pause menu: the player never falls out of the game view
