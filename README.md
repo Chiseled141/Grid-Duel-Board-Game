@@ -20,6 +20,10 @@ login, lobby, game board, leaderboard and replay viewer screens.
   disconnect grace period with forfeit, token-based reconnect.
 * Swing client: login, lobby, game board drawn from your own side, legal-move
   highlights, move history, captured trays, leaderboard, replay viewer.
+* Single-player practice mode: local games against the built-in `PracticeBot`
+  at three difficulties — **Rookie** (forgiving heuristic with beginner
+  mercy), **Senior** (2 half-move search) and **Legend** (5 half-move
+  alpha-beta search) — no server, no Elo at stake, instant rematch.
 * Every match is persisted as a `.onitama-replay` file; replays are validated
   against the rules engine when opened.
 * Headless load-test harness (`bots` mode) that measures per-move latency and
@@ -64,6 +68,13 @@ Two clients on one machine: start the server, then run the client twice,
 register two accounts, create a match in one window and join with the room
 code in the other.
 
+**Single-player** (no opponent needed): log in, then in the lobby's
+**SINGLE PLAY** card press **Play** and pick a difficulty — **Rookie** for
+beginners, **Senior** for players who know the game, **Legend** for hardcore
+masters. The game runs locally in the client against the built-in bot —
+nothing is sent to the server, ratings are untouched, and the game-over
+dialog offers an instant rematch at the same level.
+
 **Load-test bots** (headless; writes CSV files into `results/`):
 
 ```bash
@@ -101,7 +112,9 @@ scripts/                 run-server / run-client / run-bots (.sh and .bat)
 src/main/java/onitama/
 ├── Main.java            entry point: demo | server | client | bots
 ├── core/                PURE game logic: board, cards, rules engine,
-│                        game state, Elo — no I/O, shared by server & client
+│                        game state, Elo, the practice-mode Difficulty
+│                        ladder + PracticeBot — no I/O, shared by
+│                        server & client
 ├── net/                 protocol: sealed Message interface + one record per
 │                        message type (Java object serialization over TCP)
 ├── server/              GameServer (accept loop), ClientHandler, LobbyManager,

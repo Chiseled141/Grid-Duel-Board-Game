@@ -587,6 +587,20 @@ public final class GamePanel extends JPanel {
         } else {
             result = model.opponentName() + " wins by " + over.way() + ".";
         }
+        if (model.isPracticeMode()) {
+            // Practice has no ratings: offer an instant rematch instead.
+            Object[] options = {"PLAY AGAIN", "BACK TO LOBBY"};
+            int choice = JOptionPane.showOptionDialog(this,
+                    result + "\nThe dojo bot thanks you for the practice.",
+                    "Practice game over", JOptionPane.DEFAULT_OPTION,
+                    JOptionPane.INFORMATION_MESSAGE, null, options, options[0]);
+            if (choice == 0) {
+                model.startPracticeMatch(model.practiceDifficulty());
+            } else {
+                model.leaveToLobby();
+            }
+            return;
+        }
         String ratings = "New Elo — you: " + myEloAfter(over) + ", opponent: "
                 + opponentEloAfter(over);
         Object[] options = {"OFFER REMATCH", "BACK TO LOBBY"};

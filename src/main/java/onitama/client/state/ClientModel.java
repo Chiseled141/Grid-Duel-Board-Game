@@ -2,10 +2,13 @@ package onitama.client.state;
 
 import onitama.client.OnitamaClient;
 import onitama.core.CardDeck;
+import onitama.core.Difficulty;
 import onitama.core.GameState;
+import onitama.core.IllegalMoveException;
 import onitama.core.Move;
 import onitama.core.Piece;
 import onitama.core.PlayerColor;
+import onitama.core.PracticeBot;
 import onitama.core.RulesEngine;
 import onitama.core.Square;
 import onitama.net.CreateMatchRequest;
@@ -38,11 +41,13 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Random;
 import java.util.function.Consumer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import javax.swing.SwingUtilities;
+import javax.swing.Timer;
 
 /**
  * The client-side model, owned by the Swing EDT: every field is only read or
@@ -92,6 +97,17 @@ public final class ClientModel {
     // MoveApplied broadcasts, so returning is always in sync.
     private boolean matchParked;
     private String parkedRoomCode;
+
+    // Single-player practice: a local game against the built-in bot, played
+    // entirely on the EDT — no server involvement, no Elo, no replay. The
+    // Rookie heuristic answers instantly; Senior/Legend search on a worker
+    // thread, so the generation counter guards against stale results.
+    private static final int BOT_THINK_MILLIS = 900;
+    private boolean practiceMode;
+    private Difficulty practiceDifficulty = Difficulty.ROOKIE;
+    private final Random practiceRandom = new Random();
+    private Timer botTimer;
+    private int practiceGeneration;
 
     /** One compact move-history row (§17 of the design spec). */
     public record MoveInfo(int number, String cardName, String fromSquare,
@@ -167,8 +183,58 @@ public final class ClientModel {
         connection.send(new LeaderboardRequest());
     }
 
+    /**
+     * Starts a local practice match against the built-in bot at the given
+     * difficulty. The game is dealt and played entirely in the client: no
+     * server, no Elo change, no replay. The human always sits on the Blue side.
+     */
+    public void startPracticeMatch(Difficulty difficulty) {
+        if (hasParkedMatch()) {
+            fire(listener -> listener.onError(
+                    "You have an ongoing online match — return to it first."));
+            return;
+        }
+        stopBotTimer();
+        practiceMode = true;
+        practiceDifficulty = difficulty;
+        practiceGeneration++;
+        state = GameState.newGame(CardDeck.deal());
+        myColor = PlayerColor.BLUE;
+        roomCode = null;
+        opponentName = difficulty.botName();
+        historyMoves.clear();
+        myCaptures.clear();
+        enemyCaptures.clear();
+        rematchOfferedByOpponent = false;
+        gameOverAnnounced = false;
+        matchParked = false;
+        parkedRoomCode = null;
+        pendingRoomCode = null;
+        lastCaptureSquare = null;
+        clearSelection();
+        setScreen(Screen.GAME);
+        autoPassIfNeeded();
+        scheduleBotTurn();
+        fire(ClientModelListener::onMatchChanged);
+    }
+
+    /** True while the client is in a local practice match against the bot. */
+    public boolean isPracticeMode() {
+        return practiceMode;
+    }
+
+    /** The difficulty of the current (or last) practice match. */
+    public Difficulty practiceDifficulty() {
+        return practiceDifficulty;
+    }
+
     /** Resigns the current match. */
     public void resign() {
+        if (practiceMode) {
+            // A practice game has nothing at stake; leaving abandons it.
+            leaveToLobby();
+            return;
+        }
         connection.send(new ResignRequest());
     }
 
@@ -182,6 +248,13 @@ public final class ClientModel {
      * background) so the player can return to it; a finished one is cleared.
      */
     public void leaveToLobby() {
+        if (practiceMode) {
+            stopBotTimer();
+            clearMatchState();
+            setScreen(Screen.LOBBY);
+            refreshMatches();
+            return;
+        }
         if (state != null && state.isOngoing()) {
             matchParked = true;
             parkedRoomCode = roomCode;
@@ -222,7 +295,11 @@ public final class ClientModel {
             return;
         }
         if (highlightedTargets.contains(clicked)) {
-            connection.send(new MoveRequest(selectedCardId, selectedSquare, clicked));
+            if (practiceMode) {
+                applyPracticeMove(new Move(selectedSquare, clicked, selectedCardId));
+            } else {
+                connection.send(new MoveRequest(selectedCardId, selectedSquare, clicked));
+            }
             clearSelection();
             fire(ClientModelListener::onMatchChanged);
             return;
@@ -356,6 +433,8 @@ public final class ClientModel {
     }
 
     private void handleMatchStart(MatchStart start) {
+        stopBotTimer();
+        practiceMode = false;
         state = start.initialState();
         myColor = start.yourColor();
         roomCode = start.roomCode();
@@ -412,12 +491,163 @@ public final class ClientModel {
 
     /**
      * Passing is mandatory when the player to move has no legal move; the
-     * client performs it automatically with its first hand card.
+     * client performs it automatically with its first hand card — locally in
+     * practice mode, via the server in an online match.
      */
     private void autoPassIfNeeded() {
         if (myTurn() && RulesEngine.mustPass(state)) {
-            connection.send(new PassTurn(state.hand(myColor).get(0).id()));
+            if (practiceMode) {
+                applyPracticePass();
+            } else {
+                connection.send(new PassTurn(state.hand(myColor).get(0).id()));
+            }
         }
+    }
+
+    // ------------------------------------------------------------------
+    // Practice mode: local turns against the built-in bot (EDT only)
+    // ------------------------------------------------------------------
+
+    private PlayerColor botColor() {
+        return myColor == null ? null : myColor.opponent();
+    }
+
+    /**
+     * Applies the human's half-move to the local game and hands the turn to
+     * the bot. {@code IllegalMoveException} cannot occur for moves reached
+     * through the legal-targets highlighting; the catch is a safety net so a
+     * bug can never kill the EDT.
+     */
+    private void applyPracticeMove(Move move) {
+        try {
+            Piece victim = state.board().pieceAt(move.to());
+            RulesEngine.apply(state, move);
+            recordPracticeMove(move, victim, myCaptures);
+            advancePractice();
+        } catch (IllegalMoveException e) {
+            fire(listener -> listener.onError("Move rejected: " + e.getMessage()));
+        }
+    }
+
+    /** Applies the human's mandatory pass with the first hand card. */
+    private void applyPracticePass() {
+        RulesEngine.pass(state, state.hand(myColor).get(0).id());
+        historyMoves.add(new MoveInfo(state.moveNumber(),
+                state.transit().name(), "", "", false, true));
+        advancePractice();
+    }
+
+    /**
+     * One-shot timer: lets the bot reply after a short, visible pause. The
+     * Rookie then answers on the EDT; Senior and Legend search on a daemon
+     * worker thread so the UI never freezes under them.
+     */
+    private void scheduleBotTurn() {
+        stopBotTimer();
+        if (!practiceMode || state == null || !state.isOngoing()
+                || state.turn() != botColor()) {
+            return;
+        }
+        botTimer = new Timer(BOT_THINK_MILLIS, event -> botTurnStarted());
+        botTimer.setRepeats(false);
+        botTimer.start();
+    }
+
+    private void stopBotTimer() {
+        if (botTimer != null) {
+            botTimer.stop();
+            botTimer = null;
+        }
+    }
+
+    /** The thinking pause is over: compute (or start computing) the bot move. */
+    private void botTurnStarted() {
+        botTimer = null;
+        if (!practiceMode || state == null || !state.isOngoing()
+                || state.turn() != botColor()) {
+            return;
+        }
+        PlayerColor bot = botColor();
+        if (practiceDifficulty == Difficulty.ROOKIE) {
+            Move move = PracticeBot.chooseMove(state, bot, practiceDifficulty, practiceRandom);
+            playBotMove(move);
+            return;
+        }
+        // Stronger levels search a snapshot away from the EDT; the result is
+        // only applied if this practice match is still the current one.
+        GameState snapshot = new GameState(state);
+        int generation = practiceGeneration;
+        Thread searcher = new Thread(() -> {
+            Move move = PracticeBot.chooseMove(snapshot, bot, practiceDifficulty, new Random());
+            SwingUtilities.invokeLater(() -> applyBotMoveIfCurrent(generation, move));
+        }, "onitama-practice-bot");
+        searcher.setDaemon(true);
+        searcher.start();
+    }
+
+    /** Discards a late search result if the practice match has changed. */
+    private void applyBotMoveIfCurrent(int generation, Move move) {
+        if (generation != practiceGeneration || !practiceMode || state == null
+                || !state.isOngoing() || state.turn() != botColor()) {
+            return;
+        }
+        playBotMove(move);
+    }
+
+    /** Applies the bot's chosen move on the EDT (null = mandatory pass). */
+    private void playBotMove(Move move) {
+        if (!practiceMode || state == null || !state.isOngoing()
+                || state.turn() != botColor()) {
+            return;
+        }
+        PlayerColor bot = botColor();
+        if (move == null) {
+            RulesEngine.pass(state, state.hand(bot).get(0).id());
+            lastCaptureSquare = null;
+            historyMoves.add(new MoveInfo(state.moveNumber(),
+                    state.transit().name(), "", "", false, true));
+        } else {
+            Piece victim = state.board().pieceAt(move.to());
+            RulesEngine.apply(state, move);
+            recordPracticeMove(move, victim, enemyCaptures);
+        }
+        advancePractice();
+        fire(ClientModelListener::onMatchChanged);
+    }
+
+    /** Adds the half-move to the history and the captor's tray. */
+    private void recordPracticeMove(Move move, Piece victim, List<Piece> captorTray) {
+        lastCaptureSquare = victim == null ? null : move.to();
+        if (victim != null) {
+            captorTray.add(victim);
+        }
+        historyMoves.add(new MoveInfo(state.moveNumber(),
+                CardDeck.cardById(move.cardId()).name(),
+                squareName(move.from()), squareName(move.to()),
+                victim != null, false));
+    }
+
+    /** After a practice half-move: hand over the turn or announce the end. */
+    private void advancePractice() {
+        if (!state.isOngoing()) {
+            announcePracticeGameOver();
+            return;
+        }
+        // The human may now be forced to pass (a pass can even end the game
+        // on the move limit); the bot's own pass is part of playBotTurn.
+        autoPassIfNeeded();
+        if (!state.isOngoing()) {
+            announcePracticeGameOver();
+            return;
+        }
+        scheduleBotTurn();
+    }
+
+    /** Ends a finished practice game: stops the bot and shows the result. */
+    private void announcePracticeGameOver() {
+        stopBotTimer();
+        fire(listener -> listener.onGameOver(
+                new GameOver(state.winner(), state.way(), 0, 0)));
     }
 
     private boolean myTurn() {
@@ -439,6 +669,9 @@ public final class ClientModel {
     }
 
     private void clearMatchState() {
+        stopBotTimer();
+        practiceMode = false;
+        practiceGeneration++;
         state = null;
         myColor = null;
         roomCode = null;
@@ -586,6 +819,8 @@ public final class ClientModel {
                     ? "No legal move - passing..."
                     : "Your turn - pick a card and a piece";
         }
-        return "Waiting for " + opponentName + "...";
+        return practiceMode
+                ? opponentName + " is thinking..."
+                : "Waiting for " + opponentName + "...";
     }
 }

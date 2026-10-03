@@ -55,10 +55,31 @@ public final class GameState implements Serializable {
         this.status = Status.ONGOING;
     }
 
-    /** Creates a game in the standard starting position from a card deal. */
+    /**
+     * Creates a game in the standard starting position from a card deal.
+     */
     public static GameState newGame(CardDeck.Deal deal) {
         return new GameState(Board.newGame(), deal.blueHand(), deal.redHand(),
                 deal.transit(), deal.firstPlayer());
+    }
+
+    /**
+     * Creates a fully independent deep copy of another state. Cards and pieces
+     * are immutable and shared; the board and hands are copied. This is the
+     * "deep copy first" the wire-safety note asks for: search a copy freely
+     * while the original stays untouched.
+     */
+    public GameState(GameState other) {
+        this.board = new Board(other.board);
+        this.blueHand = new ArrayList<>(other.blueHand);
+        this.redHand = new ArrayList<>(other.redHand);
+        this.transit = other.transit;
+        this.turn = other.turn;
+        this.moveNumber = other.moveNumber;
+        this.status = other.status;
+        this.winner = other.winner;
+        this.way = other.way;
+        this.lastMove = other.lastMove;
     }
 
     /** Returns the live board. It can only be mutated inside this package. */

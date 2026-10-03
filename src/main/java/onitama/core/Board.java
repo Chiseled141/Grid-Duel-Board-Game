@@ -25,6 +25,17 @@ public final class Board implements Serializable {
     Board() {
     }
 
+    /** Creates an independent copy of another board (deep: pieces are shared
+     *  only because {@link Piece} is immutable). Package-private: the copy is
+     *  used by {@link GameState#GameState(GameState)} and core-internal code. */
+    Board(Board other) {
+        for (int y = 0; y < SIZE; y++) {
+            for (int x = 0; x < SIZE; x++) {
+                squares[y][x] = other.squares[y][x];
+            }
+        }
+    }
+
     /**
      * Creates a board in the standard starting position: each player has a
      * Master on their Temple Arch and four Students on the rest of the home row.

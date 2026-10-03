@@ -3,6 +3,7 @@ package onitama.client.ui;
 import onitama.client.state.ClientModel;
 import onitama.client.state.ClientModelListener;
 import onitama.client.state.Screen;
+import onitama.core.Difficulty;
 import onitama.net.MatchSummary;
 
 import java.awt.BorderLayout;
@@ -99,6 +100,8 @@ public final class LobbyPanel extends JPanel {
     private Runnable openReplays;
     private JButton returnPill;
     private JPanel returnWrap;
+    private UiKit.PillButton playButton;
+    private JPanel difficultyRow;
 
     /** Builds the lobby and subscribes it to the model. */
     public LobbyPanel(ClientModel model, onitama.client.ClientSettings settings,
@@ -126,6 +129,7 @@ public final class LobbyPanel extends JPanel {
                 if (screen == Screen.LOBBY) {
                     refreshProfile();
                     setWaitingVisible(false);
+                    hideDifficultyRow();
                     refreshMatches();
                     if (model.hasParkedMatch()) {
                         returnPill.setText("RETURN TO MATCH · " + model.parkedRoomCode());
@@ -372,6 +376,9 @@ public final class LobbyPanel extends JPanel {
         createCenter.add(ticket, BorderLayout.CENTER);
         createCard.add(createCenter, BorderLayout.CENTER);
 
+        // SINGLE PLAY card: one Play button, then pick the bot level.
+        JPanel singlePlayCard = buildSinglePlayCard();
+
         // JOIN card: unified input row, list, refresh.
         JPanel joinCard = buildJoinCard();
 
@@ -390,6 +397,8 @@ public final class LobbyPanel extends JPanel {
         stack.add(Box.createVerticalStrut(14));
         stack.add(wrap(createCard));
         stack.add(Box.createVerticalStrut(14));
+        stack.add(wrap(singlePlayCard));
+        stack.add(Box.createVerticalStrut(14));
         stack.add(wrap(joinCard));
         stack.add(Box.createVerticalStrut(14));
         stack.add(wrap(nav));
@@ -403,6 +412,57 @@ public final class LobbyPanel extends JPanel {
         holder.setOpaque(false);
         holder.add(inner, BorderLayout.CENTER);
         return holder;
+    }
+
+    /** The single-play card: a Play button that reveals the difficulty pick. */
+    private JPanel buildSinglePlayCard() {
+        JPanel card = UiKit.surface(16);
+        card.setLayout(new BorderLayout(8, 8));
+
+        card.add(UiKit.boldLabel("SINGLE PLAY", 15f), BorderLayout.NORTH);
+
+        JPanel center = new JPanel(new BorderLayout(0, 8));
+        center.setBackground(Theme.SURFACE);
+
+        JPanel playRow = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 2));
+        playRow.setBackground(Theme.SURFACE);
+        playButton = UiKit.pill("Play", UiKit.Pill.GOLD);
+        playButton.addActionListener(event -> toggleDifficultyRow());
+        playRow.add(playButton);
+        center.add(playRow, BorderLayout.NORTH);
+
+        // Hidden until the player presses Play: the three bot levels.
+        difficultyRow = new JPanel(new GridLayout(1, 3, 8, 0));
+        difficultyRow.setBackground(Theme.SURFACE);
+        difficultyRow.add(difficultyPill("ROOKIE", Difficulty.ROOKIE));
+        difficultyRow.add(difficultyPill("SENIOR", Difficulty.SENIOR));
+        difficultyRow.add(difficultyPill("LEGEND", Difficulty.LEGEND));
+        difficultyRow.setVisible(false);
+        center.add(difficultyRow, BorderLayout.CENTER);
+
+        card.add(center, BorderLayout.CENTER);
+        return card;
+    }
+
+    /** Shows or hides the difficulty choice under the Play button. */
+    private void toggleDifficultyRow() {
+        difficultyRow.setVisible(!difficultyRow.isVisible());
+        revalidate();
+        repaint();
+    }
+
+    /** Hides the difficulty choice again (used when returning to the lobby). */
+    private void hideDifficultyRow() {
+        if (difficultyRow != null) {
+            difficultyRow.setVisible(false);
+        }
+    }
+
+    /** One difficulty pill; starts a local practice match at that level. */
+    private UiKit.PillButton difficultyPill(String label, Difficulty difficulty) {
+        UiKit.PillButton pill = UiKit.miniPill(label, UiKit.Pill.GOLD);
+        pill.addActionListener(event -> model.startPracticeMatch(difficulty));
+        return pill;
     }
 
     private JPanel ticket;
