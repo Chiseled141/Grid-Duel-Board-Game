@@ -129,8 +129,8 @@ public final class GameServer {
 
     /**
      * Persistence hook called once per finished match from the match
-     * executor: records the match row, both players' stats (one transaction)
-     * and the replay file. Without a {@link MatchPersistence} (tests) it only
+     * executor: records the match row and both players' stats in one
+     * transaction. Without a {@link MatchPersistence} (tests) it only
      * logs.
      */
     public void onMatchFinished(MatchResult result) {

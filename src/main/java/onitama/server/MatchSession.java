@@ -1,10 +1,8 @@
 package onitama.server;
 
 import onitama.core.CardDeck;
-import onitama.core.DealSnapshot;
 import onitama.core.Elo;
 import onitama.core.GameState;
-import onitama.core.HalfMove;
 import onitama.core.IllegalMoveException;
 import onitama.core.Move;
 import onitama.core.PlayerColor;
@@ -22,10 +20,8 @@ import onitama.net.OpponentLeft;
 import onitama.net.RematchAccept;
 import onitama.net.UserProfile;
 
-import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.EnumSet;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
@@ -54,11 +50,9 @@ public final class MatchSession {
     private final String blueUsername;
     private final String redUsername;
     private final Map<PlayerColor, ClientHandler> players = new EnumMap<>(PlayerColor.class);
-    private final List<HalfMove> history = new ArrayList<>();
     private final ExecutorService executor;
 
     private GameState state;
-    private DealSnapshot deal;
     private volatile boolean finished;
     private GameOver gameOver;
     private boolean blueWantsRematch;
@@ -87,12 +81,9 @@ public final class MatchSession {
         submit(this::beginNewGame);
     }
 
-    /** Deals a fresh game, resets the history and announces it to both players. */
+    /** Deals a fresh game and announces it to both players. */
     private void beginNewGame() {
-        CardDeck.Deal deal = CardDeck.deal(server.config().dealRandom());
-        state = GameState.newGame(deal);
-        this.deal = new DealSnapshot(deal.blueHand(), deal.redHand(), deal.transit());
-        history.clear();
+        state = GameState.newGame(CardDeck.deal(server.config().dealRandom()));
         announceMatchStart();
     }
 
@@ -115,8 +106,6 @@ public final class MatchSession {
             Move move = new Move(request.from(), request.to(), request.cardId());
             try {
                 RulesEngine.apply(state, move);
-                history.add(new HalfMove(state.moveNumber(), request.cardId(),
-                        request.from(), request.to()));
                 broadcast(new MoveApplied(state, move));
                 if (!state.isOngoing()) {
                     finish(state.winner(), state.way());
@@ -137,7 +126,6 @@ public final class MatchSession {
             }
             try {
                 RulesEngine.pass(state, cardIdToDiscard);
-                history.add(new HalfMove(state.moveNumber(), cardIdToDiscard, null, null));
                 broadcast(new MoveApplied(state, null));
                 if (!state.isOngoing()) {
                     finish(state.winner(), state.way());
@@ -275,7 +263,7 @@ public final class MatchSession {
     /**
      * Ends the match: computes the Elo update, hands the result to the
      * server's persistence hook (match row + both players' stats in one
-     * transaction, plus the replay file), then sends {@link GameOver} to both
+     * transaction), then sends {@link GameOver} to both
      * players. The executor stays alive so the players can still agree on a
      * rematch; it is retired once both players are gone.
      */
@@ -289,7 +277,7 @@ public final class MatchSession {
         UserProfile red = userDao.profileOf(redUsername);
         Elo.Result elo = Elo.update(blue.elo(), red.elo(), winner);
         MatchResult result = new MatchResult(roomCode, blueUsername, redUsername,
-                winner, way, elo.blue(), elo.red(), deal, List.copyOf(history));
+                winner, way, elo.blue(), elo.red(), state.moveNumber());
         server.onMatchFinished(result);
 
         gameOver = new GameOver(winner, way, elo.blue(), elo.red());

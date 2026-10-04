@@ -98,7 +98,7 @@ public final class ClientModel {
     private String parkedRoomCode;
 
     // Single-player practice: a local game against the built-in bot, played
-    // entirely on the EDT — no server involvement, no Elo, no replay. The
+    // entirely on the EDT — no server involvement, no Elo. The
     // Rookie heuristic answers instantly; Senior/Legend search on a worker
     // thread, so the generation counter guards against stale results.
     private static final int BOT_THINK_MILLIS = 900;
@@ -182,7 +182,7 @@ public final class ClientModel {
     /**
      * Starts a local practice match against the built-in bot at the given
      * difficulty. The game is dealt and played entirely in the client: no
-     * server, no Elo change, no replay. The human always sits on the Blue side.
+     * server, no Elo change. The human always sits on the Blue side.
      */
     public void startPracticeMatch(Difficulty difficulty) {
         if (hasParkedMatch()) {

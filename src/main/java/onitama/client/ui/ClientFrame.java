@@ -54,8 +54,7 @@ public final class ClientFrame extends JFrame {
         BoardPanel.setDefaultPieceStyle(settings.pieceStyle());
 
         LoginPanel loginPanel = new LoginPanel(model, settings);
-        LobbyPanel lobbyPanel = new LobbyPanel(model, settings,
-                this::openLeaderboard, this::openReplayViewer);
+        LobbyPanel lobbyPanel = new LobbyPanel(model, settings, this::openLeaderboard);
         GamePanel gamePanel = new GamePanel(model);
         LeaderboardPanel leaderboardPanel = new LeaderboardPanel(model, () -> model.leaveToLobby());
 
@@ -173,10 +172,6 @@ public final class ClientFrame extends JFrame {
     private void openLeaderboard() {
         model.requestLeaderboard();
         showScreen(Screen.LEADERBOARD);
-    }
-
-    private void openReplayViewer() {
-        new ReplayViewer(this).setVisible(true);
     }
 
     private void closeAndSave() {

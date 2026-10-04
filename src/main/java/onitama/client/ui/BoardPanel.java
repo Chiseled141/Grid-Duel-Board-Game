@@ -30,7 +30,7 @@ import javax.swing.Timer;
  * always drawn from the viewer's side (own home row at the bottom). Highlights
  * (selection, legal moves, last move, capture effect, move animation) layer
  * on top; the drawn tiles/figurines remain the fallback when the artwork is
- * missing. Reused by the game screen and the replay viewer.
+ * missing. Used by the game screen.
  */
 public final class BoardPanel extends JComponent {
 

@@ -36,7 +36,7 @@ import java.awt.Dimension;
  * The lobby, composed like the front page of an indie board game (§19-31):
  * the ONITAMA title with its tagline, the Master hero illustration, proper
  * CREATE/JOIN action cards, the room code as a major waiting object with a
- * copy button, and leaderboard/replays as secondary navigation cards. The
+ * copy button, and the leaderboard as a secondary navigation card. The
  * background carries faint dojo decoration instead of empty black.
  */
 public final class LobbyPanel extends JPanel {
@@ -95,7 +95,6 @@ public final class LobbyPanel extends JPanel {
     private final onitama.client.ClientSettings settings;
     private final UiKit.PillButton[] styleButtons = new UiKit.PillButton[3];
     private Runnable openLeaderboard;
-    private Runnable openReplays;
     private JButton returnPill;
     private JPanel returnWrap;
     private UiKit.PillButton playButton;
@@ -103,11 +102,10 @@ public final class LobbyPanel extends JPanel {
 
     /** Builds the lobby and subscribes it to the model. */
     public LobbyPanel(ClientModel model, onitama.client.ClientSettings settings,
-                      Runnable openLeaderboard, Runnable openReplays) {
+                      Runnable openLeaderboard) {
         this.model = model;
         this.settings = settings;
         this.openLeaderboard = openLeaderboard;
-        this.openReplays = openReplays;
         setLayout(new BorderLayout(16, 12));
         setBackground(Theme.BG);
         setBorder(BorderFactory.createEmptyBorder(18, 22, 14, 22));
@@ -384,7 +382,6 @@ public final class LobbyPanel extends JPanel {
         JPanel nav = new JPanel(new GridLayout(1, 2, 14, 0));
         nav.setOpaque(false);
         nav.add(navCard("LEADERBOARD", "Top masters", () -> openLeaderboard.run()));
-        nav.add(navCard("REPLAY VIEWER", "Watch matches", () -> openReplays.run()));
 
         JPanel stack = new JPanel();
         stack.setOpaque(false);

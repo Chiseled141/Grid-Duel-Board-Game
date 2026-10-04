@@ -30,14 +30,12 @@ import onitama.net.PassTurn;
 import onitama.net.RegisterRequest;
 import onitama.net.RematchAccept;
 import onitama.net.RematchRequest;
-import onitama.replay.ReplayFile;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.SQLException;
 import java.util.ArrayList;
@@ -73,10 +71,8 @@ class ServerClientIntegrationTest {
     void startServer() throws IOException, SQLException {
         database = new Database(tempDir.resolve("it01.db"));
         SqliteUserDao userDao = new SqliteUserDao(database);
-        Path replayDir = tempDir.resolve("replays");
-        server = new GameServer(new ServerConfig(0, 60, new Random(SEED), replayDir),
-                userDao, new MatchPersistence(database, new SqliteMatchDao(database, userDao),
-                        replayDir));
+        server = new GameServer(new ServerConfig(0, 60, new Random(SEED)),
+                userDao, new MatchPersistence(database, new SqliteMatchDao(database, userDao)));
         port = server.start();
     }
 
@@ -199,16 +195,6 @@ class ServerClientIntegrationTest {
         assertEquals(1, board.topPlayers().get(0).wins());
         assertEquals(loserName, board.topPlayers().get(1).username());
         assertEquals(1, board.topPlayers().get(1).losses());
-
-        // ---- the server persisted a valid replay file ----
-        try (var replayFiles = Files.list(tempDir.resolve("replays"))) {
-            Path replayFile = replayFiles.findFirst().orElseThrow();
-            ReplayFile.Replay replay = ReplayFile.read(replayFile);
-            assertEquals(sim.moveNumber(), replay.moves().size());
-            assertEquals("alice", replay.blueUsername());
-            assertEquals("bob", replay.redUsername());
-            assertEquals(initialTransitId, replay.initialState().transit().id());
-        }
 
         // ---- rematch: offer is forwarded, second vote starts a fresh game ----
         blue.send(new RematchRequest());

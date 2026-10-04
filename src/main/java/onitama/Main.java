@@ -129,13 +129,12 @@ public final class Main {
     private static void runServer(Map<String, String> options) {
         int port = Integer.parseInt(options.getOrDefault("port", "5555"));
         Path dbFile = Path.of(options.getOrDefault("db", "data/onitama.db"));
-        Path replayDir = Path.of(options.getOrDefault("replays", "replays"));
         installFileLogging();
         try (Database database = new Database(dbFile)) {
             SqliteUserDao userDao = new SqliteUserDao(database);
             MatchDao matchDao = new SqliteMatchDao(database, userDao);
             GameServer server = new GameServer(ServerConfig.defaults(port), userDao,
-                    new MatchPersistence(database, matchDao, replayDir));
+                    new MatchPersistence(database, matchDao));
             Runtime.getRuntime().addShutdownHook(new Thread(() -> {
                 server.stop();
                 try {
