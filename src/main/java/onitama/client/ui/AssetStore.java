@@ -9,8 +9,8 @@ import java.util.logging.Logger;
 import javax.imageio.ImageIO;
 
 /**
- * Loads optional hand-designed artwork from {@code /assets/} inside the jar
- * (see docs/ASSET_CHECKLIST.md). Every asset is optional: {@link #optional}
+ * Loads optional hand-designed artwork from {@code /assets/} inside the jar.
+ * Every asset is optional: {@link #optional}
  * returns null when the file is absent and the callers keep painting their
  * drawn baseline — so art can be delivered file by file without breaking
  * anything.

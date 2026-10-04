@@ -12,8 +12,7 @@ import java.sql.Statement;
  * or {@link #inTransaction(SqlWork)}, so statements never interleave and the
  * transaction methods can wrap several statements atomically. A connection
  * pool would buy nothing at this scale (a few dozen players); one serialized
- * connection is the simplest correct choice — documented in
- * docs/DESIGN_DECISIONS.md.
+ * connection is the simplest correct choice.
  */
 public final class Database implements AutoCloseable {
 

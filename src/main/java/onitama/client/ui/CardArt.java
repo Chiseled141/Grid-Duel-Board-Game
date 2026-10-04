@@ -5,9 +5,7 @@ import java.util.Map;
 
 /**
  * Per-card visual identity: a fixed accent color and an original flavor
- * line for each of the 16 movement cards (§10: cards feel
- * collectible; §21: colored accent borders). Documented in
- * docs/DESIGN_DECISIONS.md.
+ * line for each of the 16 movement cards.
  */
 public final class CardArt {
 

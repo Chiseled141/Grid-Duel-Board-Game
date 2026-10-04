@@ -130,8 +130,6 @@ src/main/resources/      fonts/ (display font, OFL license) and assets/
                          (hand-designed board/piece/card art — optional,
                          each falls back to the drawn baseline when absent)
 src/test/java/onitama/   JUnit 5 tests (UT01–UT09, IT01–IT02, LT01)
-docs/                    DESIGN_DECISIONS.md, UI_DESIGN.md, ASSET_CHECKLIST.md,
-                         AWS_DEPLOY.md, EXPERIMENTS.md
 results/                 (created by bot runs) latency + summary CSV files
 replays/                 (created by the server) .onitama-replay files
 data/                    (created by the server) SQLite database file
@@ -152,20 +150,19 @@ center square of their home row (Way of the Stream).
 
 ## Known limitations
 
-* The current UI is the functional M4 baseline; milestone **M9** replaces it
-  with the retro-pop redesign specified in `docs/UI_DESIGN.md`, optionally
-  using hand-designed artwork from `docs/ASSET_CHECKLIST.md`.
+* The UI is the custom retro-pop × sumi-e redesign (M9): hand-designed card
+  faces, piece styles and painting backgrounds load from `assets/` with drawn
+  fallbacks when a file is absent.
 * Matchmaking is only "create room → share 5-character code → join"; there is
   no automatic matchmaking queue, no spectator mode and no in-game chat.
 * Elo has no provisionality, rating floor or decay; a small player pool can
   drift (a single win moves a rating by ±16 for equal ratings, less when the
   favorite wins, more for an upset).
-* SQLite serializes all database access through one connection — by design
-  (see docs/DESIGN_DECISIONS.md); heavy concurrent write load was not a goal.
+* SQLite serializes all database access through one connection — by design;
+  heavy concurrent write load was not a goal.
 * The replay viewer shows replays from Blue's side only.
 * The load-test harness measures client-observed round-trip latency and
-  games/minute; server CPU/memory are not sampled automatically (see
-  docs/EXPERIMENTS.md for the manual measurement steps).
+  games/minute; server CPU/memory are not sampled automatically.
 
 ## Team members
 
@@ -175,4 +172,4 @@ center square of their home row (Way of the Stream).
 | TODO(team) | TODO(team) | server + concurrency |
 | TODO(team) | TODO(team) | database + persistence |
 | TODO(team) | TODO(team) | Swing client + UX |
-| TODO(team) | TODO(team) | load testing + report |
+| TODO(team) | TODO(team) | load testing + benchmarking |
