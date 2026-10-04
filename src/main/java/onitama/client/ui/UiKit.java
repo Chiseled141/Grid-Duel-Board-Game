@@ -73,7 +73,6 @@ public final class UiKit {
      */
     public static class PillButton extends JButton {
         private Pill variant;
-        private float fontScale = 1f;
 
         public PillButton(String text, Pill variant) {
             super(text.toUpperCase());
@@ -108,11 +107,6 @@ public final class UiKit {
         public void setVariant(Pill variant) {
             this.variant = variant;
             repaint();
-        }
-
-        public void setFontScale(float fontScale) {
-            this.fontScale = fontScale;
-            setFont(Theme.display(14f * fontScale));
         }
 
         @Override

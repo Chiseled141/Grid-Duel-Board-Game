@@ -2,7 +2,6 @@ package onitama.server;
 
 import onitama.db.Database;
 import onitama.db.MatchDao;
-import onitama.db.PersistenceException;
 import onitama.replay.ReplayFile;
 
 import java.io.IOException;

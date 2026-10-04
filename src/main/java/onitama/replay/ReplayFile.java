@@ -13,7 +13,6 @@ import onitama.core.RulesEngine;
 import onitama.core.Square;
 import onitama.server.MatchResult;
 
-import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;

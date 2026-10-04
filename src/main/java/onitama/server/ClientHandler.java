@@ -2,10 +2,8 @@ package onitama.server;
 
 import onitama.core.PlayerColor;
 import onitama.db.AuthenticationException;
-import onitama.db.UserDao;
 import onitama.net.CreateMatchRequest;
 import onitama.net.ErrorMessage;
-import onitama.net.GameOver;
 import onitama.net.JoinMatchRequest;
 import onitama.net.LeaderboardRequest;
 import onitama.net.LeaderboardResponse;
@@ -14,7 +12,6 @@ import onitama.net.ListMatchesResponse;
 import onitama.net.LoginRequest;
 import onitama.net.LoginResponse;
 import onitama.net.MatchCreated;
-import onitama.net.MatchStart;
 import onitama.net.Message;
 import onitama.net.MoveRequest;
 import onitama.net.MoveRejected;
