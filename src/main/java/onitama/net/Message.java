@@ -11,7 +11,7 @@ import java.io.Serializable;
  * brief sketches) because records — the natural fit for these pure data
  * carriers — cannot extend classes. Sealing keeps the protocol closed: every
  * message type is listed in the permits clause, and adding one is a conscious
- * protocol change. See docs/DESIGN_DECISIONS.md.
+ * protocol change.
  */
 public sealed interface Message extends Serializable
         permits RegisterRequest, LoginRequest, LoginResponse,

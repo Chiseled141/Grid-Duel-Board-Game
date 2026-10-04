@@ -30,8 +30,8 @@ public final class CardDeck {
     private static List<Card> buildCatalog() {
         List<Card> cards = new ArrayList<>();
         // Offsets in Blue's native orientation, exactly as in Appendix A of the brief.
-        // Stamp colors are a fixed assignment (8 blue / 8 red) documented in
-        // docs/DESIGN_DECISIONS.md; per-card stamps are not publicly standardized.
+        // Stamp colors are a fixed assignment (8 blue / 8 red); per-card stamps
+        // are not publicly standardized.
         cards.add(new Card("tiger", "Tiger", PlayerColor.BLUE,
                 List.of(new Offset(0, 2), new Offset(0, -1))));
         cards.add(new Card("dragon", "Dragon", PlayerColor.RED,
