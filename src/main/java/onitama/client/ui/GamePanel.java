@@ -71,6 +71,10 @@ public final class GamePanel extends JPanel {
     private JPanel historyViews;
     private int lastEffectMove = -1;
     private final List<CardPanel> myCardPanels = new java.util.ArrayList<>();
+    /** The hand card ids the current {@link #myCardPanels} were built for. */
+    private List<String> builtHandIds = List.of();
+    /** Last scale applied to the hand cards (reused when they are rebuilt). */
+    private double handScale = 0.9;
     private JPanel handColumn;
     /** A hand card's native height at scale 1 (CardPanel H + shadow room). */
     private static final double CARD_NATIVE_H = 244;
@@ -263,6 +267,24 @@ public final class GamePanel extends JPanel {
         return handColumn;
     }
 
+    /** Rebuilds the two hand-card panels from scratch (only on card swaps). */
+    private void rebuildMyHand(java.util.List<onitama.core.Card> hand) {
+        myCards.removeAll();
+        myCardPanels.clear();
+        builtHandIds = hand.stream().map(onitama.core.Card::id).toList();
+        hand.forEach(card -> {
+            CardPanel panel = new CardPanel(card, model.myColor(), false,
+                    () -> model.cardClicked(card.id()));
+            panel.setCardScale(handScale);
+            myCardPanels.add(panel);
+            JPanel slot = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 0));
+            slot.setOpaque(false);
+            slot.add(panel);
+            myCards.add(slot);
+        });
+        fitHandCards();
+    }
+
     /** Scales the two hand cards so the pair fills the column height. */
     private void fitHandCards() {
         int available = handColumn.getHeight();
@@ -270,9 +292,9 @@ public final class GamePanel extends JPanel {
             return;
         }
         double perCard = (available - 12) / 2.0;
-        double scale = Math.max(0.30, Math.min(0.85, perCard / CARD_NATIVE_H));
+        handScale = Math.max(0.30, Math.min(0.85, perCard / CARD_NATIVE_H));
         for (CardPanel panel : myCardPanels) {
-            panel.setCardScale(scale);
+            panel.setCardScale(handScale);
         }
         handColumn.revalidate();
     }
@@ -473,18 +495,19 @@ public final class GamePanel extends JPanel {
             opponentCards.add(new CardPanel(card, opponent, true, null));
         });
 
-        // My cards: my color variant, hoverable, stacked on the left.
-        myCards.removeAll();
-        state.hand(myColor).forEach(card -> {
-            CardPanel panel = new CardPanel(card, myColor, false,
-                    () -> model.cardClicked(card.id()));
-            panel.setCardScale(0.9);
-            panel.setSelected(card.id().equals(model.selectedCardId()));
-            JPanel slot = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 0));
-            slot.setOpaque(false);
-            slot.add(panel);
-            myCards.add(slot);
-        });
+        // My cards: rebuilt only when the hand actually changed (cards swap
+        // after a half-move); otherwise the existing panels are updated in
+        // place, so rapid clicking never races a full re-layout that could
+        // swallow clicks between press and release.
+        List<String> handIds = state.hand(myColor).stream()
+                .map(onitama.core.Card::id).toList();
+        if (!handIds.equals(builtHandIds)) {
+            rebuildMyHand(state.hand(myColor));
+        }
+        for (int i = 0; i < myCardPanels.size(); i++) {
+            myCardPanels.get(i).setSelected(
+                    state.hand(myColor).get(i).id().equals(model.selectedCardId()));
+        }
 
         // NEXT CARD panel: the transit card, headed for the current player.
         transitHolder.removeAll();
