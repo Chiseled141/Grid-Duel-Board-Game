@@ -132,7 +132,6 @@ src/main/resources/      fonts/ (display font, OFL license) and assets/
 src/test/java/onitama/   JUnit 5 tests (UT01–UT09, IT01–IT02, LT01)
 docs/                    DESIGN_DECISIONS.md, UI_DESIGN.md, ASSET_CHECKLIST.md,
                          AWS_DEPLOY.md, EXPERIMENTS.md
-report/                  REPORT_SKELETON.md (the team writes the report)
 results/                 (created by bot runs) latency + summary CSV files
 replays/                 (created by the server) .onitama-replay files
 data/                    (created by the server) SQLite database file

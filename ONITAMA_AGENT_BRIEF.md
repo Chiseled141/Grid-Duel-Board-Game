@@ -331,7 +331,7 @@ Provide a `docs/EXPERIMENTS.md` describing exactly which experiments to run (bot
 | M4 | Swing client | Two GUI clients on one machine can log in, meet in a lobby, and play a full game on localhost. UT/IT suites still green. |
 | M5 | DB + Elo + replays | Registration/login persisted; match recorded in transaction; replay file written and viewable in client. UT07/UT08 pass. |
 | M6 | Resilience & polish | Reconnect works (IT02); heartbeats; friendly error dialogs everywhere; menus/dialogs complete; logging clean. |
-| M7 | Benchmark harness + docs | `bots` mode works; LT01 passes; README.md final; `docs/AWS_DEPLOY.md`, `docs/EXPERIMENTS.md`, `docs/DESIGN_DECISIONS.md`, `report/REPORT_SKELETON.md` written. |
+| M7 | Benchmark harness + docs | `bots` mode works; LT01 passes; README.md final; `docs/AWS_DEPLOY.md`, `docs/EXPERIMENTS.md`, `docs/DESIGN_DECISIONS.md` written. |
 | M8 | Final QA | `mvn clean verify` green; runnable-jar instructions verified from a clean clone; course checklist (Instructions.md §15) reviewed item by item. |
 | M9 | UI design pass (**planned, blocked on the team's design**) | Implement the supplied design under the rules of Section 17; all existing tests stay green; behavior unchanged. |
 
@@ -356,9 +356,9 @@ Also include a troubleshooting table (port closed → security group; class-vers
 
 1. One-paragraph project description + feature list. 2. Software requirements (JDK 17+, Maven 3.8+). 3. Build: `mvn package` → `target/onitama.jar`. 4. Run server / run client / run bots (with the scripts and both localhost and EC2 examples). 5. How to run tests (`mvn test`) and what they cover. 6. Project structure tree with one-line directory explanations. 7. How to play Onitama (4–6 lines, referencing the cards). 8. Known limitations. 9. Team member placeholders table.
 
-## 15. Report skeleton — `report/REPORT_SKELETON.md`
+## 15. Report skeleton — removed 2026-10-04
 
-Produce the section headings exactly following Instructions.md §11 (Title → Appendix) with, under each: 3–6 bullet points of *what to write there* and `TODO(team)` placeholders (names, real measurements, screenshots). Do **not** write report prose — the team writes it (Compilatio similarity ≤ 20% is their responsibility; a pre-written report would endanger that).
+The team does not need the report skeleton for the moment; `report/REPORT_SKELETON.md` was removed (recoverable from git history if the report stage starts). When the report is written, follow the heading structure of Instructions.md §11 (Title → Appendix) and keep Compilatio similarity ≤ 20% by writing all prose yourselves.
 
 ---
 
@@ -418,9 +418,8 @@ When the design is provided, implement it under these rules:
    IT02 and LT01 pass unchanged; a new DESIGN_DECISIONS.md entry documents
    what the design changed and why; README screenshots/structure updated if
    panel names change.
-5. **Deliverables:** the updated `ui` classes, before/after screenshots for
-   the report (the team inserts them into
-   `report/REPORT_SKELETON.md` §13), and the design-decision note.
+5. **Deliverables:** the updated `ui` classes, before/after screenshots
+   for the team's report, and the design-decision note.
 
 # Appendix A — The 16 Movement Cards (authoritative data)
 
