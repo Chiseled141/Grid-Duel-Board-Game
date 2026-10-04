@@ -6,7 +6,7 @@
 Restate the requirement in one sentence. List acceptance criteria explicitly. If ambiguous, pick the simplest interpretation and note it.
 
 ## 2. Read harness
-Read `AGENTS.md` fully. Read `docs/architecture.md` sections relevant to the task. Read `ONITAMA_AGENT_BRIEF.md` sections relevant to the task (rules/protocol/schema). Do not re-read unrelated sections to save tokens.
+Read `AGENTS.md` fully. Read `docs/architecture.md` sections relevant to the task. Read `ONITAMA_SPEC.md` (renamed from `ONITAMA_AGENT_BRIEF.md`) sections relevant to the task (rules/protocol/schema). Do not re-read unrelated sections to save tokens.
 
 ## 3. Inspect relevant code
 Open only files the task touches. Trace: entry point → affected packages → tests that cover them. Note existing patterns to reuse (naming, error handling, logging, `final` records, `PreparedStatement`, `invokeLater`, `reset()`). Check `src/test/java/onitama/` for the covering test (see brief §8).
@@ -41,7 +41,7 @@ Fix one cause at a time, re-run `mvn test` after each fix. If a fix requires cha
 ## 9. Validate against requirements
 - Re-read the task's acceptance criteria; check each one off.
 - Manual sanity if UI/protocol: describe what you verified (or what a human should click).
-- Ensure `ONITAMA_AGENT_BRIEF.md` invariants still hold (pure core, authoritative server, single-writer, EDT, etc.).
+- Ensure `ONITAMA_SPEC.md` invariants still hold (pure core, authoritative server, single-writer, EDT, etc.).
 
 ## 10. Stop
 Report exactly:
