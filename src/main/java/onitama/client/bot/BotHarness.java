@@ -68,13 +68,31 @@ public final class BotHarness {
                 fleet.stream().mapToInt(LoadTestBot::gamesCompleted).sum() / 2.0);
         int failedBots = (int) fleet.stream().filter(bot -> bot.failure() != null).count();
 
-        writeLatencies(fleet);
         Summary summary = new Summary(bots, bots / 2 * games, gamesCompleted, failedBots,
                 allRtts.size(), wallMillis,
                 wallMillis == 0 ? 0 : gamesCompleted * 60_000.0 / wallMillis,
                 mean(allRtts), percentile(allRtts, 0.50), percentile(allRtts, 0.95),
                 allRtts.isEmpty() ? 0 : allRtts.get(allRtts.size() - 1));
-        writeSummary(summary, host, port, games, seed);
+
+        // Both CSVs are attempted even if the first write crashes (disk full,
+        // missing permissions); the first failure is rethrown at the end so
+        // the caller still learns that results are incomplete.
+        IOException csvFailure = null;
+        try {
+            writeLatencies(fleet);
+        } catch (IOException e) {
+            csvFailure = e;
+        }
+        try {
+            writeSummary(summary, host, port, games, seed);
+        } catch (IOException e) {
+            if (csvFailure == null) {
+                csvFailure = e;
+            }
+        }
+        if (csvFailure != null) {
+            throw csvFailure;
+        }
         return summary;
     }
 

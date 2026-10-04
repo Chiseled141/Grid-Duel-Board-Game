@@ -29,8 +29,12 @@ public final class LobbyManager {
      */
     public String createLobby(ClientHandler host) {
         removeHostedLobby(host);
-        String code = generateFreeCode();
-        lobbies.put(code, host);
+        // putIfAbsent claims the code atomically: two hosts racing to draw the
+        // same random code cannot both succeed — the loser just draws again.
+        String code = randomCode();
+        while (lobbies.putIfAbsent(code, host) != null) {
+            code = randomCode();
+        }
         return code;
     }
 
@@ -73,15 +77,12 @@ public final class LobbyManager {
         lobbies.clear();
     }
 
-    private String generateFreeCode() {
-        while (true) {
-            StringBuilder code = new StringBuilder(CODE_LENGTH);
-            for (int i = 0; i < CODE_LENGTH; i++) {
-                code.append(ALPHABET.charAt(random.nextInt(ALPHABET.length())));
-            }
-            if (!lobbies.containsKey(code.toString())) {
-                return code.toString();
-            }
+    /** Returns a fresh random 5-character room code (not guaranteed free). */
+    private String randomCode() {
+        StringBuilder code = new StringBuilder(CODE_LENGTH);
+        for (int i = 0; i < CODE_LENGTH; i++) {
+            code.append(ALPHABET.charAt(random.nextInt(ALPHABET.length())));
         }
+        return code.toString();
     }
 }

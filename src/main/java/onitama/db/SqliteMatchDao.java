@@ -1,6 +1,7 @@
 package onitama.db;
 
 import onitama.core.PlayerColor;
+import onitama.core.WinCondition;
 import onitama.server.MatchResult;
 
 import java.sql.Connection;
@@ -71,12 +72,19 @@ public final class SqliteMatchDao implements MatchDao {
 
     private void updateUserStats(Connection connection, MatchResult result, PlayerColor color)
             throws SQLException {
-        boolean won = result.winnerColor() == color;
         String username = color == PlayerColor.BLUE ? result.blueUsername() : result.redUsername();
         onitama.net.UserProfile profile = userDao.profileOf(username);
         int newElo = color == PlayerColor.BLUE ? result.blueEloAfter() : result.redEloAfter();
+        if (result.way() == WinCondition.DRAW) {
+            // A draw moves Elo only: with no winner, counting !won would add
+            // a loss to BOTH players.
+            userDao.updateStatsInside(connection, username, newElo,
+                    profile.wins(), profile.losses());
+            return;
+        }
+        boolean won = result.winnerColor() == color;
         userDao.updateStatsInside(connection, username, newElo,
-                profile.wins() + (won ? 1 : 0), profile.losses() + (!won ? 1 : 0));
+                profile.wins() + (won ? 1 : 0), profile.losses() + (won ? 0 : 1));
     }
 
     @Override

@@ -44,6 +44,15 @@
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>
         <version>3.2.5</version>
+        <configuration>
+          <!-- TestPositions is a package-private core test fixture, not a test
+               class; its name matches surefire's default Test* include pattern,
+               and a stale copy of its class file on the classpath makes `mvn test`
+               (without clean) fail with a wrong-name error. -->
+          <excludes>
+            <exclude>**/TestPositions.java</exclude>
+          </excludes>
+        </configuration>
       </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>

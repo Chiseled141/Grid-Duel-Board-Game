@@ -53,7 +53,15 @@ public final class Main {
             usage();
             System.exit(1);
         }
-        Map<String, String> options = parseOptions(args);
+        Map<String, String> options;
+        try {
+            options = parseOptions(args);
+        } catch (IllegalArgumentException e) {
+            System.err.println(e.getMessage());
+            usage();
+            System.exit(1);
+            return;
+        }
         switch (args[0]) {
             case "demo" -> runDemo(options);
             case "server" -> runServer(options);
@@ -73,14 +81,18 @@ public final class Main {
         System.err.println("       onitama bots --host <host> --port <port> --bots <n> --games <g>");
     }
 
-    /** Parses "--key value" pairs after the mode argument into a map. */
+    /**
+     * Parses "--key value" pairs after the mode argument into a map. Throws
+     * {@link IllegalArgumentException} on a malformed option — never calls
+     * {@code System.exit}, so tests and embedded callers stay in control; the
+     * CLI entry point in {@link #main} turns it into usage + exit 1.
+     */
     private static Map<String, String> parseOptions(String[] args) {
         Map<String, String> options = new HashMap<>();
         for (int i = 1; i < args.length; i++) {
             if (args[i].startsWith("--")) {
                 if (i + 1 >= args.length) {
-                    System.err.println("missing value for " + args[i]);
-                    System.exit(1);
+                    throw new IllegalArgumentException("missing value for " + args[i]);
                 }
                 options.put(args[i].substring(2), args[i + 1]);
                 i++;
@@ -152,14 +164,16 @@ public final class Main {
     }
 
     /**
-     * Adds a rotating file log handler (logs/onitama-server.log, 5 MB x 3
-     * files) next to the console handler the JUL default already provides.
+     * Adds a file log handler (logs/onitama-server.log, 5 MB x 3 files) next
+     * to the console handler the JUL default already provides. Truncates on
+     * startup (append=false) so each server run starts with a fresh log;
+     * rotation still keeps the last 15 MB within a run.
      */
     private static void installFileLogging() {
         try {
             java.nio.file.Files.createDirectories(Path.of("logs"));
             java.util.logging.FileHandler fileHandler = new java.util.logging.FileHandler(
-                    "logs/onitama-server.log", 5_000_000, 3, true);
+                    "logs/onitama-server.log", 5_000_000, 3, false);
             fileHandler.setFormatter(new java.util.logging.SimpleFormatter());
             Logger rootLogger = Logger.getLogger("");
             rootLogger.addHandler(fileHandler);

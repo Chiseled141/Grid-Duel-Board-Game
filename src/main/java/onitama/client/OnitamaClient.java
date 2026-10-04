@@ -74,6 +74,9 @@ public final class OnitamaClient implements AutoCloseable, ServerConnection {
         ObjectOutputStream out = new ObjectOutputStream(newSocket.getOutputStream());
         out.flush();
         ObjectInputStream in = new ObjectInputStream(newSocket.getInputStream());
+        // Reject any serialized class outside the protocol allowlist before
+        // readObject can instantiate it (deserialization gadget defense).
+        in.setObjectInputFilter(Message.WIRE_FILTER);
         socket = newSocket;
         running = true;
         lastReceivedAt = System.currentTimeMillis();
@@ -153,7 +156,7 @@ public final class OnitamaClient implements AutoCloseable, ServerConnection {
             }
         } catch (Exception e) {
             if (running) {
-                LOG.log(Level.INFO, "connection lost: " + e);
+                LOG.log(Level.INFO, e, () -> "connection lost");
                 connectionLostHandler.accept(String.valueOf(e.getMessage()));
             }
         }
@@ -174,7 +177,7 @@ public final class OnitamaClient implements AutoCloseable, ServerConnection {
             }
         } catch (Exception e) {
             if (running) {
-                LOG.log(Level.INFO, "writer stopped: " + e);
+                LOG.log(Level.INFO, e, () -> "writer stopped");
             }
         }
     }

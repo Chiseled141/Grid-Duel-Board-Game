@@ -272,21 +272,36 @@ public final class MatchSession {
             return;
         }
         finished = true;
-        UserDao userDao = server.userDao();
-        UserProfile blue = userDao.profileOf(blueUsername);
-        UserProfile red = userDao.profileOf(redUsername);
-        Elo.Result elo = Elo.update(blue.elo(), red.elo(), winner);
-        MatchResult result = new MatchResult(roomCode, blueUsername, redUsername,
-                winner, way, elo.blue(), elo.red(), state.moveNumber());
-        server.onMatchFinished(result);
-
-        gameOver = new GameOver(winner, way, elo.blue(), elo.red());
-        broadcast(gameOver);
-        releaseTokens();
-        server.removeLiveMatch(roomCode);
-        maybeRetire();
-        LOG.info(() -> "match " + roomCode + " finished: " + way + ", winner="
-                + result.winnerUsername() + ", half-moves=" + result.moveCount());
+        MatchResult result = null;
+        try {
+            UserDao userDao = server.userDao();
+            UserProfile blue = userDao.profileOf(blueUsername);
+            UserProfile red = userDao.profileOf(redUsername);
+            Elo.Result elo = Elo.update(blue.elo(), red.elo(), winner);
+            result = new MatchResult(roomCode, blueUsername, redUsername,
+                    winner, way, elo.blue(), elo.red(), state.moveNumber());
+            server.onMatchFinished(result);
+        } catch (RuntimeException e) {
+            // e.g. an account deleted mid-game (AuthenticationException) or a
+            // database failure: must not kill the match executor thread — the
+            // game still has to end gracefully for both players.
+            LOG.log(Level.SEVERE, "match " + roomCode + ": recording the result failed", e);
+        } finally {
+            // GameOver and cleanup run no matter what; without a recorded
+            // result the Elo fields stay at 0 (no rating change applied).
+            final MatchResult recorded = result;
+            gameOver = new GameOver(winner, way,
+                    recorded == null ? 0 : recorded.blueEloAfter(),
+                    recorded == null ? 0 : recorded.redEloAfter());
+            broadcast(gameOver);
+            releaseTokens();
+            server.removeLiveMatch(roomCode);
+            maybeRetire();
+            LOG.info(() -> "match " + roomCode + " finished: " + way + ", winner="
+                    + (recorded == null ? null : recorded.winnerUsername())
+                    + ", half-moves=" + state.moveNumber()
+                    + (recorded == null ? " (result not recorded)" : ""));
+        }
     }
 
     /**

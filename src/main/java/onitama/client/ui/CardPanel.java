@@ -12,7 +12,7 @@ import java.awt.RenderingHints;
 import java.awt.Image;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
-import java.awt.event.MouseMotionAdapter;
+import java.util.List;
 
 import javax.swing.JComponent;
 import javax.swing.Timer;
@@ -40,13 +40,18 @@ public final class CardPanel extends JComponent {
     private boolean hovered;
     private float hover; // 0..1 tween for lift/tilt
     private double cardScale = 1.0;
+    private float popScale = 1f; // one-shot deal pop multiplier
     private Timer tween;
+    private Timer pop;
 
     /** Scales the whole card (used to fit two cards in the side column). */
     public void setCardScale(double cardScale) {
         this.cardScale = cardScale;
         setPreferredSize(new Dimension((int) ((W + 12) * cardScale),
                 (int) ((H + 14) * cardScale)));
+        // The enclosing FlowLayout/GridLayout slots must re-layout to the new
+        // size before the next click, or presses land on stale bounds.
+        revalidate();
         repaint();
     }
 
@@ -65,13 +70,18 @@ public final class CardPanel extends JComponent {
         setPreferredSize(new Dimension((int) ((W + 12) * cardScale),
                 (int) ((H + 14) * cardScale)));
         setOpaque(false);
-        setToolTipText(card.name() + " — " + CardArt.flavorFor(card.id())
-                + (dimmed ? " (opponent's card)" : ""));
+        setToolTipText("<html><b>" + card.name().toUpperCase()
+                + "</b> — " + movementDescription()
+                + "<br><i>" + CardArt.flavorFor(card.id())
+                + (dimmed ? "</i> (opponent's card)" : "</i>") + "</html>");
         if (onSelect != null) {
             setCursor(new java.awt.Cursor(java.awt.Cursor.HAND_CURSOR));
             addMouseListener(new MouseAdapter() {
                 @Override
-                public void mouseClicked(MouseEvent event) {
+                public void mousePressed(MouseEvent event) {
+                    // Press, not click: selection registers instantly and a
+                    // press+release that ends outside the card still counts,
+                    // so rapid card→piece tapping never loses an input.
                     onSelect.run();
                 }
 
@@ -87,12 +97,6 @@ public final class CardPanel extends JComponent {
                     startTween(0f);
                 }
             });
-            addMouseMotionListener(new MouseMotionAdapter() {
-                @Override
-                public void mouseMoved(MouseEvent event) {
-                    repaint();
-                }
-            });
         }
     }
 
@@ -100,6 +104,28 @@ public final class CardPanel extends JComponent {
     public void setSelected(boolean selected) {
         this.selected = selected;
         repaint();
+    }
+
+    /**
+     * One-shot 180ms scale pop (1 → 1.12 → 1) played when the card enters
+     * the hand after a swap — a quick, input-safe flourish via Swing timer.
+     */
+    public void playDealPop() {
+        if (pop != null) {
+            pop.stop();
+        }
+        long start = System.currentTimeMillis();
+        pop = new Timer(16, event -> {
+            float progress = Math.min(1f,
+                    (System.currentTimeMillis() - start) / 180f);
+            popScale = 1f + 0.12f * (float) Math.sin(Math.PI * progress);
+            repaint();
+            if (progress >= 1f) {
+                popScale = 1f;
+                ((Timer) event.getSource()).stop();
+            }
+        });
+        pop.start();
     }
 
     /** Tweens the hover lift/tilt toward the target (1 = lifted). */
@@ -127,15 +153,34 @@ public final class CardPanel extends JComponent {
         g.setColor(Theme.BG);
         g.fillRect(0, 0, getWidth(), getHeight());
 
-        double lift = hover * 6 * (dimmed ? 0 : 1);
-        double tilt = Math.toRadians(-1.5 * hover * (dimmed ? 0 : 1));
-        double scale = (selected ? 1.04 : 1.0 + 0.02 * hover) * cardScale;
+        boolean interactive = !dimmed;
+        // A selected card jumps out: higher lift, bigger scale, straight (no
+        // tilt). Unselected cards keep the gentle 4px hover lift.
+        double lift = interactive ? (selected ? 8 : 4 * hover) : 0;
+        double tilt = Math.toRadians(-1.5 * hover * (interactive && !selected ? 1 : 0));
+        double scale = (selected ? 1.07 : 1.0 + 0.02 * hover) * cardScale * popScale;
         g.translate(getWidth() / 2.0, getHeight() / 2.0);
         g.rotate(tilt);
         g.scale(scale, scale);
         g.translate(-W / 2.0, -H / 2.0 - lift);
+        if (selected && interactive) {
+            paintSelectionGlow(g);
+        }
         paintCard(g);
         g.dispose();
+    }
+
+    /** A feathered gold halo painted behind a selected card (45% alpha). */
+    private void paintSelectionGlow(Graphics2D g) {
+        float radius = (float) (Math.max(W, H) / 2.0 + 8);
+        var gradient = new java.awt.RadialGradientPaint(
+                new java.awt.geom.Point2D.Float(W / 2f, H / 2f), radius,
+                new float[]{0.65f, 1f},
+                new Color[]{Theme.withAlpha(Theme.AMBER, 115),
+                        Theme.withAlpha(Theme.AMBER, 0)});
+        g.setPaint(gradient);
+        g.fill(new java.awt.geom.Ellipse2D.Double(
+                W / 2.0 - (W + 16) / 2.0, H / 2.0 - (H + 12) / 2.0, W + 16, H + 12));
     }
 
     private void paintCard(Graphics2D g) {
@@ -156,14 +201,21 @@ public final class CardPanel extends JComponent {
             g.drawImage(face, x0, y0, W, H, null);
             g.setClip(null);
             g.setStroke(new BasicStroke(selected ? 3.5f : 2f));
-            g.setColor(selected ? Theme.playerColor(faceColor) : Theme.INK);
+            g.setColor(selected ? Theme.AMBER : Theme.INK);
             g.draw(clip);
+            if (selected) {
+                // Double frame on selection: gold outer ring + ink inner line.
+                g.setColor(Theme.INK);
+                g.setStroke(new BasicStroke(2f));
+                g.draw(new java.awt.geom.RoundRectangle2D.Double(x0 + 4, y0 + 4,
+                        W - 8, H - 8, Theme.RADIUS_MD - 4, Theme.RADIUS_MD - 4));
+            }
         } else {
             paintFallbackCard(g, x0, y0);
         }
 
         if (dimmed) {
-            g.setColor(new Color(15, 13, 14, 70));
+            g.setColor(Theme.withAlpha(Theme.BG, 70));
             g.fillRoundRect(x0, y0, W, H, Theme.RADIUS_MD, Theme.RADIUS_MD);
         }
     }
@@ -193,5 +245,29 @@ public final class CardPanel extends JComponent {
 
     private Color accentFor() {
         return CardArt.of(card.id());
+    }
+
+    /**
+     * The card's moves in words, in the orientation the card is displayed in
+     * (red-owned cards are shown rotated 180°, matching the artwork and the
+     * engine). Feeds the hover tooltip.
+     */
+    private String movementDescription() {
+        boolean flipped = faceColor == onitama.core.PlayerColor.RED;
+        List<String> moves = new java.util.ArrayList<>();
+        for (onitama.core.Offset offset : card.offsets()) {
+            int dy = flipped ? -offset.dy() : offset.dy();
+            int dx = flipped ? -offset.dx() : offset.dx();
+            if (dy > 0) {
+                moves.add("forward " + dy);
+            } else if (dy < 0) {
+                moves.add("back " + -dy);
+            } else if (dx > 0) {
+                moves.add("right " + dx);
+            } else {
+                moves.add("left " + -dx);
+            }
+        }
+        return String.join(" · ", moves);
     }
 }

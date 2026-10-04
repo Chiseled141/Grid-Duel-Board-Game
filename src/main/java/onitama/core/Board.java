@@ -120,6 +120,13 @@ public final class Board implements Serializable {
                     sb.append(piece.master() ? "M " : "S ");
                 }
             }
+            // Cells are space-padded for alignment; the row itself ends
+            // cleanly with no trailing whitespace.
+            int end = sb.length();
+            while (end > 0 && sb.charAt(end - 1) == ' ') {
+                end--;
+            }
+            sb.setLength(end);
             sb.append(System.lineSeparator());
         }
         return sb.toString();

@@ -60,6 +60,9 @@ public final class BoardPanel extends JComponent {
     private long animStart;
     private PlayerColor animPlayer;
     private boolean animMaster;
+    /** Gentle breathing of the selection ring while a piece is selected. */
+    private float selectionPulse;
+    private Timer selectionPulseTimer;
 
     /** A short expanding-ring animation where a piece was captured. */
     private record CaptureEffect(Square square, Color color, long startMillis) {
@@ -128,7 +131,29 @@ public final class BoardPanel extends JComponent {
     public void setSelection(Square selectedSquare, List<Square> targets) {
         this.selectedSquare = selectedSquare;
         this.targets = targets == null ? List.of() : targets;
+        updateSelectionPulse();
         repaint();
+    }
+
+    /** Clears all selection highlights and stops their animation timer. */
+    public void clearHighlights() {
+        setSelection(null, List.of());
+    }
+
+    /** Runs the ring pulse exactly while a selection is on the board. */
+    private void updateSelectionPulse() {
+        boolean active = selectedSquare != null;
+        if (active && selectionPulseTimer == null) {
+            selectionPulseTimer = new Timer(60, event -> {
+                selectionPulse = (selectionPulse + 0.09f) % 1f;
+                repaint();
+            });
+            selectionPulseTimer.start();
+        } else if (!active && selectionPulseTimer != null) {
+            selectionPulseTimer.stop();
+            selectionPulseTimer = null;
+            selectionPulse = 0f;
+        }
     }
 
     /** Sets the move to highlight (from/to squares), or null for none. */
@@ -240,6 +265,9 @@ public final class BoardPanel extends JComponent {
         if (animating) {
             drawMovingPiece(g);
         }
+        if (selectedSquare != null) {
+            drawTargetConnectors(g);
+        }
         for (Square target : targets) {
             drawTargetDot(g, target);
         }
@@ -272,7 +300,7 @@ public final class BoardPanel extends JComponent {
                 int py = displayY(y) * cell + originY;
                 g.setColor((x + y) % 2 == 0 ? Theme.BOARD_LIGHT : Theme.BOARD_LIGHT.darker());
                 g.fillRect(px, py, cell, cell);
-                g.setColor(new Color(35, 31, 32, 70));
+                g.setColor(Theme.withAlpha(Theme.INK, 70));
                 g.drawRect(px, py, cell, cell);
             }
         }
@@ -284,7 +312,7 @@ public final class BoardPanel extends JComponent {
     private void drawTempleMark(Graphics2D g, Square square) {
         int px = displayX(square.x()) * cell + originX;
         int py = displayY(square.y()) * cell + originY;
-        g.setColor(new Color(35, 31, 32, 70));
+        g.setColor(Theme.withAlpha(Theme.INK, 70));
         g.setStroke(new BasicStroke(2f));
         int top = py + cell / 5;
         g.drawLine(px + cell / 4, top, px + cell - cell / 4, top);
@@ -297,7 +325,7 @@ public final class BoardPanel extends JComponent {
         int px = displayX(x) * cell + originX;
         int py = displayY(y) * cell + originY;
         if (sprite != null) {
-            int inset = (int) (cell * (piece.master() ? 0.06 : 0.12));
+            int inset = (int) (cell * (piece.master() ? 0.06 : 0.10));
             g.drawImage(sprite, px + inset, py + inset,
                     cell - 2 * inset, cell - 2 * inset, null);
             return;
@@ -341,6 +369,10 @@ public final class BoardPanel extends JComponent {
             accent = UiKit.lighten(accent);
         }
         g.setColor(accent);
+        // Free squares get a half-transparent dot (solid on hover); enemy
+        // pieces get a double capture ring.
+        g.setColor(new Color(accent.getRed(), accent.getGreen(),
+                accent.getBlue(), hovered ? 255 : 190));
         if (occupant == null) {
             int dot = hovered ? Math.max(16, cell / 3) : Math.max(12, cell / 4);
             g.fillOval(cx - dot / 2, cy - dot / 2, dot, dot);
@@ -359,16 +391,38 @@ public final class BoardPanel extends JComponent {
     private void drawSelectionRing(Graphics2D g, Square square) {
         int px = displayX(square.x()) * cell + originX;
         int py = displayY(square.y()) * cell + originY;
-        g.setColor(Theme.playerColor(viewColor));
-        g.setStroke(new BasicStroke(3.5f));
+        // Bold 4px ring that breathes softly so the eye locks onto it.
+        g.setColor(Theme.withAlpha(Theme.playerColor(viewColor),
+                215 + (int) (40 * selectionPulse)));
+        g.setStroke(new BasicStroke(4f));
         g.drawOval(px + 3, py + 3, cell - 6, cell - 6);
+    }
+
+    /** Faint dashed gold lines from the selected square to each legal target. */
+    private void drawTargetConnectors(Graphics2D g) {
+        int fromX = displayX(selectedSquare.x()) * cell + originX + cell / 2;
+        int fromY = displayY(selectedSquare.y()) * cell + originY + cell / 2;
+        g.setColor(Theme.withAlpha(Theme.AMBER, 128));
+        g.setStroke(new BasicStroke(1.5f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER,
+                10f, new float[]{4f, 4f}, 0f));
+        for (Square target : targets) {
+            g.drawLine(fromX, fromY,
+                    displayX(target.x()) * cell + originX + cell / 2,
+                    displayY(target.y()) * cell + originY + cell / 2);
+        }
     }
 
     private void overlay(Graphics2D g, Square square) {
         int px = displayX(square.x()) * cell + originX;
         int py = displayY(square.y()) * cell + originY;
-        g.setColor(new Color(252, 186, 40, 56));
+        // Pale gold wash + a thin gold outline so the last-played squares
+        // also read clearly on the light parchment mat.
+        g.setColor(new Color(Theme.LAST_MOVE.getRed(), Theme.LAST_MOVE.getGreen(),
+                Theme.LAST_MOVE.getBlue(), 170));
         g.fillRect(px, py, cell, cell);
+        g.setColor(Theme.AMBER);
+        g.setStroke(new BasicStroke(1.5f));
+        g.drawRect(px + 1, py + 1, cell - 2, cell - 2);
     }
 
     /** Expanding, fading ring at the capture square. */
@@ -386,6 +440,11 @@ public final class BoardPanel extends JComponent {
 
     /** Maps a mouse position to a canonical square, or null outside the grid. */
     private Square squareAt(int mouseX, int mouseY) {
+        if (getWidth() < 100 || getHeight() < 100) {
+            // Not laid out yet (or sliver-sized): geometry from a zero area
+            // would map every click to a bogus square.
+            return null;
+        }
         computeGeometry();
         int displayCol = (mouseX - originX) / cell;
         int displayRow = (mouseY - originY) / cell;

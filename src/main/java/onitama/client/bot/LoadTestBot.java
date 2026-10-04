@@ -78,6 +78,7 @@ public final class LoadTestBot implements Runnable {
             playAllGames();
         } catch (Exception e) {
             failure = e;
+        } finally {
             closeQuietly();
         }
     }
@@ -125,7 +126,6 @@ public final class LoadTestBot implements Runnable {
             playOneGame(start);
             gamesCompleted++;
         }
-        closeQuietly();
     }
 
     /** Plays one game to completion with random legal half-moves. */
@@ -174,9 +174,17 @@ public final class LoadTestBot implements Runnable {
 
     private void connect() throws IOException {
         socket = new Socket(host, port);
-        out = new ObjectOutputStream(socket.getOutputStream());
-        out.flush();
-        ObjectInputStream in = new ObjectInputStream(socket.getInputStream());
+        ObjectInputStream in;
+        try {
+            out = new ObjectOutputStream(socket.getOutputStream());
+            out.flush();
+            in = new ObjectInputStream(socket.getInputStream());
+            // Same allowlist as the real client (deserialization gadget defense).
+            in.setObjectInputFilter(Message.WIRE_FILTER);
+        } catch (IOException e) {
+            closeQuietly();
+            throw e;
+        }
         Thread reader = new Thread(() -> {
             try {
                 while (true) {

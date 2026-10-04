@@ -69,9 +69,22 @@ class MatchDaoTest {
 
     @Test
     void drawRecordsNoWinner() throws SQLException {
+        // A real result first, so the draw below proves it leaves an existing
+        // W/L record untouched rather than merely an empty one.
+        database.inTransaction(connection -> matchDao.recordMatch(
+                connection, sampleResult("ROOM1", PlayerColor.BLUE, WinCondition.STONE)));
+
         MatchResult result = sampleResult("ROOM2", null, WinCondition.DRAW);
         database.inTransaction(connection -> matchDao.recordMatch(connection, result));
         assertNull(matchDao.recentMatches(1).get(0).winnerUsername());
+
+        // A draw moves Elo only: neither player's wins nor losses may change.
+        UserProfile blue = userDao.profileOf("alice");
+        assertEquals(1, blue.wins(), "a draw must not change wins");
+        assertEquals(0, blue.losses(), "a draw must not be counted as a loss");
+        UserProfile red = userDao.profileOf("bob");
+        assertEquals(0, red.wins(), "a draw must not change wins");
+        assertEquals(1, red.losses(), "a draw must not be counted as a loss");
     }
 
     @Test

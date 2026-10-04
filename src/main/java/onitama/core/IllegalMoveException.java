@@ -1,5 +1,7 @@
 package onitama.core;
 
+import java.io.Serial;
+
 /**
  * Thrown by {@link RulesEngine} when a move or pass violates the rules of
  * Onitama (not your turn, card not in hand, illegal destination, illegal
@@ -7,6 +9,7 @@ package onitama.core;
  */
 public class IllegalMoveException extends OnitamaException {
 
+    @Serial
     private static final long serialVersionUID = 1L;
 
     /** Creates an exception describing why the move is illegal. */

@@ -1,5 +1,7 @@
 package onitama.core;
 
+import java.io.Serial;
+
 /**
  * Base class of the project's exception hierarchy. Unchecked, so call sites
  * that cannot recover stay readable; every subclass describes one concrete
@@ -7,6 +9,7 @@ package onitama.core;
  */
 public class OnitamaException extends RuntimeException {
 
+    @Serial
     private static final long serialVersionUID = 1L;
 
     /** Creates an exception with a human-readable message. */
