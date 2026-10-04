@@ -2,7 +2,7 @@
 
 **Status:** complete, working demo (2026-10-04). All milestones (M1–M8), the M9
 visual redesign and the single-player practice mode are implemented; `mvn clean
-verify` = 126 tests green. This file is the compact spec of the technical
+verify` = 123 tests green. This file is the compact spec of the technical
 requirements the project must keep satisfying and how to run it. It replaced the
 long build brief deliberately (original recoverable from git history) — no
 course, report, or deployment material.
