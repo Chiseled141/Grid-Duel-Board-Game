@@ -46,6 +46,15 @@ public final class Theme {
     // --- extended accents (fireship.dev brand colors) ---
     /** Success, victory, connection-ready ("brand green"). */
     public static final Color GREEN = new Color(0x0BA95B);
+    /** Disabled controls (flat grey, no contrast pull). */
+    public static final Color DISABLED = new Color(0xBDBDBD);
+    /** Pale gold wash behind the last-played squares. */
+    public static final Color LAST_MOVE = new Color(0xFFF8E1);
+    /** Leaderboard medal tints: gold reuses AMBER, silver and bronze below. */
+    public static final Color MEDAL_SILVER = new Color(0xC9C2B8);
+    public static final Color MEDAL_BRONZE = new Color(0xB0793C);
+    /** Table grid lines on the dark surface. */
+    public static final Color GRID_LINE = new Color(0x3A3634);
 
     // --- player identities: blue system vs coral system ---
     /** Player 1 (Blue) primary. */
@@ -71,12 +80,29 @@ public final class Theme {
     public static final int RADIUS_MD = 12;
     /** Hard shadow offset in px. */
     public static final int SHADOW_OFFSET = 4;
+    /** The 8px base unit every panel inset and gap snaps to. */
+    public static final int GRID = 8;
+    /** Standard outer padding for a screen-filling panel. */
+    public static final int PANEL_PAD = 16;
+
+    /**
+     * Darker shade of a player color for TEXT on light parchment — the plain
+     * player colors (sky, coral) fail contrast on light backgrounds.
+     */
+    public static Color playerTextColor(PlayerColor color) {
+        return color == PlayerColor.BLUE ? P1_DARK : P2_DARK;
+    }
 
     /** Blends two colors 50/50 (for muted variants). */
     public static Color blend(Color a, Color b) {
         return new Color((a.getRed() + b.getRed()) / 2,
                 (a.getGreen() + b.getGreen()) / 2,
                 (a.getBlue() + b.getBlue()) / 2);
+    }
+
+    /** The same color at a new alpha (washes and scrims over painted art). */
+    public static Color withAlpha(Color color, int alpha) {
+        return new Color(color.getRed(), color.getGreen(), color.getBlue(), alpha);
     }
 
     // --- fonts: Outfit (SIL OFL), bundled in src/main/resources/fonts ---
@@ -118,5 +144,10 @@ public final class Theme {
     /** Display font: headlines, banners, buttons ("chunky" weight). */
     public static Font display(float size) {
         return black.deriveFont(size);
+    }
+
+    /** Monospaced font for numerals (turn counter, piece counts, ELO). */
+    public static Font mono(float size) {
+        return new Font(Font.MONOSPACED, Font.BOLD, 14).deriveFont(size);
     }
 }

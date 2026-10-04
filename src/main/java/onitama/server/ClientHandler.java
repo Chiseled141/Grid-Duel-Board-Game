@@ -91,6 +91,10 @@ public final class ClientHandler implements Runnable {
             out = new ObjectOutputStream(socket.getOutputStream());
             out.flush();
             in = new ObjectInputStream(socket.getInputStream());
+            // Reject any serialized class outside the protocol allowlist
+            // before readObject can instantiate it (deserialization gadget
+            // defense).
+            in.setObjectInputFilter(Message.WIRE_FILTER);
             while (true) {
                 Object raw = in.readObject();
                 if (!(raw instanceof Message message)) {
@@ -104,7 +108,10 @@ public final class ClientHandler implements Runnable {
         } catch (EOFException | SocketException e) {
             LOG.fine(() -> describe() + " disconnected");
         } catch (IOException | ClassNotFoundException e) {
-            LOG.log(Level.WARNING, () -> describe() + " connection error: " + e);
+            // A dropped or corrupt stream is a connection event, not a
+            // protocol violation: LOG.warning stays reserved for the
+            // non-message-object case above.
+            LOG.log(Level.FINE, e, () -> describe() + " connection error");
         } finally {
             onDisconnected();
         }

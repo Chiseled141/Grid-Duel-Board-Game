@@ -3,16 +3,26 @@ package onitama.client.ui;
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
 import javax.swing.JComponent;
+import javax.swing.JDialog;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
+import javax.swing.KeyStroke;
+import javax.swing.SwingConstants;
+import javax.swing.JToggleButton;
+import javax.swing.SwingUtilities;
 import javax.swing.UIManager;
+import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Component;
+import java.awt.Dialog;
+import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.FontMetrics;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
+import java.awt.GridLayout;
 import java.awt.RenderingHints;
+import java.awt.Window;
 import java.awt.geom.RoundRectangle2D;
 
 /**
@@ -114,23 +124,27 @@ public final class UiKit {
             Graphics2D g = (Graphics2D) graphics.create();
             g.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
                     RenderingHints.VALUE_ANTIALIAS_ON);
-            boolean pressed = getModel().isPressed();
-            boolean hover = getModel().isRollover() && isEnabled();
+            boolean enabled = isEnabled();
+            boolean pressed = enabled && getModel().isPressed();
+            boolean hover = enabled && getModel().isRollover();
             int shadow = pressed ? 1 : hover ? SHADOW + 2 : SHADOW;
             int w = getWidth() - shadow;
             int h = getHeight() - shadow;
             int arc = Math.min(h, 22);
+            Color fill = enabled ? variant.fill : Theme.DISABLED;
+            Color border = enabled ? variant.border : Theme.DISABLED.darker();
             if (!pressed) {
                 g.setColor(Theme.SHADOW);
                 g.fillRoundRect(shadow, shadow, w, h, arc, arc);
             }
             int sink = pressed ? 2 : 0;
-            g.setColor(hover && !pressed ? lighten(variant.fill) : variant.fill);
+            g.setColor(hover ? lighten(fill) : fill);
             g.fillRoundRect(sink, sink, w, h, arc, arc);
-            g.setColor(variant.border);
+            g.setColor(border);
             g.setStroke(new java.awt.BasicStroke(2f));
             g.drawRoundRect(sink, sink, w - 1, h - 1, arc, arc);
             g.dispose();
+            setForeground(enabled ? variant.text : Theme.INK);
             super.paintComponent(graphics);
         }
     }
@@ -159,8 +173,10 @@ public final class UiKit {
         PillButton button = pill(text, variant);
         button.setFont(Theme.display(9f));
         FontMetrics metrics = button.getFontMetrics(button.getFont());
+        // +36 (not the minimum +30): macOS antialiases slightly wider than
+        // the raw metrics, and a clipped tab label reads as a bug.
         button.setPreferredSize(new java.awt.Dimension(
-                metrics.stringWidth(text.toUpperCase()) + 30,
+                metrics.stringWidth(text.toUpperCase()) + 36,
                 metrics.getHeight() + 16 + SHADOW));
         button.setBorder(BorderFactory.createEmptyBorder(4, 10, 4 + SHADOW, 10 + SHADOW));
         return button;
@@ -263,6 +279,113 @@ public final class UiKit {
         return label;
     }
 
+    /** Tiny uppercase caption (stat labels, helper text). */
+    public static JLabel caption(String text, Color color) {
+        JLabel label = new JLabel(text.toUpperCase());
+        label.setFont(Theme.normal(9f));
+        label.setForeground(color);
+        return label;
+    }
+
+    /** A round status dot with an ink outline; the color is read on each paint. */
+    public static JComponent statusDot(int size, java.util.function.Supplier<Color> color) {
+        return new JComponent() {
+            {
+                setPreferredSize(new java.awt.Dimension(size, size));
+                setOpaque(false);
+            }
+
+            @Override
+            protected void paintComponent(Graphics graphics) {
+                Graphics2D g = (Graphics2D) graphics.create();
+                g.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
+                        RenderingHints.VALUE_ANTIALIAS_ON);
+                g.setColor(color.get());
+                g.fillOval(1, 1, size - 2, size - 2);
+                g.setColor(Theme.INK);
+                g.drawOval(1, 1, size - 2, size - 2);
+                g.dispose();
+            }
+        };
+    }
+
+    /**
+     * A rounded badge chip (radius 6, 4x10 padding) holding a dot and a
+     * caption — player identity chips and "GOES TO BLUE" tags. Update the
+     * text with {@link #badgeText}.
+     */
+    public static JPanel badge(String text, java.util.function.Supplier<Color> dotColor) {
+        JPanel badge = new JPanel(new FlowLayout(FlowLayout.CENTER, 6, 0));
+        badge.setOpaque(false);
+        badge.add(statusDot(9, dotColor));
+        JLabel label = new JLabel(text.toUpperCase());
+        label.setFont(Theme.bold(10f));
+        label.setForeground(Theme.INK);
+        badge.add(label);
+        badge.setBorder(BorderFactory.createCompoundBorder(
+                new javax.swing.border.LineBorder(Theme.INK, 2, true),
+                BorderFactory.createEmptyBorder(4, 10, 4, 10)));
+        return badge;
+    }
+
+    /** Updates a badge's caption (the dot color is supplied at construction). */
+    public static void badgeText(JPanel badge, String text) {
+        for (Component component : badge.getComponents()) {
+            if (component instanceof JLabel label) {
+                label.setText(text.toUpperCase());
+            }
+        }
+    }
+
+    /**
+     * Visual-only sound toggle for the header: a drawn speaker with sound
+     * waves (on) or a slash through it (off). No audio backend — the caller
+     * sets the tooltip and persists the choice.
+     */
+    public static JToggleButton soundToggle() {
+        JToggleButton toggle = new JToggleButton() {
+            {
+                setSelected(true);
+                setOpaque(false);
+                setContentAreaFilled(false);
+                setFocusPainted(false);
+                setBorderPainted(false);
+                setCursor(new java.awt.Cursor(java.awt.Cursor.HAND_CURSOR));
+                setPreferredSize(new java.awt.Dimension(30, 26));
+                addItemListener(event -> repaint());
+            }
+
+            @Override
+            protected void paintComponent(Graphics graphics) {
+                Graphics2D g = (Graphics2D) graphics.create();
+                g.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
+                        RenderingHints.VALUE_ANTIALIAS_ON);
+                int h = getHeight();
+                int cx = h / 2 - 1;
+                int cy = h / 2;
+                g.setColor(isSelected() ? Theme.AMBER : Theme.MUTED);
+                g.fillRect(cx - 6, cy - 3, 4, 6);
+                int[] speakerX = {cx - 2, cx + 3, cx + 3, cx - 2};
+                int[] speakerY = {cy - 3, cy - 7, cy + 7, cy + 3};
+                g.fillPolygon(speakerX, speakerY, 4);
+                g.setColor(Theme.INK);
+                g.setStroke(new java.awt.BasicStroke(1.5f));
+                g.drawPolygon(speakerX, speakerY, 4);
+                g.drawRect(cx - 6, cy - 3, 4, 6);
+                if (isSelected()) {
+                    g.drawArc(cx + 4, cy - 5, 6, 10, -60, 120);
+                    g.drawArc(cx + 6, cy - 8, 10, 16, -60, 120);
+                } else {
+                    g.setColor(Theme.CORAL);
+                    g.setStroke(new java.awt.BasicStroke(2f));
+                    g.drawLine(cx + 5, cy - 6, cx + 13, cy + 6);
+                }
+                g.dispose();
+            }
+        };
+        return toggle;
+    }
+
     /**
      * A heading banner: cream box, ink uppercase display text, hard shadow.
      * Sizes itself to its text, so {@code setText} refreshes cleanly after a
@@ -353,6 +476,11 @@ public final class UiKit {
 
     /** Draws a gold 8-point starburst (title flourish, master pieces). */
     public static void starburst(Graphics2D g, int cx, int cy, int outerRadius) {
+        starburst(g, cx, cy, outerRadius, Theme.AMBER);
+    }
+
+    /** Starburst in an arbitrary tint (leaderboard medals). */
+    public static void starburst(Graphics2D g, int cx, int cy, int outerRadius, Color fill) {
         int innerRadius = outerRadius / 2;
         int points = 8;
         int total = points * 2;
@@ -364,7 +492,7 @@ public final class UiKit {
             x[i] = (int) Math.round(cx + radius * Math.cos(angle));
             y[i] = (int) Math.round(cy + radius * Math.sin(angle));
         }
-        g.setColor(Theme.AMBER);
+        g.setColor(fill);
         g.fillPolygon(x, y, total);
         g.setColor(Theme.INK);
         g.setStroke(new java.awt.BasicStroke(1.5f));
@@ -444,6 +572,198 @@ public final class UiKit {
                     2 * headR + 6, 2 * headR + 6);
         }
         g.dispose();
+    }
+
+    // ------------------------------------------------------------------
+    // Themed dialogs (game over, help) — no stock JOptionPane chrome
+    // ------------------------------------------------------------------
+
+    /**
+     * The painted root panel for an undecorated themed dialog: a rounded
+     * sticker with ink border and hard shadow on a transparent background.
+     * {@link #setAppear} tweens a 0.9→1.0 scale-in of the children.
+     */
+    public static class DialogSurface extends JPanel {
+        private final Color fill;
+        private final int radius;
+        private float appear = 1f;
+
+        /** @param fill surface color, @param radius corner radius in px */
+        public DialogSurface(Color fill, int radius) {
+            this.fill = fill;
+            this.radius = radius;
+            setOpaque(false);
+        }
+
+        /** Sets the scale-in progress (0..1); 1 is fully shown. */
+        public void setAppear(float appear) {
+            this.appear = appear;
+            repaint();
+        }
+
+        @Override
+        protected void paintComponent(Graphics graphics) {
+            Graphics2D g = nice(graphics);
+            int shadow = Theme.SHADOW_OFFSET;
+            int w = getWidth() - shadow;
+            int h = getHeight() - shadow;
+            g.setColor(Theme.SHADOW);
+            g.fillRoundRect(shadow, shadow, w, h, radius, radius);
+            g.setColor(fill);
+            g.fillRoundRect(0, 0, w, h, radius, radius);
+            g.setColor(Theme.INK);
+            g.setStroke(new java.awt.BasicStroke(2f));
+            g.drawRoundRect(0, 0, w - 1, h - 1, radius, radius);
+            g.dispose();
+        }
+
+        @Override
+        protected void paintChildren(Graphics graphics) {
+            Graphics2D g = (Graphics2D) graphics.create();
+            double scale = 0.9 + 0.1 * appear;
+            int cx = getWidth() / 2;
+            int cy = getHeight() / 2;
+            g.translate(cx, cy);
+            g.scale(scale, scale);
+            g.translate(-cx, -cy);
+            super.paintChildren(g);
+            g.dispose();
+        }
+    }
+
+    /**
+     * An undecorated modal dialog showing the given surface, centered over
+     * {@code owner}, closable with ESC. Callers dispose it from their own
+     * buttons. Returns before it is visible; call {@code setVisible(true)}.
+     */
+    public static javax.swing.JDialog undecoratedDialog(java.awt.Window owner,
+                                                        JComponent surface,
+                                                        int width, int height) {
+        javax.swing.JDialog dialog = new javax.swing.JDialog(owner,
+                java.awt.Dialog.ModalityType.APPLICATION_MODAL);
+        dialog.setUndecorated(true);
+        dialog.setBackground(new Color(0, 0, 0, 0));
+        dialog.setContentPane(surface);
+        dialog.setSize(width, height);
+        dialog.setLocationRelativeTo(owner);
+        javax.swing.JRootPane rootPane = dialog.getRootPane();
+        rootPane.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW)
+                .put(javax.swing.KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_ESCAPE, 0),
+                        "closeDialog");
+        rootPane.getActionMap().put("closeDialog",
+                new javax.swing.AbstractAction() {
+                    @Override
+                    public void actionPerformed(java.awt.event.ActionEvent event) {
+                        dialog.dispose();
+                    }
+                });
+        return dialog;
+    }
+
+    /** Runs a 200ms ease-out scale-in tween (0.9 → 1.0) for dialog surfaces. */
+    public static void playAppearTween(DialogSurface surface) {
+        surface.setAppear(0f);
+        long start = System.currentTimeMillis();
+        javax.swing.Timer tween = new javax.swing.Timer(30, event -> {
+            float progress = Math.min(1f,
+                    (System.currentTimeMillis() - start) / 200f);
+            float eased = 1 - (1 - progress) * (1 - progress);
+            surface.setAppear(0.9f + 0.1f * eased);
+            if (progress >= 1f) {
+                ((javax.swing.Timer) event.getSource()).stop();
+            }
+        });
+        tween.start();
+    }
+
+    /** A small drawn close (✕) button for overlay dialogs; runs {@code onClose}. */
+    public static JButton closeButton(Runnable onClose) {        JButton close = new JButton(new javax.swing.Icon() {
+            @Override
+            public void paintIcon(Component c, Graphics g, int x, int y) {
+                Graphics2D g2 = nice(g);
+                g2.setColor(Theme.MUTED);
+                g2.setStroke(new java.awt.BasicStroke(2f));
+                g2.drawLine(x + 4, y + 4, x + 14, y + 14);
+                g2.drawLine(x + 14, y + 4, x + 4, y + 14);
+                g2.dispose();
+            }
+
+            @Override
+            public int getIconWidth() {
+                return 18;
+            }
+
+            @Override
+            public int getIconHeight() {
+                return 18;
+            }
+        });
+        close.setToolTipText("Close");
+        close.setOpaque(false);
+        close.setContentAreaFilled(false);
+        close.setFocusPainted(false);
+        close.setBorderPainted(false);
+        close.setCursor(new java.awt.Cursor(java.awt.Cursor.HAND_CURSOR));
+        close.setPreferredSize(new java.awt.Dimension(24, 24));
+        close.addActionListener(event -> onClose.run());
+        return close;
+    }
+
+    /**
+     * Themed yes/no confirmation replacing the stock JOptionPane: a cream
+     * DialogSurface with the question in ink, an outline No pill and a
+     * {@code yesVariant}-colored Yes pill of equal width. Blocks the EDT
+     * like JOptionPane; ESC, ✕ and No all close it as "No". The appear
+     * tween keeps animating while it waits (Swing timers stay live).
+     */
+    public static boolean confirmDialog(Component parent, String title, String message,
+                                        String yesText, Pill yesVariant) {
+        Window owner = parent instanceof Window window ? window
+                : SwingUtilities.getWindowAncestor(parent);
+        DialogSurface surface = new DialogSurface(Theme.CREAM, 18);
+        surface.setLayout(new BorderLayout(0, 14));
+        surface.setBorder(BorderFactory.createEmptyBorder(20, 22, 20 + Theme.SHADOW_OFFSET, 22));
+
+        JDialog dialog = new JDialog(owner, title, Dialog.ModalityType.APPLICATION_MODAL);
+        dialog.setUndecorated(true);
+        dialog.setBackground(new Color(0, 0, 0, 0));
+        dialog.setContentPane(surface);
+        dialog.setSize(360, 180);
+        dialog.setLocationRelativeTo(parent);
+        dialog.getRootPane().getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW)
+                .put(KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_ESCAPE, 0),
+                        "closeDialog");
+        dialog.getRootPane().getActionMap().put("closeDialog",
+                new javax.swing.AbstractAction() {
+                    @Override
+                    public void actionPerformed(java.awt.event.ActionEvent event) {
+                        dialog.dispose();
+                    }
+                });
+
+        JLabel question = new JLabel(message, SwingConstants.CENTER);
+        question.setFont(Theme.bold(15f));
+        question.setForeground(Theme.INK);
+        surface.add(question, BorderLayout.CENTER);
+
+        // Equal-width pill pair on one row; No keeps the dialog open-state.
+        JPanel buttons = new JPanel(new GridLayout(1, 2, 12, 0));
+        buttons.setOpaque(false);
+        JButton no = pill("No", Pill.CREAM_OUTLINE);
+        no.addActionListener(event -> dialog.dispose());
+        buttons.add(no);
+        final boolean[] accepted = {false};
+        JButton yes = pill(yesText, yesVariant);
+        yes.addActionListener(event -> {
+            accepted[0] = true;
+            dialog.dispose();
+        });
+        buttons.add(yes);
+        surface.add(buttons, BorderLayout.SOUTH);
+
+        playAppearTween(surface);
+        dialog.setVisible(true); // blocks here until closed
+        return accepted[0];
     }
 
     // ------------------------------------------------------------------

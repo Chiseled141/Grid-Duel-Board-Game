@@ -1,5 +1,6 @@
 package onitama.net;
 
+import java.io.ObjectInputFilter;
 import java.io.Serializable;
 
 /**
@@ -21,4 +22,21 @@ public sealed interface Message extends Serializable
         GameOver, RematchRequest, RematchAccept, ResignRequest,
         OpponentLeft, ReconnectRequest, LeaderboardRequest, LeaderboardResponse,
         Ping, Pong, ErrorMessage {
+
+    /**
+     * The deserialization filter (JEP 290) every endpoint installs on its
+     * {@code ObjectInputStream} immediately after creating it. It is an
+     * allowlist: only message records, the {@code core} classes they embed
+     * (GameState, Board, Card, ...) and JDK classes may be read — anything
+     * else, such as a crafted gadget-chain class, is rejected during
+     * {@code readObject} before any of its code can run.
+     *
+     * <p>Only {@code maxdepth} (per object graph, resets with every
+     * {@code readObject}) is used as a size guard: {@code maxrefs} and
+     * {@code maxbytes} are cumulative over the whole stream and would reject
+     * legitimate traffic once a long-lived connection has carried enough
+     * messages.
+     */
+    ObjectInputFilter WIRE_FILTER = ObjectInputFilter.Config.createFilter(
+            "maxdepth=64;onitama.net.*;onitama.core.*;java.base/*;!*");
 }

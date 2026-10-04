@@ -25,6 +25,7 @@ public final class ClientSettings {
     private int windowWidth = 1100;
     private int windowHeight = 880;
     private int pieceStyle = 1;
+    private boolean soundEnabled = true;
 
     /** Loads the settings file; keeps defaults when it does not exist. */
     public static ClientSettings load() {
@@ -44,6 +45,8 @@ public final class ClientSettings {
         settings.windowWidth = parseInt(properties.getProperty("windowWidth"), settings.windowWidth);
         settings.windowHeight = parseInt(properties.getProperty("windowHeight"), settings.windowHeight);
         settings.pieceStyle = parseInt(properties.getProperty("pieceStyle"), settings.pieceStyle);
+        settings.soundEnabled = parseBoolean(
+                properties.getProperty("soundEnabled"), settings.soundEnabled);
         return settings;
     }
 
@@ -55,6 +58,7 @@ public final class ClientSettings {
         properties.setProperty("windowWidth", String.valueOf(windowWidth));
         properties.setProperty("windowHeight", String.valueOf(windowHeight));
         properties.setProperty("pieceStyle", String.valueOf(pieceStyle));
+        properties.setProperty("soundEnabled", String.valueOf(soundEnabled));
         try {
             Files.createDirectories(FILE.getParent());
             try (OutputStream out = Files.newOutputStream(FILE)) {
@@ -71,6 +75,10 @@ public final class ClientSettings {
         } catch (NumberFormatException e) {
             return fallback;
         }
+    }
+
+    private static boolean parseBoolean(String raw, boolean fallback) {
+        return raw == null ? fallback : Boolean.parseBoolean(raw);
     }
 
     public String host() {
@@ -109,5 +117,14 @@ public final class ClientSettings {
 
     public void setPieceStyle(int pieceStyle) {
         this.pieceStyle = pieceStyle;
+    }
+
+    /** Whether the sound toggle in the header is on (no audio engine yet). */
+    public boolean soundEnabled() {
+        return soundEnabled;
+    }
+
+    public void setSoundEnabled(boolean soundEnabled) {
+        this.soundEnabled = soundEnabled;
     }
 }

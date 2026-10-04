@@ -154,9 +154,9 @@ public final class PracticeBot {
         List<Square> enemyPieces = state.board().occupiedBy(enemy);
         for (Card card : state.hand(enemy)) {
             for (Square from : enemyPieces) {
-                if (from.equals(square)) {
-                    continue;
-                }
+                // No guard for from.equals(square) is needed: a card can never
+                // move a piece onto its own square (no (0,0) offset exists),
+                // and an enemy piece can never share the defender's square.
                 if (card.destinationsFrom(from, enemy).contains(square)) {
                     return true;
                 }

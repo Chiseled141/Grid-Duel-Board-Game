@@ -23,14 +23,18 @@ public final class Elo {
      * @param blueRating rating of Blue before the game
      * @param redRating  rating of Red before the game
      * @param winner     the winning color, or {@code null} for a draw
-     * @return both new ratings, rounded to the nearest integer
+     * @return both new ratings, rounded to the nearest integer; the update is
+     *         exactly zero-sum (one rounded delta is negated for the opponent,
+     *         so rounding can never drift the rating sum)
      */
     public static Result update(int blueRating, int redRating, PlayerColor winner) {
         double expectedBlue = expectedScore(blueRating, redRating);
         double scoreBlue = winner == null ? 0.5 : winner == PlayerColor.BLUE ? 1.0 : 0.0;
-        int newBlue = (int) Math.round(blueRating + K_FACTOR * (scoreBlue - expectedBlue));
-        int newRed = (int) Math.round(redRating + K_FACTOR * ((1 - scoreBlue) - (1 - expectedBlue)));
-        return new Result(newBlue, newRed);
+        // One rounded delta, negated for Red. Rounding both deltas
+        // independently could be off by one (Math.round(-15.5) == -15, not
+        // -16), which would create or destroy a rating point.
+        int delta = (int) Math.round(K_FACTOR * (scoreBlue - expectedBlue));
+        return new Result(blueRating + delta, redRating - delta);
     }
 
     /** The expected score of Blue against Red: 0.5 for equal ratings. */

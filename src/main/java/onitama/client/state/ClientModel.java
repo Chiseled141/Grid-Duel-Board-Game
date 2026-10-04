@@ -83,6 +83,13 @@ public final class ClientModel {
     private final List<Piece> enemyCaptures = new ArrayList<>();
     private boolean rematchOfferedByOpponent;
     private boolean gameOverAnnounced;
+    /**
+     * True once a {@link GameOver} arrived for the current match. The server
+     * communicates a forfeit only through {@code GameOver} — the last
+     * serialized {@code GameState} on the wire still says ONGOING — so the
+     * model must gate selection, parking and resigning on this flag itself.
+     */
+    private boolean matchOver;
 
     // Selection state for the game board.
     private String selectedCardId;
@@ -102,6 +109,8 @@ public final class ClientModel {
     // Rookie heuristic answers instantly; Senior/Legend search on a worker
     // thread, so the generation counter guards against stale results.
     private static final int BOT_THINK_MILLIS = 900;
+    /** Parked-practice room label shown in the lobby's return pill. */
+    private static final String PRACTICE_ROOM_CODE = "PRACTICE";
     private boolean practiceMode;
     private Difficulty practiceDifficulty = Difficulty.ROOKIE;
     private final Random practiceRandom = new Random();
@@ -166,6 +175,14 @@ public final class ClientModel {
 
     /** Asks to join the match with the given room code. */
     public void joinMatch(String roomCode) {
+        if (practiceMode && state != null && state.isOngoing()) {
+            // Joining online while a practice match is parked would silently
+            // discard it — the player must settle the practice game first.
+            fire(listener -> listener.onError(
+                    "You have a practice match in progress — resign it "
+                            + "before joining online."));
+            return;
+        }
         connection.send(new JoinMatchRequest(roomCode));
     }
 
@@ -187,7 +204,7 @@ public final class ClientModel {
     public void startPracticeMatch(Difficulty difficulty) {
         if (hasParkedMatch()) {
             fire(listener -> listener.onError(
-                    "You have an ongoing online match — return to it first."));
+                    "You have an ongoing match — return to it first."));
             return;
         }
         stopBotTimer();
@@ -203,6 +220,7 @@ public final class ClientModel {
         enemyCaptures.clear();
         rematchOfferedByOpponent = false;
         gameOverAnnounced = false;
+        matchOver = false;
         matchParked = false;
         parkedRoomCode = null;
         pendingRoomCode = null;
@@ -227,11 +245,22 @@ public final class ClientModel {
     /** Resigns the current match. */
     public void resign() {
         if (practiceMode) {
-            // A practice game has nothing at stake; leaving abandons it.
-            leaveToLobby();
+            // A practice game has nothing at stake; resigning abandons it
+            // outright — it must not park like a paused match.
+            stopBotTimer();
+            clearMatchState();
+            matchParked = false;
+            parkedRoomCode = null;
+            setScreen(Screen.LOBBY);
+            refreshMatches();
             return;
         }
-        connection.send(new ResignRequest());
+        // Only a running online match can be resigned; with no match, one
+        // already finished, or a forfeit pending on the wire, the request
+        // would be a silent no-op on the wire.
+        if (state != null && state.isOngoing() && !matchOver) {
+            connection.send(new ResignRequest());
+        }
     }
 
     /** Offers a rematch after the game ended. */
@@ -241,17 +270,32 @@ public final class ClientModel {
 
     /**
      * Opens the lobby. An ongoing match is parked (kept live in the
-     * background) so the player can return to it; a finished one is cleared.
+     * background) so the player can return to it — practice matches park
+     * exactly like online ones, shown as "PRACTICE" in the lobby pill; a
+     * finished one is cleared.
      */
     public void leaveToLobby() {
         if (practiceMode) {
             stopBotTimer();
+            if (state != null && state.isOngoing()) {
+                matchParked = true;
+                parkedRoomCode = PRACTICE_ROOM_CODE;
+                pendingRoomCode = null;
+                clearSelection();
+                setScreen(Screen.LOBBY);
+                refreshMatches();
+                return;
+            }
             clearMatchState();
+            matchParked = false;
+            parkedRoomCode = null;
             setScreen(Screen.LOBBY);
             refreshMatches();
             return;
         }
-        if (state != null && state.isOngoing()) {
+        // Park only a match that can still continue; a GameOver has already
+        // arrived for a finished one (its wire state still says ONGOING).
+        if (state != null && state.isOngoing() && !matchOver) {
             matchParked = true;
             parkedRoomCode = roomCode;
             clearSelection();
@@ -282,6 +326,13 @@ public final class ClientModel {
         }
         matchParked = false;
         setScreen(Screen.GAME);
+        if (practiceMode) {
+            // The bot timer was stopped for the pause: re-arm the forced
+            // pass check and the bot's move so the game continues seamlessly
+            // from the exact parked position.
+            autoPassIfNeeded();
+            scheduleBotTurn();
+        }
         fire(ClientModelListener::onMatchChanged);
     }
 
@@ -354,6 +405,15 @@ public final class ClientModel {
         } else if (message instanceof MoveRejected rejected) {
             fire(listener -> listener.onError("Move rejected: " + rejected.reason()));
         } else if (message instanceof GameOver over) {
+            // The match is over: freeze local play (selection, parking,
+            // resign) — the forfeited GameState on the wire still says
+            // ONGOING — and drop any parked session so the lobby stops
+            // offering "return to match" for a game that cannot continue.
+            // The state itself is kept for the game-over dialog (Elo, moves).
+            matchOver = true;
+            matchParked = false;
+            parkedRoomCode = null;
+            clearSelection();
             fire(listener -> listener.onGameOver(over));
         } else if (message instanceof OpponentLeft left) {
             fire(listener -> listener.onOpponentLeft(left.graceSeconds()));
@@ -440,6 +500,7 @@ public final class ClientModel {
         enemyCaptures.clear();
         rematchOfferedByOpponent = false;
         gameOverAnnounced = false;
+        matchOver = false;
         matchParked = false;
         parkedRoomCode = null;
         clearSelection();
@@ -460,7 +521,7 @@ public final class ClientModel {
             Piece captured = previous == null ? null : recordCapture(previous, lastMove);
             lastCaptureSquare = captured == null ? null : lastMove.to();
             historyMoves.add(new MoveInfo(state.moveNumber(),
-                    CardDeck.cardById(lastMove.cardId()).name(),
+                    cardName(lastMove.cardId()),
                     squareName(lastMove.from()), squareName(lastMove.to()),
                     captured != null, false));
         }
@@ -469,6 +530,20 @@ public final class ClientModel {
         fire(ClientModelListener::onMatchChanged);
     }
 
+
+    /**
+     * Card display name for the move history. A card id from the wire that is
+     * no longer in the deck must not kill the EDT listener chain, so it falls
+     * back to a placeholder instead of throwing.
+     */
+    private static String cardName(String cardId) {
+        try {
+            return CardDeck.cardById(cardId).name();
+        } catch (IllegalArgumentException e) {
+            LOG.warning("unknown card id in move: " + cardId);
+            return "Unknown Card";
+        }
+    }
 
     /** Records a captured piece by comparing the previous and current boards. */
     private Piece recordCapture(GameState previous, Move lastMove) {
@@ -607,6 +682,9 @@ public final class ClientModel {
             RulesEngine.apply(state, move);
             recordPracticeMove(move, victim, enemyCaptures);
         }
+        // The bot's half-move swaps the hands just like a human's; a selection
+        // pointing at the pre-move hand must not survive it.
+        clearSelection();
         advancePractice();
         fire(ClientModelListener::onMatchChanged);
     }
@@ -642,12 +720,19 @@ public final class ClientModel {
     /** Ends a finished practice game: stops the bot and shows the result. */
     private void announcePracticeGameOver() {
         stopBotTimer();
+        matchOver = true;
         fire(listener -> listener.onGameOver(
                 new GameOver(state.winner(), state.way(), 0, 0)));
     }
 
     private boolean myTurn() {
-        return state != null && state.isOngoing() && state.turn() == myColor;
+        return state != null && state.isOngoing() && !matchOver
+                && state.turn() == myColor;
+    }
+
+    /** True once a GameOver arrived for the match currently in the model. */
+    public boolean isMatchOver() {
+        return matchOver;
     }
 
     private void recomputeTargets() {
@@ -678,6 +763,7 @@ public final class ClientModel {
         enemyCaptures.clear();
         rematchOfferedByOpponent = false;
         gameOverAnnounced = false;
+        matchOver = false;
         clearSelection();
     }
 
