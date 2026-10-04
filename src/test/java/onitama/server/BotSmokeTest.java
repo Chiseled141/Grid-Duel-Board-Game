@@ -37,9 +37,9 @@ class BotSmokeTest {
     void startServer() throws Exception {
         database = new Database(tempDir.resolve("lt01.db"));
         SqliteUserDao userDao = new SqliteUserDao(database);
-        server = new GameServer(new ServerConfig(0, 60, new Random(99), null),
+        server = new GameServer(new ServerConfig(0, 60, new Random(99)),
                 userDao, new MatchPersistence(database,
-                        new SqliteMatchDao(database, userDao), null));
+                        new SqliteMatchDao(database, userDao)));
         port = server.start();
     }
 

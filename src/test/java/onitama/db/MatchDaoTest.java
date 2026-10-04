@@ -1,10 +1,6 @@
 package onitama.db;
 
-import onitama.core.CardDeck;
-import onitama.core.DealSnapshot;
-import onitama.core.HalfMove;
 import onitama.core.PlayerColor;
-import onitama.core.Square;
 import onitama.core.WinCondition;
 import onitama.net.UserProfile;
 import onitama.server.MatchResult;
@@ -47,7 +43,7 @@ class MatchDaoTest {
     @Test
     void recordedMatchPersistsWithStatsInOneTransaction() throws SQLException {
         MatchResult result = sampleResult("ROOM1", PlayerColor.BLUE, WinCondition.STONE);
-        database.inTransaction(connection -> matchDao.recordMatch(connection, result, null));
+        database.inTransaction(connection -> matchDao.recordMatch(connection, result));
 
         List<MatchDao.MatchRecord> records = matchDao.recentMatches(10);
         assertEquals(1, records.size());
@@ -74,23 +70,22 @@ class MatchDaoTest {
     @Test
     void drawRecordsNoWinner() throws SQLException {
         MatchResult result = sampleResult("ROOM2", null, WinCondition.DRAW);
-        database.inTransaction(connection -> matchDao.recordMatch(connection, result, null));
+        database.inTransaction(connection -> matchDao.recordMatch(connection, result));
         assertNull(matchDao.recentMatches(1).get(0).winnerUsername());
     }
 
     @Test
     void failingTransactionRollsBackEverything() throws SQLException {
         MatchResult good = sampleResult("ROOM1", PlayerColor.BLUE, WinCondition.STONE);
-        database.inTransaction(connection -> matchDao.recordMatch(connection, good, null));
+        database.inTransaction(connection -> matchDao.recordMatch(connection, good));
         UserProfile blueBefore = userDao.profileOf("alice");
 
         // A match referencing an unknown user fails the transaction mid-way:
-        // the match insert would succeed alone, so this proves the rollback.
+        // the match insert alone would succeed, so this proves the rollback.
         MatchResult bad = new MatchResult("ROOM9", "ghost", "bob",
-                PlayerColor.RED, WinCondition.FORFEIT, 1000, 1000,
-                sampleDeal(), List.of());
+                PlayerColor.RED, WinCondition.FORFEIT, 1000, 1000, 0);
         assertThrows(SQLException.class, () ->
-                database.inTransaction(connection -> matchDao.recordMatch(connection, bad, null)));
+                database.inTransaction(connection -> matchDao.recordMatch(connection, bad)));
 
         assertEquals(1, matchDao.recentMatches(10).size(), "no partial match row survived");
         UserProfile blueAfter = userDao.profileOf("alice");
@@ -102,11 +97,11 @@ class MatchDaoTest {
     void recentMatchesAreOrderedNewestFirst() throws SQLException {
         // Each sample match has a distinct end reason, which doubles as its marker.
         database.inTransaction(connection -> matchDao.recordMatch(
-                connection, sampleResult("ROOM1", PlayerColor.BLUE, WinCondition.STONE), null));
+                connection, sampleResult("ROOM1", PlayerColor.BLUE, WinCondition.STONE)));
         database.inTransaction(connection -> matchDao.recordMatch(
-                connection, sampleResult("ROOM2", PlayerColor.RED, WinCondition.FORFEIT), null));
+                connection, sampleResult("ROOM2", PlayerColor.RED, WinCondition.FORFEIT)));
         database.inTransaction(connection -> matchDao.recordMatch(
-                connection, sampleResult("ROOM3", null, WinCondition.DRAW), null));
+                connection, sampleResult("ROOM3", null, WinCondition.DRAW)));
 
         List<MatchDao.MatchRecord> records = matchDao.recentMatches(2);
         assertEquals(2, records.size(), "limit is applied");
@@ -118,13 +113,6 @@ class MatchDaoTest {
         return new MatchResult(roomCode, "alice", "bob", winner, way,
                 winner == PlayerColor.BLUE ? 1016 : winner == PlayerColor.RED ? 984 : 1000,
                 winner == PlayerColor.BLUE ? 984 : winner == PlayerColor.RED ? 1016 : 1000,
-                sampleDeal(),
-                List.of(new HalfMove(1, "tiger", new Square(2, 4), new Square(2, 2)),
-                        new HalfMove(2, "crane", new Square(2, 0), new Square(1, 1))));
-    }
-
-    private DealSnapshot sampleDeal() {
-        var deal = CardDeck.deal(new java.util.Random(42));
-        return new DealSnapshot(deal.blueHand(), deal.redHand(), deal.transit());
+                2);
     }
 }

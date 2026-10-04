@@ -4,8 +4,8 @@
 *Onitama* (Shimpei Sato, Arcane Wonders 2014). Two human players on different
 machines play a full game through a central authoritative Java server: the
 server manages user accounts, lobbies, live games, disconnections, Elo
-ratings, match history and replay files; a Swing desktop client provides the
-login, lobby, game board, leaderboard and replay viewer screens.
+ratings and match history; a Swing desktop client provides the
+login, lobby, game board and leaderboard screens.
 
 **Features**
 
@@ -19,13 +19,11 @@ login, lobby, game board, leaderboard and replay viewer screens.
 * Matchmaking by 5-character room code, rematch flow, resign,
   disconnect grace period with forfeit, token-based reconnect.
 * Swing client: login, lobby, game board drawn from your own side, legal-move
-  highlights, move history, captured trays, leaderboard, replay viewer.
+  highlights, move history, piece counts, leaderboard.
 * Single-player practice mode: local games against the built-in `PracticeBot`
   at three difficulties — **Rookie** (forgiving heuristic with beginner
   mercy), **Senior** (2 half-move search) and **Legend** (5 half-move
   alpha-beta search) — no server, no Elo at stake, instant rematch.
-* Every match is persisted as a `.onitama-replay` file; replays are validated
-  against the rules engine when opened.
 * Headless load-test harness (`bots` mode) that measures per-move latency and
   games/minute into CSV files.
 
@@ -122,8 +120,7 @@ src/main/java/onitama/
 │                        SessionRegistry, MatchPersistence
 ├── db/                  Database (SQLite/JDBC), UserDao + MatchDao and their
 │                        SQLite implementations, PBKDF2 password hashing
-├── replay/              ReplayFile text format (.onitama-replay)
-└── client/              OnitamaClient (socket lifecycle), state/ (EDT model +
+├── client/              OnitamaClient (socket lifecycle), state/ (EDT model +
     │                    observer events), ui/ (Swing panels & renderers),
     └── bot/             headless load-test bot + harness (CSV results)
 src/main/resources/      fonts/ (display font, OFL license) and assets/
@@ -131,7 +128,6 @@ src/main/resources/      fonts/ (display font, OFL license) and assets/
                          each falls back to the drawn baseline when absent)
 src/test/java/onitama/   JUnit 5 tests (UT01–UT09, IT01–IT02, LT01)
 results/                 (created by bot runs) latency + summary CSV files
-replays/                 (created by the server) .onitama-replay files
 data/                    (created by the server) SQLite database file
 ```
 
@@ -160,7 +156,6 @@ center square of their home row (Way of the Stream).
   favorite wins, more for an upset).
 * SQLite serializes all database access through one connection — by design;
   heavy concurrent write load was not a goal.
-* The replay viewer shows replays from Blue's side only.
 * The load-test harness measures client-observed round-trip latency and
   games/minute; server CPU/memory are not sampled automatically.
 

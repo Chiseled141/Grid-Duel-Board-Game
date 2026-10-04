@@ -65,7 +65,6 @@ public final class Database implements AutoCloseable {
                       move_count     INTEGER NOT NULL,
                       elo_blue_after INTEGER NOT NULL,
                       elo_red_after  INTEGER NOT NULL,
-                      replay_path    TEXT,
                       played_at      TEXT NOT NULL
                     )""");
         }

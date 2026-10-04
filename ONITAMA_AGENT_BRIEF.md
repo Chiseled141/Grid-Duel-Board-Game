@@ -30,10 +30,10 @@ course, report, or deployment material.
 Two players play Onitama through a central **authoritative** Java server.
 
 - **Server** (headless): accounts, open lobbies (5-char room codes), live matches,
-  disconnection handling (60 s reconnect grace), Elo ratings, match history,
-  replay files. Multiple simultaneous matches.
+  disconnection handling (60 s reconnect grace), Elo ratings, match history.
+  Multiple simultaneous matches.
 - **Client** (Swing): login/register, lobby, game board with the five movement
-  cards, move history, game-over/rematch flow, leaderboard, replay viewer — plus
+  cards, move history, game-over/rematch flow, leaderboard — plus
   **single-player practice** against a built-in bot (rookie / senior / legend).
 - **Bots** (headless): load-test fleet playing random legal games; writes CSV
   stats to `results/`.
@@ -44,7 +44,7 @@ Run: `mvn package` → `target/onitama.jar`. `Main` dispatches on `args[0]`:
 [db]`, `run-client.sh`, `run-bots.sh [bots] [games]` (`.bat` twins exist).
 
 Out of scope (do NOT add): web/mobile clients, WebSocket/HTTP, matchmaking beyond
-room codes, spectators, in-game chat, cloud automation.
+room codes, spectators, in-game chat, replay recording, cloud automation.
 
 ## 2. Game rules (the engine implements exactly this)
 
@@ -99,7 +99,7 @@ room codes, spectators, in-game chat, cloud automation.
   `Message` interface + one record per message) · `server` (GameServer,
   ClientHandler, LobbyManager, MatchSession, SessionRegistry,
   MatchPersistence) · `db` (Database, `UserDao`/`MatchDao` interfaces + SQLite
-  impls) · `replay` (ReplayFile) · `client` (OnitamaClient, ClientSettings,
+  impls) · `client` (OnitamaClient, ClientSettings,
   `state` model + listeners, `ui` panels, `bot` load-test).
 
 ## 4. Network protocol
@@ -148,7 +148,6 @@ CREATE TABLE IF NOT EXISTS matches (
   move_count INTEGER NOT NULL,
   elo_blue_after INTEGER NOT NULL,
   elo_red_after INTEGER NOT NULL,
-  replay_path TEXT,
   played_at TEXT NOT NULL
 );
 ```
@@ -162,10 +161,10 @@ CREATE TABLE IF NOT EXISTS matches (
 ## 6. Client (Swing)
 
 Five screens: **login/register**, **lobby** (profile, create/join, open matches,
-leaderboard + replay buttons, settings, practice entry), **game** (board, two
+leaderboard button, settings, practice entry), **game** (board, two
 hand cards, opponent's two cards pre-rotated to *your* perspective, transit
 card, turn banner, move history, piece counts, resign, rematch dialog),
-**leaderboard**, **replay viewer** (open `.onitama-replay`, step through).
+**leaderboard**.
 
 - Board always drawn **from your own side** (own pieces at the bottom; Red's
   view flips canonical coordinates). Custom `JPanel` + `paintComponent` +
@@ -197,7 +196,7 @@ card, turn banner, move history, piece counts, resign, rematch dialog),
 | Errors | Exception hierarchy | `OnitamaException` → IllegalMove (core) / Authentication / Persistence (db). UI shows friendly text; server logs stack traces; nothing crashes. |
 
 Functional style used naturally: stream pipelines for legal-move filtering,
-leaderboard top-N, replay history mapping.
+leaderboard top-N sorting.
 
 ## 8. Test inventory (all must keep passing)
 
@@ -221,11 +220,6 @@ Rules: localhost only, ephemeral ports, temp dirs for DB tests, everything in
 
 ## 9. File I/O
 
-- **Replays:** UTF-8 text, `replays/*.onitama-replay`; header (players, date,
-  dealt cards, first player) + one line per half-move
-  `moveNumber;cardId;fromX,fromY;toX,toY`. The viewer parses with streams and
-  **validates against `RulesEngine`** — corrupted replays are reported, never
-  crash.
 - **Client settings:** `client.properties` (last host/port, window size, piece
   style). **Server:** CLI args override defaults; logging via
   `java.util.logging` (console + rotating file).
@@ -235,8 +229,7 @@ Rules: localhost only, ephemeral ports, temp dirs for DB tests, everything in
 - [ ] `mvn clean verify` green from a clean clone; jar builds via shade plugin.
 - [ ] Two GUI clients + server on localhost: register → lobby → full game →
       game over → rematch, end to end.
-- [ ] Practice mode plays on all three difficulties; leaderboard and replay
-      viewer work.
+- [ ] Practice mode plays on all three difficulties and the leaderboard works.
 - [ ] Server survives illegal moves, unknown cards, malformed/foreign socket
       objects (reject + log, never crash), mid-game disconnects, Ctrl-C.
 - [ ] No plaintext passwords, no dead/debug code, no `println` debugging.

@@ -14,20 +14,20 @@ public interface MatchDao {
 
     /**
      * Inserts one finished match and updates both players' stats, all inside
-     * the given transaction; {@code replayPath} may be null.
+     * the given transaction.
      *
      * @return the generated match id
      * @throws SQLException to roll the whole transaction back
      */
-    long recordMatch(Connection connection, onitama.server.MatchResult result,
-                     String replayPath) throws SQLException;
+    long recordMatch(Connection connection, onitama.server.MatchResult result)
+            throws SQLException;
 
-    /** Recent matches, newest first (for the report's read path and future UI). */
+    /** Recent matches, newest first (for future UI use). */
     List<MatchRecord> recentMatches(int limit) throws SQLException;
 
     /** One row of the matches table joined with the players' names. */
     record MatchRecord(long id, String blueUsername, String redUsername,
                        String winnerUsername, String endReason, int moveCount,
-                       int eloBlueAfter, int eloRedAfter, String replayPath, String playedAt) {
+                       int eloBlueAfter, int eloRedAfter, String playedAt) {
     }
 }

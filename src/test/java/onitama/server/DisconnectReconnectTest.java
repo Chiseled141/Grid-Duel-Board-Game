@@ -62,7 +62,7 @@ class DisconnectReconnectTest {
     @Test
     void reconnectRestoresStateAndGraceExpiryForfeits() throws Exception {
         database = new Database(tempDir.resolve("it02.db"));
-        server = new GameServer(new ServerConfig(0, 1, new Random(7), null),
+        server = new GameServer(new ServerConfig(0, 1, new Random(7)),
                 new SqliteUserDao(database));
         int port = server.start();
 
@@ -115,7 +115,7 @@ class DisconnectReconnectTest {
         // 1-second heartbeat silence limit; the client read timeout is 10 s,
         // so the server's drop must arrive well before the test gives up.
         database = new Database(tempDir.resolve("ut-silence.db"));
-        server = new GameServer(new ServerConfig(0, 60, new Random(3), null, 1, 32),
+        server = new GameServer(new ServerConfig(0, 60, new Random(3), 1, 32),
                 new SqliteUserDao(database));
         int port = server.start();
 

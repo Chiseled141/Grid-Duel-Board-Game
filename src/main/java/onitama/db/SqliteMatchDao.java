@@ -13,9 +13,9 @@ import java.util.List;
 
 /**
  * SQLite implementation of {@link MatchDao}. {@link #recordMatch} runs inside
- * a caller transaction together with the two users' stat updates — the
- * report's transaction example: a crash between the match insert and an Elo
- * update would corrupt the ratings, so both happen atomically.
+ * a caller transaction together with the two users' stat updates — a crash
+ * between the match insert and an Elo update would corrupt the ratings, so
+ * both happen atomically.
  */
 public final class SqliteMatchDao implements MatchDao {
 
@@ -29,7 +29,7 @@ public final class SqliteMatchDao implements MatchDao {
     }
 
     @Override
-    public long recordMatch(Connection connection, MatchResult result, String replayPath)
+    public long recordMatch(Connection connection, MatchResult result)
             throws SQLException {
         Long blueId = requireUser(connection, result.blueUsername());
         Long redId = requireUser(connection, result.redUsername());
@@ -39,8 +39,8 @@ public final class SqliteMatchDao implements MatchDao {
         long matchId;
         try (PreparedStatement insert = connection.prepareStatement(
                 "INSERT INTO matches (blue_user_id, red_user_id, winner_user_id, end_reason, "
-                        + "move_count, elo_blue_after, elo_red_after, replay_path, played_at) "
-                        + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        + "move_count, elo_blue_after, elo_red_after, played_at) "
+                        + "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                 Statement.RETURN_GENERATED_KEYS)) {
             insert.setLong(1, blueId);
             insert.setLong(2, redId);
@@ -53,8 +53,7 @@ public final class SqliteMatchDao implements MatchDao {
             insert.setInt(5, result.moveCount());
             insert.setInt(6, result.blueEloAfter());
             insert.setInt(7, result.redEloAfter());
-            insert.setString(8, replayPath);
-            insert.setString(9, java.time.LocalDateTime.now()
+            insert.setString(8, java.time.LocalDateTime.now()
                     .format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE_TIME));
             insert.executeUpdate();
             try (ResultSet keys = insert.getGeneratedKeys()) {
@@ -87,7 +86,7 @@ public final class SqliteMatchDao implements MatchDao {
             try (PreparedStatement select = connection.prepareStatement("""
                     SELECT m.id, ub.username AS blue, ur.username AS red, uw.username AS winner,
                            m.end_reason, m.move_count, m.elo_blue_after, m.elo_red_after,
-                           m.replay_path, m.played_at
+                           m.played_at
                     FROM matches m
                     JOIN users ub ON ub.id = m.blue_user_id
                     JOIN users ur ON ur.id = m.red_user_id
@@ -101,7 +100,7 @@ public final class SqliteMatchDao implements MatchDao {
                                 row.getString("red"), row.getString("winner"),
                                 row.getString("end_reason"), row.getInt("move_count"),
                                 row.getInt("elo_blue_after"), row.getInt("elo_red_after"),
-                                row.getString("replay_path"), row.getString("played_at")));
+                                row.getString("played_at")));
                     }
                 }
             }
