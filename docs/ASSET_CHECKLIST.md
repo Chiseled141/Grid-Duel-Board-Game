@@ -82,10 +82,11 @@ template:
       cards.
 - [ ] **`card-stamp-red.png`** — 48×48 — red version.
 
-*Feeling ambitious?* You can also draw a unique illustration per card
-(16 cards: tiger, dragon, frog, rabbit, crab, elephant, goose, rooster,
-monkey, mantis, horse, ox, crane, boar, eel, cobra) — name them
-`card-art-tiger.png` etc., same 190×234 size. Totally optional.
+*Feeling ambitious?* You can also draw a unique full card face per color
+(16 cards × 2 colors: tiger, dragon, frog, rabbit, crab, elephant, goose,
+rooster, monkey, mantis, horse, ox, crane, boar, eel, cobra) — these are
+already integrated; name new ones `cards/<color>/<id>-<color>.png`
+(e.g. `cards/red/tiger-red.png`). Totally optional.
 
 ### 4. Icon
 

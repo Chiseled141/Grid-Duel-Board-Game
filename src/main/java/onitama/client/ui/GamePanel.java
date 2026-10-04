@@ -13,7 +13,6 @@ import java.awt.Color;
 import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
-import java.awt.Font;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.GridLayout;
@@ -22,7 +21,6 @@ import java.awt.event.KeyEvent;
 import java.util.List;
 
 import javax.swing.BorderFactory;
-import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.DefaultListCellRenderer;
 import javax.swing.JButton;
@@ -62,8 +60,6 @@ public final class GamePanel extends JPanel {
     private final JPanel myCards = new JPanel(new GridLayout(2, 1, 12, 12));
     private final JPanel transitHolder = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 4));
     private final JList<ClientModel.MoveInfo> historyList = new JList<>();
-    private final PieceTray myCapturesTray = new PieceTray("—");
-    private final PieceTray enemyCapturesTray = new PieceTray("—");
     private final JComponent opponentDot = chipDot();
     private final JLabel opponentChipLabel = UiKit.inkLabel("OPPONENT", 11f);
     private final JComponent myDot = chipDot();
@@ -415,18 +411,6 @@ public final class GamePanel extends JPanel {
         historyViews.add(emptyState, "empty");
         movesCard.add(historyViews, BorderLayout.CENTER);
 
-        JPanel trays = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 2));
-        trays.setBackground(Theme.SURFACE);
-        trays.add(UiKit.label("TOOK", 10f));
-        trays.add(myCapturesTray);
-        JPanel separator = new JPanel() { };
-        separator.setBackground(Theme.SURFACE);
-        separator.setPreferredSize(new java.awt.Dimension(2, 18));
-        trays.add(separator);
-        trays.add(UiKit.label("LOST", 10f));
-        trays.add(enemyCapturesTray);
-        movesCard.add(trays, BorderLayout.SOUTH);
-
         column.add(movesCard, BorderLayout.CENTER);
         return column;
     }
@@ -568,24 +552,6 @@ public final class GamePanel extends JPanel {
             return "YOUR TURN";
         }
         return "WAITING…";
-    }
-
-
-    /**
-     * The in-match pause menu: the player never falls out of the game view
-     * by accident — returning is always the first option.
-     */
-    private void showInMatchMenu() {
-        Object[] options = {"BACK TO GAME", "RESIGN MATCH", "LEAVE TO LOBBY"};
-        int choice = JOptionPane.showOptionDialog(this,
-                "ONITAMA — " + (model.roomCode() == null ? "" : model.roomCode()),
-                "Menu", JOptionPane.DEFAULT_OPTION, JOptionPane.INFORMATION_MESSAGE,
-                null, options, options[0]);
-        if (choice == 1) {
-            confirmResign();
-        } else if (choice == 2) {
-            model.leaveToLobby();
-        }
     }
 
     private void confirmResign() {

@@ -16,7 +16,6 @@ import onitama.net.Message;
 import onitama.net.MoveApplied;
 import onitama.net.MoveRejected;
 import onitama.net.MoveRequest;
-import onitama.net.Pong;
 import onitama.net.RegisterRequest;
 import onitama.net.RematchRequest;
 

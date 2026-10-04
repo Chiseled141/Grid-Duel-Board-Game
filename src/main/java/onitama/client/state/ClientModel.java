@@ -1,6 +1,5 @@
 package onitama.client.state;
 
-import onitama.client.OnitamaClient;
 import onitama.core.CardDeck;
 import onitama.core.Difficulty;
 import onitama.core.GameState;
@@ -112,9 +111,6 @@ public final class ClientModel {
     /** One compact move-history row (§17 of the design spec). */
     public record MoveInfo(int number, String cardName, String fromSquare,
                            String toSquare, boolean capture, boolean pass) {
-        /** Shown while no move has been played yet. */
-        public static final MoveInfo PLACEHOLDER =
-                new MoveInfo(0, "Waiting for the first move…", "", "", false, true);
     }
 
     /** Creates the model; outgoing messages go through the connection. */
@@ -799,28 +795,5 @@ public final class ClientModel {
     /** The square where the latest half-move captured a piece, or null. */
     public Square lastCaptureSquare() {
         return lastCaptureSquare;
-    }
-
-    /** A short human-readable status line for the game screen. */
-    public String statusLine() {
-        if (state == null) {
-            return "";
-        }
-        if (!state.isOngoing()) {
-            if (state.winner() == null) {
-                return "Game over: draw";
-            }
-            boolean iWon = state.winner() == myColor;
-            return "Game over: " + (iWon ? "you win" : opponentName + " wins")
-                    + " (" + state.way() + ")";
-        }
-        if (state.turn() == myColor) {
-            return RulesEngine.mustPass(state)
-                    ? "No legal move - passing..."
-                    : "Your turn - pick a card and a piece";
-        }
-        return practiceMode
-                ? opponentName + " is thinking..."
-                : "Waiting for " + opponentName + "...";
     }
 }

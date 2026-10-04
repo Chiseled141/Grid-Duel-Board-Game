@@ -7,6 +7,7 @@ results/
 .idea/
 *.iml
 .vscode/
+logs/
 
 # ===== ↑ 以上同步自 .gitignore（「从 .gitignore 同步」只重写以上部分）=====
 .git/

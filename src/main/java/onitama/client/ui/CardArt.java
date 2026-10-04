@@ -4,8 +4,8 @@ import java.awt.Color;
 import java.util.Map;
 
 /**
- * Per-card visual identity: a fixed accent color, the animal kanji and an
- * original flavor line for each of the 16 movement cards (§10: cards feel
+ * Per-card visual identity: a fixed accent color and an original flavor
+ * line for each of the 16 movement cards (§10: cards feel
  * collectible; §21: colored accent borders). Documented in
  * docs/DESIGN_DECISIONS.md.
  */
@@ -28,16 +28,6 @@ public final class CardArt {
             Map.entry("boar", new Color(0xC2185B)),
             Map.entry("eel", new Color(0x2E7D32)),
             Map.entry("cobra", new Color(0x546E7A)));
-
-    private static final Map<String, String> KANJI = Map.ofEntries(
-            Map.entry("tiger", "虎"), Map.entry("dragon", "龍"),
-            Map.entry("frog", "蛙"), Map.entry("rabbit", "兎"),
-            Map.entry("crab", "蟹"), Map.entry("elephant", "象"),
-            Map.entry("goose", "雁"), Map.entry("rooster", "鶏"),
-            Map.entry("monkey", "猴"), Map.entry("mantis", "螳"),
-            Map.entry("horse", "馬"), Map.entry("ox", "牛"),
-            Map.entry("crane", "鶴"), Map.entry("boar", "豕"),
-            Map.entry("eel", "鰻"), Map.entry("cobra", "蛇"));
 
     private static final Map<String, String> FLAVOR = Map.ofEntries(
             Map.entry("tiger", "Strike far, or step back and pounce."),
@@ -63,11 +53,6 @@ public final class CardArt {
     /** The card's own accent color (defaults to gold). */
     public static Color of(String cardId) {
         return ACCENTS.getOrDefault(cardId, Theme.AMBER);
-    }
-
-    /** The animal kanji, or the empty string when unknown. */
-    public static String kanjiFor(String cardId) {
-        return KANJI.getOrDefault(cardId, "");
     }
 
     /** The original flavor line for the quote band. */

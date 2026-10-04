@@ -32,12 +32,8 @@ public final class Theme {
     public static final Color SKY = new Color(0x12B5E5);
     /** Red player pieces, errors, danger ("brand red"). */
     public static final Color CORAL = new Color(0xED203D);
-    /** Legal-move hints ("brand green"). */
-    public static final Color TEAL = new Color(0x0BA95B);
     /** Board light square. */
     public static final Color BOARD_LIGHT = new Color(0xF3EAD3);
-    /** Board dark square (warm charcoal). */
-    public static final Color BOARD_DARK = new Color(0xE2D2AE);
     /** Warm wooden board frame band. */
     public static final Color BOARD_FRAME = new Color(0xE5D3A8);
     /** Tile outlines. */
@@ -48,10 +44,6 @@ public final class Theme {
     public static final Color MUTED = new Color(0x8A8580);
 
     // --- extended accents (fireship.dev brand colors) ---
-    /** Secondary actions and special card states ("brand orange"). */
-    public static final Color ORANGE = new Color(0xFC7428);
-    /** Special game states and secondary identities ("brand purple"). */
-    public static final Color PURPLE = new Color(0x7B5EA7);
     /** Success, victory, connection-ready ("brand green"). */
     public static final Color GREEN = new Color(0x0BA95B);
 
@@ -74,23 +66,9 @@ public final class Theme {
         return color == PlayerColor.BLUE ? P1 : P2;
     }
 
-    /** Returns the darker shade of a player color family. */
-    public static Color playerDark(PlayerColor color) {
-        return color == PlayerColor.BLUE ? P1_DARK : P2_DARK;
-    }
-
-    /** Returns the light tint of a player color family. */
-    public static Color playerLight(PlayerColor color) {
-        return color == PlayerColor.BLUE ? P1_LIGHT : P2_LIGHT;
-    }
-
     // --- shape tokens ---
-    /** Small radius (fields, quote bands). */
-    public static final int RADIUS_SM = 8;
     /** Medium radius (cards, headings). */
     public static final int RADIUS_MD = 12;
-    /** Large radius (stickers). */
-    public static final int RADIUS_LG = 18;
     /** Hard shadow offset in px. */
     public static final int SHADOW_OFFSET = 4;
 
