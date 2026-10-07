@@ -6,7 +6,7 @@
 
 - Java 17, Maven single module. Only deps: `org.xerial:sqlite-jdbc` + `org.junit.jupiter:junit-jupiter` (test). Swing for UI, raw `ServerSocket`/`Socket` + Java object serialization for networking. No Spring/JavaFX/Netty/Gson/Lombok/cloud SDKs.
 - Everything runs on localhost. `mvn package` → `target/onitama.jar` dispatched by `onitama.Main` on `args[0]`: `server` | `client` | `bots` | `demo`.
-- `ONITAMA_SPEC.md` (renamed from `ONITAMA_AGENT_BRIEF.md`) is the authoritative spec (rules, protocol, DB schema, test inventory, Appendix offsets). Treat it as ground truth.
+- `GRID-DUEL-BOARD-GAME_SPEC.md` (renamed from `ONITAMA_AGENT_BRIEF.md`) is the authoritative spec (rules, protocol, DB schema, test inventory, Appendix offsets). Treat it as ground truth.
 
 ## Commands
 

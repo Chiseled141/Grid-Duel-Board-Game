@@ -1,4 +1,4 @@
-# ONITAMA ONLINE — Demo Brief (lean)
+# Grid-Duel-Board-Game ONLINE — Demo Brief (lean)
 
 **Status:** complete, working demo (2026-10-04). All milestones (M1–M8), the M9
 visual redesign and the single-player practice mode are implemented; `mvn clean
@@ -27,7 +27,7 @@ course, report, or deployment material.
 
 ## 1. What the project is
 
-Two players play Onitama through a central **authoritative** Java server.
+Two players play Grid-Duel-Board-Game through a central **authoritative** Java server.
 
 - **Server** (headless): accounts, open lobbies (5-char room codes), live matches,
   disconnection handling (60 s reconnect grace), Elo ratings, match history.
@@ -258,5 +258,5 @@ orientation); rotate 180° for the other player. `UT01` encodes exactly this.
 | Eel | (−1,+1), (−1,−1), (+1,0) |
 | Cobra | (+1,+1), (+1,−1), (−1,0) |
 
-Rules source: Onitama, Shimpei Sato, Arcane Wonders (2014); offsets
+Rules source: Grid-Duel-Board-Game, Shimpei Sato, Arcane Wonders (2014); offsets
 cross-verified against two independent open-source implementations.
