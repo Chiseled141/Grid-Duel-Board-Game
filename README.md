@@ -1,15 +1,16 @@
-# Onitama Online
+# Grid Duel Board Game
 
-**Onitama Online** is a networked two-player implementation of the board game
-*Onitama* (Shimpei Sato, Arcane Wonders 2014). Two human players on different
-machines play a full game through a central authoritative Java server: the
+**Grid Duel Board Game** is a networked two-player abstract strategy game
+played on a 5x5 board with rotating movement cards. Two human players on
+different machines play a full game through a central authoritative Java
+server: the
 server manages user accounts, lobbies, live games, disconnections, Elo
 ratings and match history; a Swing desktop client provides the
 login, lobby, game board and leaderboard screens.
 
 **Features**
 
-* Full Onitama rules: 16 movement cards with rotation, card cycle with the
+* Full Grid Duel rules: 16 movement cards with rotation, card cycle with the
   transit card, mandatory passing, Way of the Stone / Way of the Stream wins,
   300-half-move draw cap.
 * Authoritative TCP server (raw sockets + Java object serialization) with
@@ -131,7 +132,7 @@ results/                 (created by bot runs) latency + summary CSV files
 data/                    (created by the server) SQLite database file
 ```
 
-## How to play Onitama
+## How to play Grid Duel
 
 Each player has 5 pieces (1 Master, 4 Students) starting on their home row.
 On your turn, play **one of your two hand cards** and move **one piece** to a
