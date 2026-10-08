@@ -159,13 +159,3 @@ center square of their home row (Way of the Stream).
   heavy concurrent write load was not a goal.
 * The load-test harness measures client-observed round-trip latency and
   games/minute; server CPU/memory are not sampled automatically.
-
-## Team members
-
-| Student ID | Name | Main responsibility |
-| ---------- | ---- | ------------------- |
-| TODO(team) | TODO(team) | core engine + tests |
-| TODO(team) | TODO(team) | server + concurrency |
-| TODO(team) | TODO(team) | database + persistence |
-| TODO(team) | TODO(team) | Swing client + UX |
-| TODO(team) | TODO(team) | load testing + benchmarking |
