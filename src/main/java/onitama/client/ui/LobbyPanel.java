@@ -1,7 +1,6 @@
 package onitama.client.ui;
 
 import onitama.client.ClientSettings;
-import onitama.client.MenuTheme;
 import onitama.client.state.ClientModel;
 import onitama.client.state.ClientModelListener;
 import onitama.client.state.Screen;
@@ -14,16 +13,15 @@ import javax.swing.*;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 
-/** A compact menu with focused Play and Settings pages over the living valley. */
-public final class LobbyPanel extends ValleyMenuPanel {
+/** A compact menu with focused Play and Settings pages over the medieval battlefield. */
+public final class LobbyPanel extends BattlefieldMenuPanel {
     private final ClientModel model;
     private final ClientSettings settings;
     private final Runnable openLeaderboard;
     private final Runnable quitGame;
+    private final Runnable openHelp;
+    private final Runnable openAbout;
     private final Runnable saveSettings;
-    private Runnable themeChanged = () -> { };
-
-    void onThemeChanged(Runnable listener) { themeChanged = listener; }
     private final JPanel surface = new JPanel(new BorderLayout()) {
         @Override public Dimension getPreferredSize() {
             Dimension natural = super.getPreferredSize();
@@ -32,6 +30,7 @@ public final class LobbyPanel extends ValleyMenuPanel {
 
     };
     private final JLabel profile = caption(" ");
+    private final JLabel rating = caption(" ");
     private final JLabel roomCode = caption("· · · · ·");
     private final JLabel roomStatus = caption("Creating your room…");
     private final JLabel noRooms = caption("No open rooms yet.");
@@ -64,26 +63,26 @@ public final class LobbyPanel extends ValleyMenuPanel {
     private final JButton resume;
     private final JButton[] cardControls = new JButton[2];
     private final JButton[] styles = new JButton[3];
-    private final java.util.Map<MenuTheme, JButton> themes = new java.util.EnumMap<>(MenuTheme.class);
     private final java.util.Map<String, JPanel> pages = new java.util.LinkedHashMap<>();
     private String currentPage = "home";
     private boolean creatingRoom;
     private final Timer refreshTimer;
 
     /** Builds the menu; Quit uses the frame's normal save-and-close path. */
-    public LobbyPanel(ClientModel model, ClientSettings settings, Runnable openLeaderboard, Runnable quitGame) {
+    public LobbyPanel(ClientModel model, ClientSettings settings, Runnable openLeaderboard, Runnable quitGame,
+                      Runnable openHelp, Runnable openAbout) {
         this(model, settings, openLeaderboard, quitGame, () -> {
             Thread writer = new Thread(() -> {
                 synchronized (settings) { settings.save(); }
             }, "grid-duel-save-settings");
             writer.setDaemon(true);
             writer.start();
-        });
+        }, openHelp, openAbout);
     }
 
     // Inject persistence in UI tests so selecting a style never writes real user preferences.
     LobbyPanel(ClientModel model, ClientSettings settings, Runnable openLeaderboard,
-               Runnable quitGame, Runnable saveSettings) {
+               Runnable quitGame, Runnable saveSettings, Runnable openHelp, Runnable openAbout) {
         super(model, Screen.LOBBY, settings);
         this.model = model;
         this.resume = new MenuAction("Resume match", model::returnToParkedMatch, true);
@@ -91,6 +90,8 @@ public final class LobbyPanel extends ValleyMenuPanel {
         this.settings = settings;
         this.openLeaderboard = openLeaderboard;
         this.quitGame = quitGame;
+        this.openHelp = openHelp;
+        this.openAbout = openAbout;
         this.saveSettings = saveSettings;
         setLayout(new GridBagLayout());
         setBorder(BorderFactory.createEmptyBorder(32, 32, 32, 48));
@@ -108,7 +109,6 @@ public final class LobbyPanel extends ValleyMenuPanel {
         pages.put("join", buildJoin());
         pages.put("practice", buildPractice());
         pages.put("settings", buildSettings());
-        pages.put("themes", buildThemes());
         model.addListener(new ClientModelListener() {
             @Override public void onScreenChanged(Screen screen) {
                 if (screen == Screen.LOBBY) {
@@ -143,16 +143,21 @@ public final class LobbyPanel extends ValleyMenuPanel {
         line(page, new MenuAction("Settings", () -> showPage("settings"), false));
         line(page, new MenuAction("Quit game", quitGame, false));
         page.add(Box.createVerticalStrut(14));
-        line(page, resume);
-        line(page, smallButton("Change theme", () -> showPage("themes")));
-        JPanel footer = new JPanel(new BorderLayout(4, 0));
+        JPanel footer = new JPanel();
+        footer.setLayout(new BoxLayout(footer, BoxLayout.Y_AXIS));
         footer.setOpaque(false);
-        footer.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createEmptyBorder(),
-                BorderFactory.createEmptyBorder(10, 0, 0, 0)));
-        footer.add(profile, BorderLayout.NORTH);
-        footer.add(smallButton("Leaderboard", openLeaderboard), BorderLayout.SOUTH);
+        footer.setBorder(BorderFactory.createEmptyBorder(10, 0, 0, 0));
+        profile.setFont(Theme.cardTitle(21f));
+        profile.setName("menuPlayerName");
+        rating.setName("menuPlayerRating");
+        line(footer, profile);
+        line(footer, rating);
+        footer.add(Box.createVerticalStrut(5));
+        line(footer, smallButton("Leaderboard", openLeaderboard));
+        line(footer, smallButton("How to Play", openHelp));
+        line(footer, smallButton("About", openAbout));
         line(page, footer);
+        line(page, resume);
         return page;
     }
 
@@ -281,7 +286,7 @@ public final class LobbyPanel extends ValleyMenuPanel {
 
     private JPanel buildSettings() {
         JPanel page = page("Settings", "Piece style", "home");
-        String[] names = {"Ink tokens", "Seal stones", "Ink silhouettes"};
+        String[] names = {"Steel helms", "Heraldic shields", "Carved pawns"};
         for (int i = 0; i < names.length; i++) {
             int style = i + 1;
             styles[i] = new MenuAction(names[i], () -> {
@@ -304,6 +309,16 @@ public final class LobbyPanel extends ValleyMenuPanel {
             }, false);
             line(page, cardControls[i]);
         }
+        page.add(Box.createVerticalStrut(10));
+        JButton motion = smallButton("Reduced motion: " + (settings.reducedMotion() ? "On" : "Off"), () -> { });
+        motion.setName("reducedMotion");
+        motion.addActionListener(event -> {
+            settings.setReducedMotion(!settings.reducedMotion());
+            model.setReducedMotion(settings.reducedMotion());
+            motion.setText("Reduced motion: " + (settings.reducedMotion() ? "On" : "Off"));
+            saveSettings.run();
+        });
+        line(page, motion);
         line(page, caption("Saved automatically"));
         updateCardControls();
         updateStyles();
@@ -313,28 +328,6 @@ public final class LobbyPanel extends ValleyMenuPanel {
     private void updateCardControls() {
         cardControls[0].setSelected(settings.clickToSelectCards());
         cardControls[1].setSelected(!settings.clickToSelectCards());
-    }
-
-    private JPanel buildThemes() {
-        JPanel page = page("Menu theme", "Choose the view behind your menu.", "home");
-        for (MenuTheme theme : MenuTheme.values()) {
-            JButton button = new MenuAction(theme.label(), () -> {
-                synchronized (settings) { settings.setMenuTheme(theme); }
-                updateThemes();
-                themeChanged.run();
-                repaint();
-                saveSettings.run();
-            }, false);
-            themes.put(theme, button);
-            line(page, button);
-        }
-        line(page, caption("Saved automatically"));
-        updateThemes();
-        return page;
-    }
-
-    private void updateThemes() {
-        themes.forEach((theme, button) -> button.setSelected(theme == settings.menuTheme()));
     }
 
     private JPanel page(String title, String subtitle, String back) {
@@ -424,7 +417,11 @@ public final class LobbyPanel extends ValleyMenuPanel {
     }
 
     private void refreshState() {
-        if (model.me() != null) profile.setText(model.me().username() + "  ·  ELO " + model.me().elo());
+        if (model.me() != null) {
+            profile.setText(model.me().username());
+            profile.setToolTipText(model.me().username());
+            rating.setText("ELO " + model.me().elo());
+        }
         String code = model.pendingRoomCode();
         if (code != null) {
             roomCode.setText(code);

@@ -8,49 +8,49 @@ import java.util.logging.Logger;
 
 import onitama.core.PlayerColor;
 
-/** Shared jade, ivory, coral and gold palette for the painted mountain setting. */
+/** Parchment, walnut, muted heraldic colors and old brass for the medieval setting. */
 public final class Theme {
 
     private static final Logger LOG = Logger.getLogger(Theme.class.getName());
 
     // --- mountain landscape palette ---
     /** Deep jade app background. */
-    public static final Color BG = new Color(0x103B40);
+    public static final Color BG = new Color(0x2C2925);
     /** Jade panel and list-row surfaces. */
-    public static final Color SURFACE = new Color(0x184A48);
+    public static final Color SURFACE = new Color(0x403A31);
     /** Warm ivory text and light surfaces. */
     public static final Color CREAM = new Color(0xFFF2D7);
     /** Deep teal text on light surfaces. */
-    public static final Color INK = new Color(0x193F40);
+    public static final Color INK = new Color(0x382A20);
     /** Highlight: primary buttons, selection, turn banner ("gold"). */
     public static final Color AMBER = new Color(0xF4BF60);
     /** Blue player pieces and labels ("brand blue"). */
-    public static final Color SKY = new Color(0x69D6DE);
+    public static final Color SKY = new Color(0x8AB1CB);
     /** Red player pieces, errors, danger ("brand red"). */
-    public static final Color CORAL = new Color(0xFFAA91);
+    public static final Color CORAL = new Color(0xDA9B8A);
     /** Board light square. */
     public static final Color BOARD_LIGHT = new Color(0xF8EDCF);
     /** Jade ceramic squares, paired with warm ivory. */
-    public static final Color BOARD_JADE = new Color(0x528D7C);
+    public static final Color BOARD_JADE = new Color(0x807461);
     /** Deep lacquered jade frame. */
-    public static final Color BOARD_FRAME = new Color(0x20594F);
+    public static final Color BOARD_FRAME = new Color(0x634832);
     /** Brass inlay on the board frame. */
     public static final Color BOARD_GOLD = new Color(0xDBB77B);
     /** Tile outlines. */
-    public static final Color OUTLINE = new Color(0x193F40);
+    public static final Color OUTLINE = new Color(0x382A20);
     /** Hard offset shadow fill (never blurred). */
-    public static final Color SHADOW = new Color(0x193F40);
+    public static final Color SHADOW = new Color(0x241E19);
     /** Muted text on dark surfaces. */
-    public static final Color MUTED = new Color(0xA4BCAE);
+    public static final Color MUTED = new Color(0xC2B49C);
 
     /** Muted text on ivory, celadon and light input surfaces. */
-    public static final Color MUTED_INK = new Color(0x526F63);
+    public static final Color MUTED_INK = new Color(0x74664F);
     /** Dark honey text on light caption plates. */
     public static final Color GOLD_INK = new Color(0x87551A);
     /** Pine-jade secondary buttons. */
-    public static final Color JADE = new Color(0x1F5C53);
+    public static final Color JADE = new Color(0x5D6447);
     /** Soft celadon inspector surface. */
-    public static final Color MIST = new Color(0xE6EEDB);
+    public static final Color MIST = new Color(0xE9DFC7);
     /** Warm red destructive buttons, with ivory text. */
     public static final Color VERMILION = new Color(0xAA4438);
 
@@ -58,26 +58,26 @@ public final class Theme {
     /** Success, victory, connection-ready ("brand green"). */
     public static final Color GREEN = new Color(0x0BA95B);
     /** Muted sage disabled controls. */
-    public static final Color DISABLED = new Color(0xAEC4B6);
+    public static final Color DISABLED = new Color(0xB3AB98);
     /** Pale gold wash behind the last-played squares. */
     public static final Color LAST_MOVE = new Color(0xFFF8E1);
     /** Leaderboard medal tints: gold reuses AMBER, silver and bronze below. */
     public static final Color MEDAL_SILVER = new Color(0xC9C2B8);
     public static final Color MEDAL_BRONZE = new Color(0xB0793C);
     /** Table grid lines on the dark surface. */
-    public static final Color GRID_LINE = new Color(0x356962);
+    public static final Color GRID_LINE = new Color(0x756650);
 
     // --- player identities: blue system vs coral system ---
     /** Player 1 (Blue) primary. */
     public static final Color P1 = SKY;
     /** Player 1 darker shade (two-tone pawns, pressed states). */
-    public static final Color P1_DARK = new Color(0x187B8A);
+    public static final Color P1_DARK = new Color(0x31566D);
     /** Player 1 light tint (selection tints, watermarks). */
-    public static final Color P1_LIGHT = new Color(0xCEF0EB);
+    public static final Color P1_LIGHT = new Color(0xDAE5EB);
     /** Player 2 (Red) primary. */
     public static final Color P2 = CORAL;
     /** Player 2 darker shade (two-tone pawns, pressed states). */
-    public static final Color P2_DARK = new Color(0xA83F35);
+    public static final Color P2_DARK = new Color(0x8B3D35);
     /** Player 2 light tint (selection tints, watermarks). */
     public static final Color P2_LIGHT = new Color(0xFFE0CF);
 
@@ -160,5 +160,10 @@ public final class Theme {
     /** Monospaced font for numerals (turn counter, piece counts, ELO). */
     public static Font mono(float size) {
         return new Font(Font.MONOSPACED, Font.BOLD, 14).deriveFont(size);
+    }
+
+    /** Old-book serif titles give card faces a printed rather than UI-label character. */
+    public static Font cardTitle(float size) {
+        return new Font(Font.SERIF, Font.BOLD, 14).deriveFont(size);
     }
 }

@@ -89,10 +89,10 @@ class DeckPresentationTest {
             assertEquals(1, flights(ui).size());
             var flight = flights(ui).get(0);
             assertNotNull(flight.face(), "movement is public on either side");
-            var deck = (DeckStackPanel) field(ui.panel, "drawPile");
+            var deck = (DeckStackPanel) field(ui.panel, actor == viewer ? "drawPile" : "opponentDrawPile");
             assertEquals(SwingUtilities.convertRectangle(deck, deck.topBounds(), ui.overlay), flight.source().get());
             assertTrue(flight.destination().get().y < 200 == (actor != viewer));
-            assertEquals(1, find(ui.panel, DeckStackPanel.class).size());
+            assertEquals(2, find(ui.panel, DeckStackPanel.class).size());
             assertFalse(ui.overlay.contains(20, 20));
             assertTrue(ui.overlay.isFlyingTo(flight.key()));
             var beforeReplay = flights(ui);
@@ -102,6 +102,9 @@ class DeckPresentationTest {
             ui.model.handleGameUpdate(new GameUpdate(new MatchSync("wrong", "LOCAL", transition.after(viewer), false, 1), transition.result().events()));
             assertSame(beforeReplay, flights(ui), "ordinary refresh and duplicate/stale/foreign updates cannot restart a flight");
             ui.clock.set(500_000_000L);
+            ui.overlay.tick();
+            assertTrue(ui.overlay.isFlyingTo(flight.key()), "the slower draw remains visible while approaching the hand");
+            ui.clock.set(650_000_000L);
             ui.overlay.tick();
             assertFalse(ui.overlay.isFlyingTo(flight.key()), "completion must unmask the real card");
         });
@@ -118,7 +121,7 @@ class DeckPresentationTest {
         withTransition(transition, viewer, ui -> {
             assertEquals(count, flights(ui).size());
             var after = transition.after(viewer);
-            assertEquals(1, find(ui.panel, DeckStackPanel.class).size());
+            assertEquals(2, find(ui.panel, DeckStackPanel.class).size());
             var badge = (PlayerBadgePanel) field(ui.panel, "ownBadge");
             assertEquals(viewer, field(badge, "color"));
             assertEquals(viewer == PlayerColor.BLUE ? after.blueMana() : after.redMana(), field(badge, "mana"));
@@ -128,7 +131,9 @@ class DeckPresentationTest {
             assertEquals(viewer.opponent(), field(opponent, "color"));
             assertEquals(viewer == PlayerColor.BLUE ? after.redMana() : after.blueMana(), field(opponent, "mana"));
             assertEquals(0, field(opponent, "reserved"));
+            var sourceDeck = (DeckStackPanel) field(ui.panel, actor == viewer ? "drawPile" : "opponentDrawPile");
             for (var flight : flights(ui)) {
+                assertEquals(SwingUtilities.convertRectangle(sourceDeck, sourceDeck.topBounds(), ui.overlay), flight.source().get());
                 if (flight.key().startsWith("opponent-slot:")) assertNull(flight.face(), "opponent replacement must have no face image");
                 else assertNotNull(flight.face());
             }
@@ -140,7 +145,7 @@ class DeckPresentationTest {
                     List.of("playedCards", "matchChatHistory").contains(list.getName())),
                     "Only public card history and match chat use lists; the old Move Log stays removed");
             assertTrue(find(ui.panel, JLabel.class).stream().noneMatch(l -> l.getText().contains("MOVE LOG")));
-            assertEquals(1, find(ui.panel, DeckStackPanel.class).size());
+            assertEquals(2, find(ui.panel, DeckStackPanel.class).size());
             assertEquals(2, find(ui.panel, PlayerBadgePanel.class).size());
             assertEquals(after.ownSkillHand().size(), find(ui.panel, SkillCardPanel.class).size());
         });
@@ -152,6 +157,8 @@ class DeckPresentationTest {
         assertTrue(transition.result().events().isEmpty());
         withTransition(transition, viewer, ui -> {
             assertEquals(1, flights(ui).size());
+            var sourceDeck = (DeckStackPanel) field(ui.panel, actor == viewer ? "drawPile" : "opponentDrawPile");
+            assertEquals(SwingUtilities.convertRectangle(sourceDeck, sourceDeck.topBounds(), ui.overlay), flights(ui).get(0).source().get());
             assertEquals(actor != viewer, flights(ui).get(0).face() == null);
             assertEquals(0, field(field(ui.panel, "ownBadge"), "reserved"));
         });

@@ -26,7 +26,7 @@ import javax.swing.SwingUtilities;
  * hint names the server the client will dial. Failed attempts are shown
  * inline.
  */
-public final class LoginPanel extends ValleyMenuPanel {
+public final class LoginPanel extends BattlefieldMenuPanel {
 
     private static final char BULLET = '•';
     private static final int MIN_CREDENTIAL_LENGTH = 3;

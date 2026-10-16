@@ -31,7 +31,10 @@ public final class ChatPanel extends JPanel {
             }
         }
     };
-    private final JButton send = MatchStyle.action("Send");
+    private final JButton send = UiKit.miniPill("Send", UiKit.Pill.GOLD);
+    private final JPanel composer = new JPanel(new BorderLayout(5, 0));
+    private final JLabel practiceNote = new JLabel("<html>Chat is available in<br>multiplayer matches.</html>");
+    private JScrollPane scroll;
     private final JLabel status = UiKit.label("", 9f);
     private String matchId;
     private final javax.swing.Timer cooldown = new javax.swing.Timer(550, e -> refreshAvailability());
@@ -41,18 +44,24 @@ public final class ChatPanel extends JPanel {
         super(new BorderLayout(0, 6));
         this.model = model;
         setOpaque(false);
-        setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
+        setBorder(BorderFactory.createEmptyBorder(13, 13, 14, 14));
         setMinimumSize(new Dimension(100, 100));
         JPanel header = new JPanel(new BorderLayout(4, 0));
         header.setOpaque(false);
-        JLabel title = UiKit.label("MATCH CHAT", 11f);
-        title.setFont(Theme.display(11f));
-        title.setForeground(Theme.CREAM);
+        JLabel title = UiKit.label("Match chat", 13f);
+        title.setFont(Theme.cardTitle(14f));
+        title.setForeground(Theme.INK);
         header.add(title, BorderLayout.WEST);
         status.setFont(Theme.bold(9f));
         status.setHorizontalAlignment(SwingConstants.RIGHT);
         header.add(status, BorderLayout.EAST);
+        header.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createMatteBorder(0, 0, 1, 0, new Color(176, 150, 104)),
+                BorderFactory.createEmptyBorder(0, 0, 9, 0)));
         add(header, BorderLayout.NORTH);
+        practiceNote.setFont(Theme.normal(11));
+        practiceNote.setForeground(new Color(110, 88, 59));
+        practiceNote.setVerticalAlignment(SwingConstants.TOP);
         history = new JList<>(messages) {
             @Override public void doLayout() {
                 // Recompute wrapped row heights immediately, including offscreen rendering.
@@ -65,9 +74,8 @@ public final class ChatPanel extends JPanel {
                 if (!messages.isEmpty()) return;
                 Graphics2D g = UiKit.nice(graphics);
                 g.setFont(Theme.normal(11f));
-                g.setColor(Theme.MUTED);
-                String text = model.isPracticeMode() ? "A quiet training ground." : "Start the conversation. Good luck!";
-                g.drawString(text, 6, Math.min(22, Math.max(12, getHeight() / 2)));
+                g.setColor(new Color(119, 97, 65));
+                g.drawString("Your correspondence begins here.", 1, Math.min(22, Math.max(12, getHeight() / 2)));
                 g.dispose();
             }
         };
@@ -75,7 +83,7 @@ public final class ChatPanel extends JPanel {
         history.setOpaque(false);
         history.setFocusable(false);
         history.setCellRenderer((list, message, index, selected, focus) -> new Bubble(message));
-        JScrollPane scroll = new JScrollPane(history, JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED,
+        scroll = new JScrollPane(history, JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED,
                 JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
         scroll.setName("chatScroll");
         scroll.setBorder(null);
@@ -84,13 +92,12 @@ public final class ChatPanel extends JPanel {
         scroll.getViewport().setOpaque(false);
         scroll.getVerticalScrollBar().setUnitIncrement(20);
         add(scroll, BorderLayout.CENTER);
-        JPanel composer = new JPanel(new BorderLayout(5, 0));
         composer.setOpaque(false);
         input.setName("matchChatInput");
-        input.setBackground(new Color(33, 39, 37));
-        input.setForeground(MatchStyle.TEXT);
-        input.setCaretColor(MatchStyle.GOLD);
-        input.setDisabledTextColor(Theme.MUTED_INK);
+        input.setBackground(new Color(247, 238, 215));
+        input.setForeground(Theme.INK);
+        input.setCaretColor(Theme.INK);
+        input.setDisabledTextColor(new Color(119, 97, 65));
         input.setFont(Theme.normal(12f));
         input.setBorder(BorderFactory.createCompoundBorder(BorderFactory.createLineBorder(Theme.GRID_LINE),
                 BorderFactory.createEmptyBorder(4, 9, 4, 9)));
@@ -114,7 +121,9 @@ public final class ChatPanel extends JPanel {
         });
         input.addActionListener(e -> sendMessage());
         send.addActionListener(e -> sendMessage());
-        send.setPreferredSize(new Dimension(60, 28));
+        send.setFont(Theme.bold(11));
+        send.setBorder(BorderFactory.createEmptyBorder(4, 8, 7, 8));
+        send.setPreferredSize(new Dimension(59, 32));
         composer.add(input, BorderLayout.CENTER);
         composer.add(send, BorderLayout.EAST);
         add(composer, BorderLayout.SOUTH);
@@ -131,10 +140,7 @@ public final class ChatPanel extends JPanel {
 
     @Override protected void paintComponent(Graphics graphics) {
         Graphics2D g = UiKit.nice(graphics);
-        g.setColor(MatchStyle.SURFACE);
-        g.fillRoundRect(0, 0, getWidth(), getHeight(), 14, 14);
-        g.setColor(new Color(192, 165, 113, 90));
-        g.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 14, 14);
+        MatchStyle.parchment(g, getWidth(), getHeight());
         g.dispose();
     }
 
@@ -167,9 +173,17 @@ public final class ChatPanel extends JPanel {
         boolean available = model.canChat();
         input.setEnabled(available);
         refreshSend();
-        status.setForeground(available ? Theme.SKY : Theme.MUTED);
+        boolean practice = model.isPracticeMode();
+        composer.setVisible(!practice);
+        scroll.setVisible(!practice);
+        if (practice && practiceNote.getParent() == null) {
+            remove(scroll); add(practiceNote, BorderLayout.CENTER);
+        } else if (!practice && scroll.getParent() == null) {
+            remove(practiceNote); add(scroll, BorderLayout.CENTER);
+        }
+        status.setForeground(new Color(119, 88, 41));
         status.setText(model.isPracticeMode() ? "PRACTICE" : model.isMatchOver() ? "ENDED"
-                : available ? "● LIVE" : "OFFLINE");
+                : available ? "LIVE" : "OFFLINE");
         history.repaint();
     }
 
@@ -205,13 +219,15 @@ public final class ChatPanel extends JPanel {
         @Override protected void paintComponent(Graphics graphics) {
             Graphics2D g = UiKit.nice(graphics);
             try {
-                g.setColor(own ? new Color(66, 62, 44, 225) : new Color(23, 30, 31, 225));
-                g.fillRoundRect(own ? 21 : 0, 2, Math.max(1, getWidth() - 21), getHeight() - 7, 12, 12);
-                int x = own ? 30 : 9;
+                g.setColor(own ? new Color(216, 200, 161, 170) : new Color(248, 238, 212, 160));
+                g.fillRect(0, 2, getWidth(), getHeight() - 7);
+                g.setColor(new Color(176, 150, 104));
+                g.drawLine(0, getHeight() - 5, getWidth(), getHeight() - 5);
+                int x = 9;
                 g.setFont(Theme.bold(9f));
-                g.setColor(MatchStyle.GOLD);
+                g.setColor(new Color(124, 86, 35));
                 g.drawString(own ? "YOU" : message.sender(), x, 17);
-                g.setColor(MatchStyle.TEXT);
+                g.setColor(Theme.INK);
                 float y = 24;
                 for (var line : lines(getWidth())) {
                     y += line.getAscent();

@@ -82,6 +82,40 @@ class MatchPresentationTest {
         throw new AssertionError("No skill fixture");
     }
 
+    @Test void topLeftHelpOpensLiveRulesWithoutChangingSelectionOrSendingActions() throws Exception {
+        SwingUtilities.invokeAndWait(() -> {
+            var base = RulesConfigLoader.load(null);
+            var rules = new RulesConfig(base.rulesVersion(), 2, 3, 2, 1, 7, 80,
+                    base.movementCards(), base.skills());
+            var state = RulesEngine.newGame(rules, 42);
+            var view = RulesEngine.viewFor(state, state.turn());
+            var ui = ui(view);
+            var frame = new javax.swing.JFrame("In-match help regression");
+            var found = new java.util.concurrent.atomic.AtomicBoolean();
+            var text = new java.util.concurrent.atomic.AtomicReference<String>("");
+            var close = new javax.swing.Timer(100, event -> {
+                for (var window : frame.getOwnedWindows()) if (window instanceof javax.swing.JDialog dialog && dialog.isShowing()) {
+                    found.set(true);
+                    text.set(find(dialog, JLabel.class).stream().map(JLabel::getText).collect(java.util.stream.Collectors.joining(" ")));
+                    dialog.dispose();
+                }
+            });
+            try {
+                frame.setContentPane(ui.panel); frame.setSize(1280, 720); frame.setVisible(true); frame.validate();
+                var cardId = (view.viewer() == PlayerColor.BLUE ? view.blueMovementHand() : view.redMovementHand()).get(0);
+                ui.model.cardClicked(cardId);
+                var help = find(ui.panel, javax.swing.JButton.class).stream()
+                        .filter(b -> "matchHowToPlay".equals(b.getName())).findFirst().orElseThrow();
+                close.start(); help.doClick(); close.stop();
+                assertTrue(found.get());
+                assertTrue(text.get().contains("80 completed player turns"));
+                assertTrue(text.get().contains("up to 7"));
+                assertEquals(cardId, ui.model.selectedCardId());
+                assertEquals(view, ui.model.view()); assertTrue(ui.sent.isEmpty());
+            } finally { close.stop(); frame.dispose(); }
+        });
+    }
+
     @Test void cardsKeepFullLiveTooltipsWithoutASeparateDetailsPanel() throws Exception {
         SwingUtilities.invokeAndWait(() -> {
             var ui = ui(initial());
@@ -155,6 +189,13 @@ class MatchPresentationTest {
             try {
                 ui.model.skillClicked(view.ownSkillHand().stream().filter(c -> c.definitionId().equals("gust")).findFirst().orElseThrow().instanceId());
                 assertTrue(field(ui.panel, "directionPanel", javax.swing.JPanel.class).isVisible());
+                layout(ui.panel);
+                var opponent = field(ui.panel, "opponentBadge", PlayerBadgePanel.class);
+                var skip = field(ui.panel, "skipMovementButton", javax.swing.JButton.class);
+                var opponentPosition = SwingUtilities.convertPoint(opponent, 0, 0, ui.panel);
+                var actionPosition = SwingUtilities.convertPoint(skip, 0, 0, ui.panel);
+                assertTrue(opponentPosition.y + opponent.getHeight() <= actionPosition.y,
+                        "opponent panel cannot overlap the expanded skill/direction actions");
                 ui.model.handleMatchSync(new MatchSync("inspect", "ROOM", view, true, 1));
                 assertFalse(field(ui.panel, "castSkillButton", javax.swing.JButton.class).isEnabled());
             } finally { ui.panel.removeNotify(); }

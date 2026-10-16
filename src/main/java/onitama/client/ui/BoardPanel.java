@@ -62,7 +62,8 @@ public final class BoardPanel extends JComponent {
 
     private final List<MovingPiece> movingPieces = new ArrayList<>();
     private long moveAnimStart;
-    private static final long MOVE_ANIM_MS = 260;
+    private static final long MOVE_ANIM_MS = 480;
+    private final java.util.function.LongSupplier animationClock;
 
     private final List<EliminationEffect> eliminationEffects = new ArrayList<>();
     private static final long ELIM_ANIM_MS = 380;
@@ -74,13 +75,14 @@ public final class BoardPanel extends JComponent {
     private float selectionPulse;
     private Timer selectionPulseTimer;
 
-    public BoardPanel() {
+    /** Creates the board with smooth, transient movement feedback. */
+    public BoardPanel() { this(System::currentTimeMillis); }
+
+    BoardPanel(java.util.function.LongSupplier animationClock) {
+        this.animationClock = Objects.requireNonNull(animationClock);
         addMouseListener(new MouseAdapter() {
             @Override
             public void mouseClicked(MouseEvent event) {
-                if (!movingPieces.isEmpty()) {
-                    finishMoveAnimation();
-                }
                 Square square = squareAt(event.getX(), event.getY());
                 if (square != null && clickHandler != null) {
                     clickHandler.accept(square);
@@ -183,13 +185,7 @@ public final class BoardPanel extends JComponent {
     }
 
     private static Image pieceSprite(PlayerColor color) {
-        String colorName = color.name().toLowerCase();
-        Image styled = AssetStore.optional("pieces/style" + pieceStyle
-                + "-student-" + colorName + ".png");
-        if (styled != null) {
-            return styled;
-        }
-        return AssetStore.optional("piece-student-" + colorName + ".png");
+        return MedievalPieces.image(color, pieceStyle);
     }
 
     public void setReducedMotion(boolean reducedMotion) {
@@ -238,7 +234,7 @@ public final class BoardPanel extends JComponent {
         movingPieces.clear();
         movingPieces.addAll(moves);
         this.moveAnimCallback = onComplete;
-        moveAnimStart = System.currentTimeMillis();
+        moveAnimStart = animationClock.getAsLong();
         ensureAnimationTimer();
         repaint();
     }
@@ -257,7 +253,7 @@ public final class BoardPanel extends JComponent {
         if (reducedMotion || squares == null || squares.isEmpty()) {
             return;
         }
-        long now = System.currentTimeMillis();
+        long now = animationClock.getAsLong();
         Color c = Theme.playerColor(byColor);
         for (Square sq : squares) {
             eliminationEffects.add(new EliminationEffect(sq, c, now, ELIM_ANIM_MS));
@@ -276,7 +272,7 @@ public final class BoardPanel extends JComponent {
         if (reducedMotion || name == null) {
             return;
         }
-        skillCues.add(new SkillCue(name, category, actor, System.currentTimeMillis(), SKILL_CUE_MS));
+        skillCues.add(new SkillCue(name, category, actor, animationClock.getAsLong(), SKILL_CUE_MS));
         ensureAnimationTimer();
         repaint();
     }
@@ -327,7 +323,7 @@ public final class BoardPanel extends JComponent {
     }
 
     private void onAnimTick() {
-        long now = System.currentTimeMillis();
+        long now = animationClock.getAsLong();
         if (!movingPieces.isEmpty() && now - moveAnimStart >= MOVE_ANIM_MS) {
             movingPieces.clear();
             Runnable cb = moveAnimCallback;
@@ -344,7 +340,7 @@ public final class BoardPanel extends JComponent {
 
     private boolean isPieceMoving(int pieceId, Square square, PlayerColor color) {
         if (movingPieces.isEmpty()) return false;
-        long elapsed = System.currentTimeMillis() - moveAnimStart;
+        long elapsed = animationClock.getAsLong() - moveAnimStart;
         if (elapsed >= MOVE_ANIM_MS) return false;
         for (MovingPiece mp : movingPieces) {
             if (mp.pieceId() == pieceId) return true;
@@ -403,7 +399,7 @@ public final class BoardPanel extends JComponent {
         g.dispose();
     }
 
-    /** Lacquered jade frame and ceramic tiles share the landscape's warm/cool palette. */
+    /** Oak frame, brass corner fittings and worn limestone/slate playing squares. */
     private void paintBoard(Graphics2D g) {
         int grid = BOARD_SIZE * cell;
         int rim = Math.max(3, Math.min(16, cell / 4));
@@ -414,8 +410,8 @@ public final class BoardPanel extends JComponent {
 
         g.setColor(Theme.withAlpha(Theme.SHADOW, 180));
         g.fillRoundRect(left + shadow, top + shadow, size, size, arc, arc);
-        g.setPaint(new java.awt.GradientPaint(left, top, new Color(85, 70, 48),
-                left + size, top + size, new Color(34, 33, 29)));
+        g.setPaint(new java.awt.GradientPaint(left, top, new Color(115, 76, 43),
+                left + size, top + size, new Color(58, 39, 27)));
         g.fillRoundRect(left, top, size, size, arc, arc);
         g.setColor(Theme.INK);
         g.setStroke(new BasicStroke(2f));
@@ -430,13 +426,17 @@ public final class BoardPanel extends JComponent {
             for (int x = 0; x < BOARD_SIZE; x++) {
                 int px = displayX(x) * cell + originX;
                 int py = displayY(y) * cell + originY;
-                Color tile = (x + y) % 2 == 0 ? new Color(232, 219, 181) : new Color(103, 112, 86);
+                Color tile = (x + y) % 2 == 0 ? new Color(222, 208, 176) : new Color(112, 103, 88);
                 g.setColor(tile);
                 g.fillRect(px, py, cell, cell);
-                // A restrained top-edge highlight suggests glazed stone without visual noise.
+                // Restrained chisel marks keep the stone texture clear of targeting feedback.
                 g.setColor(Theme.withAlpha(Color.WHITE, 40));
                 g.setStroke(new BasicStroke(1f));
                 g.drawLine(px + 1, py + 1, px + cell - 1, py + 1);
+                g.setColor(new Color(55, 42, 28, 22));
+                int vein = Math.max(3, cell / 5);
+                g.drawLine(px + vein, py + cell - vein, px + cell / 2, py + cell - vein - 2);
+                g.drawLine(px + cell / 2, py + cell - vein - 2, px + cell - vein, py + cell - vein);
             }
         }
         g.setColor(Theme.withAlpha(Theme.INK, 100));
@@ -474,21 +474,14 @@ public final class BoardPanel extends JComponent {
         Image sprite = pieceSprite(color);
         int px = displayX(x) * cell + originX;
         int py = displayY(y) * cell + originY;
-        if (sprite != null) {
-            int inset = (int) (cell * 0.08);
-            g.drawImage(sprite, px + inset, py + inset,
-                    cell - 2 * inset, cell - 2 * inset, null);
-            return;
-        }
-        Color fill = color == PlayerColor.BLUE ? Theme.P1 : Theme.P2;
-        UiKit.drawFigurine(g, px + cell / 2, py + cell - 7,
-                (int) (cell * 0.68), fill, false);
+        int inset = (int) (cell * 0.08);
+        g.drawImage(sprite, px + inset, py + inset, cell - 2 * inset, cell - 2 * inset, null);
     }
 
     private void drawMovingPieces(Graphics2D g) {
-        long elapsed = System.currentTimeMillis() - moveAnimStart;
+        long elapsed = animationClock.getAsLong() - moveAnimStart;
         double progress = Math.min(1.0, elapsed / (double) MOVE_ANIM_MS);
-        double eased = 1 - (1 - progress) * (1 - progress);
+        double eased = progress * progress * (3 - 2 * progress);
 
         for (MovingPiece mp : movingPieces) {
             Image sprite = pieceSprite(mp.color());
@@ -501,14 +494,12 @@ public final class BoardPanel extends JComponent {
             int cx = (int) (fromX + (toX - fromX) * eased);
             int cy = (int) (fromY + (toY - fromY) * eased - Math.sin(progress * Math.PI) * cell * 0.16);
 
-            if (sprite != null) {
-                int inset = (int) (cell * 0.08);
-                int size = cell - 2 * inset;
-                g.drawImage(sprite, cx - size / 2, cy - size / 2, size, size, null);
-            } else {
-                UiKit.drawFigurine(g, cx, cy + cell / 2 - 7,
-                        (int) (cell * 0.68), Theme.playerColor(mp.color()), false);
-            }
+            int inset = (int) (cell * 0.08);
+            int size = cell - 2 * inset;
+            g.setColor(new Color(24, 15, 7, 48));
+            g.fillOval(cx - size / 3, (int) (fromY + (toY - fromY) * eased) + size / 3,
+                    size * 2 / 3, Math.max(2, size / 8));
+            g.drawImage(sprite, cx - size / 2, cy - size / 2, size, size, null);
         }
     }
 
@@ -662,7 +653,7 @@ public final class BoardPanel extends JComponent {
     }
 
     private void drawEliminationEffects(Graphics2D g) {
-        long now = System.currentTimeMillis();
+        long now = animationClock.getAsLong();
         for (EliminationEffect eff : eliminationEffects) {
             long elapsed = now - eff.startMillis();
             if (elapsed > eff.durationMillis()) continue;
@@ -682,7 +673,7 @@ public final class BoardPanel extends JComponent {
     }
 
     private void drawSkillCues(Graphics2D g) {
-        long now = System.currentTimeMillis();
+        long now = animationClock.getAsLong();
         for (SkillCue cue : skillCues) {
             long elapsed = now - cue.startMillis();
             if (elapsed > cue.durationMillis()) continue;

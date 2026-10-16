@@ -28,6 +28,43 @@ class ChatPanelTest {
         return null;
     }
 
+    private void layout(Container parent) {
+        parent.doLayout();
+        for (Component child : parent.getComponents()) if (child instanceof Container nested) layout(nested);
+    }
+
+    @Test void practiceShowsACompactNoticeAndMultiplayerRestoresTheComposer() throws Exception {
+        SwingUtilities.invokeAndWait(() -> {
+            var model = new ClientModel(new ServerConnection() {
+                public void send(Message message) { }
+                public boolean isConnected() { return true; }
+                public void ensureConnected(String host, int port) { }
+            });
+            var game = new GamePanel(model);
+            model.startPracticeMatch(onitama.core.Difficulty.ROOKIE);
+            try {
+                game.setSize(1440, 900); layout(game);
+                var chat = find(game, ChatPanel.class);
+                var help = find(game, javax.swing.JButton.class);
+                var opponent = find(help.getParent(), PlayerBadgePanel.class);
+                assertNotNull(opponent, "practice bot belongs in the help stack");
+                assertTrue(opponent.getToolTipText().contains("Practice Bot"));
+                assertTrue(chat.getHeight() <= 122, "practice must not leave a tall empty chat box");
+                assertNull(find(chat, JScrollPane.class));
+                assertFalse(find(chat, JTextField.class).getParent().isVisible());
+                assertTrue(find(chat, JLabel.class) != null);
+                model.leaveToLobby();
+                var view = RulesEngine.project(RulesEngine.newGame(RulesConfigLoader.load(null), 42), PlayerColor.BLUE);
+                model.handleMatchSync(new MatchSync("online", "ROOM", view, false, 1));
+                layout(game);
+                assertNotNull(find(chat, JScrollPane.class));
+                assertTrue(find(chat, JTextField.class).getParent().isVisible());
+                assertTrue(find(chat, JTextField.class).isEnabled());
+                assertTrue(chat.getHeight() <= 300, "live correspondence remains bounded at larger sizes");
+            } finally { game.removeNotify(); }
+        });
+    }
+
     @Test
     void enterSendsPlainTextAndNewMatchClearsComposerAndTranscript() throws Exception {
         SwingUtilities.invokeAndWait(() -> {

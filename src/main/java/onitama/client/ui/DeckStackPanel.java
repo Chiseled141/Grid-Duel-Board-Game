@@ -22,21 +22,21 @@ public final class DeckStackPanel extends JComponent {
 
     /** Local rectangle of the top card, also valid for the final draw from an empty deck. */
     public Rectangle topBounds() {
-        int height = Math.max(1, Math.min(92, getHeight() - 16));
-        int width = Math.max(1, Math.min(getWidth() - 20, (int) (height * .71)));
+        int width = Math.max(1, Math.min(getWidth() - 20, (int) ((getHeight() - 16) * (5.0 / 6))));
+        int height = Math.max(1, (int) (width * (6.0 / 5)));
         return new Rectangle((getWidth() - width) / 2 - 3, 8, width, height);
     }
 
     /** Caches the identity-free shared back for flight rendering. */
     public BufferedImage backImage() {
         if (back == null) {
-            back = new BufferedImage(142, 200, BufferedImage.TYPE_INT_ARGB);
+            back = new BufferedImage(400, 480, BufferedImage.TYPE_INT_ARGB);
             Graphics2D g = back.createGraphics();
             try {
                 g.setColor(Theme.INK);
-                g.fillRoundRect(0, 0, 142, 200, 8, 8);
-                var art = AssetStore.optional("skills/card-back.png");
-                if (art != null) g.drawImage(art, 3, 3, 136, 194, null);
+                g.fillRoundRect(0, 0, 400, 480, 8, 8);
+                var art = CardArt.backFace();
+                if (art != null) g.drawImage(art, 3, 3, 394, 474, null);
             } finally { g.dispose(); }
         }
         return back;

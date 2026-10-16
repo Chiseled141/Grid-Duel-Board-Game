@@ -65,16 +65,16 @@ public final class ClientFrame extends JFrame {
         BoardPanel.setDefaultPieceStyle(settings.pieceStyle());
 
         LoginPanel loginPanel = new LoginPanel(model, settings);
-        LobbyPanel lobbyPanel = new LobbyPanel(model, settings, this::openLeaderboard, this::closeAndSave);
-        lobbyPanel.onThemeChanged(this::updateMenuMusic);
+        LobbyPanel lobbyPanel = new LobbyPanel(model, settings, this::openLeaderboard, this::closeAndSave,
+                this::showHelpOverlay, this::showAboutOverlay);
         GamePanel gamePanel = new GamePanel(model, settings);
-        LeaderboardPanel leaderboardPanel = new LeaderboardPanel(model, () -> model.leaveToLobby());
+        LeaderboardPanel leaderboardPanel = new LeaderboardPanel(model, settings, () -> model.leaveToLobby());
 
         content.add(loginPanel, Screen.LOGIN.name());
         content.add(lobbyPanel, Screen.LOBBY.name());
         content.add(gamePanel, Screen.GAME.name());
         content.add(leaderboardPanel, Screen.LEADERBOARD.name());
-        add(content);
+        add(buildScene());
         showScreen(Screen.LOGIN);
 
         model.addListener(new ClientModelListener() {
@@ -99,7 +99,6 @@ public final class ClientFrame extends JFrame {
         setSize(Math.min(Math.max(settings.windowWidth(), 1280), screen.width - 40),
                 Math.min(Math.max(settings.windowHeight(), 720), screen.height - 80));
         setLocationRelativeTo(null);
-        setJMenuBar(buildMenuBar());
         setDefaultCloseOperation(DO_NOTHING_ON_CLOSE);
         addWindowListener(new WindowAdapter() {
             @Override
@@ -109,90 +108,33 @@ public final class ClientFrame extends JFrame {
         });
     }
 
-    /**
-     * The app header: the Game/Help
-     * menus with comfortable 8-12px padding, and a menu-music toggle on the
-     * right. The painting remains unobstructed by a title block.
-     */
-    private javax.swing.JMenuBar buildMenuBar() {
-        javax.swing.JMenuBar menuBar = new javax.swing.JMenuBar();
-        // Aqua ignores background/foreground on menus — force the Basic UI
-        // so the navigation strip can be styled like the rest of the app.
-        menuBar.setUI(new javax.swing.plaf.basic.BasicMenuBarUI());
-        menuBar.setBackground(Theme.BG);
-        menuBar.setOpaque(true);
-        menuBar.setBorder(BorderFactory.createMatteBorder(0, 0, 2, 0, Theme.OUTLINE));
-
-        javax.swing.JMenu game = styledMenu("Game");
-        javax.swing.JMenuItem resign = new javax.swing.JMenuItem("Resign match");
-        resign.addActionListener(event -> confirmMenuResign());
-        javax.swing.JMenuItem lobby = new javax.swing.JMenuItem("Back to lobby");
-        lobby.addActionListener(event -> model.leaveToLobby());
-        javax.swing.JMenuItem exit = new javax.swing.JMenuItem("Exit");
-        exit.addActionListener(event -> closeAndSave());
-        javax.swing.JCheckBoxMenuItem reducedMotion = new javax.swing.JCheckBoxMenuItem(
-                "Reduced motion", settings.reducedMotion());
-        reducedMotion.addActionListener(event -> {
-            boolean rm = reducedMotion.isSelected();
-            settings.setReducedMotion(rm);
-            model.setReducedMotion(rm);
-            settings.save();
-        });
-        game.add(resign);
-        game.add(lobby);
-        game.addSeparator();
-        game.add(reducedMotion);
-        game.addSeparator();
-        game.add(exit);
-        menuBar.add(game);
-
-        javax.swing.JMenu help = styledMenu("Help");
-        javax.swing.JMenuItem rules = new javax.swing.JMenuItem("How to play");
-        rules.addActionListener(event -> showHelpOverlay());
-        javax.swing.JMenuItem about = new javax.swing.JMenuItem("About");
-        about.addActionListener(event -> showAboutOverlay());
-        help.add(rules);
-        help.add(about);
-        menuBar.add(help);
-
-        menuBar.add(javax.swing.Box.createHorizontalGlue());
+    /** Floats the music icon over full-window screens without reserving a header row. */
+    private JComponent buildScene() {
+        javax.swing.JLayeredPane scene = new javax.swing.JLayeredPane() {
+            @Override public void doLayout() {
+                content.setBounds(0, 0, getWidth(), getHeight());
+                soundToggle.setBounds(Math.max(0, getWidth() - 60), 12, 48, 44);
+            }
+        };
         soundToggle = UiKit.soundToggle();
+        soundToggle.setName("menuMusicToggle");
+        soundToggle.getAccessibleContext().setAccessibleName("Toggle menu music");
         soundToggle.setSelected(settings.soundEnabled());
         updateSoundTooltip();
-        // Apply the existing saved preference to the menu track.
         soundToggle.addItemListener(event -> {
             boolean on = event.getStateChange() == java.awt.event.ItemEvent.SELECTED;
             settings.setSoundEnabled(on);
             updateMenuMusic();
-            settings.save();
+            java.util.concurrent.CompletableFuture.runAsync(settings::save);
             updateSoundTooltip();
         });
-        menuBar.add(soundToggle);
-        menuBar.add(javax.swing.Box.createHorizontalStrut(10));
-        return menuBar;
+        scene.add(content, javax.swing.JLayeredPane.DEFAULT_LAYER);
+        scene.add(soundToggle, javax.swing.JLayeredPane.PALETTE_LAYER);
+        return scene;
     }
 
     private void updateSoundTooltip() {
         soundToggle.setToolTipText("Menu music: " + (soundToggle.isSelected() ? "On" : "Off"));
-    }
-
-    /**
-     * Confirmation guard for the menu's resign entry: a forfeit costs Elo,
-     * so it must never happen on a stray click, and with no match running
-     * there is nothing to resign.
-     */
-    private void confirmMenuResign() {
-        if (!canMenuResign(model)) return;
-        boolean confirmed = UiKit.confirmDialog(this, "Resign",
-                "Resign this match?", "Yes", UiKit.Pill.DANGER);
-        if (confirmed && canMenuResign(model)) {
-            model.resign();
-        }
-    }
-
-    /** Menu actions use the same live recipient view as the game panel. */
-    static boolean canMenuResign(ClientModel model) {
-        return model.view() != null && !model.isMatchOver() && model.inFlightRequest() == null;
     }
 
     /**
@@ -201,11 +143,14 @@ public final class ClientFrame extends JFrame {
      * pills (How to Play / Cards / Controls) switching a CardLayout, and a
      * drawn close button. Modal; ESC or the ✕ closes it.
      */
-    private void showHelpOverlay() {
+    private void showHelpOverlay() { showHelpOverlay(this, model.rules()); }
+
+    /** Opens the shared live-rule help from either the lobby or an in-match control. */
+    static void showHelpOverlay(java.awt.Window owner, onitama.core.duel.RulesConfig rules) {
         UiKit.DialogSurface surface = new UiKit.DialogSurface(Theme.CREAM, 18);
         surface.setLayout(new BorderLayout(0, 10));
         surface.setBorder(BorderFactory.createEmptyBorder(18, 22, 18 + Theme.SHADOW_OFFSET, 22));
-        javax.swing.JDialog dialog = UiKit.undecoratedDialog(this, surface, 520, 420);
+        javax.swing.JDialog dialog = UiKit.undecoratedDialog(owner, surface, 520, 420);
 
         JPanel header = new JPanel(new BorderLayout(8, 0));
         header.setOpaque(false);
@@ -230,7 +175,7 @@ public final class ClientFrame extends JFrame {
             });
             tabButtons.add(tab);
             tabs.add(tab);
-            pages.add(helpPage(helpTabText(name, model.rules())), name);
+            pages.add(helpPage(helpTabText(name, rules)), name);
         }
         tabButtons.get(0).setVariant(UiKit.Pill.GOLD);
 
@@ -247,7 +192,7 @@ public final class ClientFrame extends JFrame {
 
     /** A body-text page: ink 12px, wrapped HTML in a fixed-width table
      * (Swing's HTML engine honors table widths, not div widths). */
-    private JComponent helpPage(String html) {
+    private static JComponent helpPage(String html) {
         JLabel page = new JLabel("<html><table width=452><tr><td>" + html + "</td></tr></table>");
         page.setFont(Theme.normal(12f));
         page.setForeground(Theme.INK);
@@ -314,18 +259,6 @@ public final class ClientFrame extends JFrame {
         };
     }
 
-    /** A coal-styled menu with comfortable spacing between Game and Help. */
-    private javax.swing.JMenu styledMenu(String text) {
-        javax.swing.JMenu menu = new javax.swing.JMenu(text);
-        menu.setUI(new javax.swing.plaf.basic.BasicMenuUI());
-        menu.setBackground(Theme.BG);
-        menu.setForeground(Theme.CREAM);
-        menu.setFont(Theme.bold(14f));
-        menu.setOpaque(true);
-        menu.setBorder(BorderFactory.createEmptyBorder(8, 12, 8, 12));
-        return menu;
-    }
-
     /** Reader-thread callback: hands the message to the model on the EDT. */
     private void onIncomingMessage(onitama.net.Message message) {
         SwingUtilities.invokeLater(() -> model.handleMessage(message));
@@ -338,6 +271,7 @@ public final class ClientFrame extends JFrame {
 
     private void showScreen(Screen screen) {
         visibleScreen = screen;
+        soundToggle.setVisible(screen != Screen.GAME);
         updateMenuMusic();
         screens.show(content, screen.name());
         setTitle(WINDOW_TITLE + (model.roomCode() != null
@@ -357,7 +291,6 @@ public final class ClientFrame extends JFrame {
 
     private void openLeaderboard() {
         model.requestLeaderboard();
-        showScreen(Screen.LEADERBOARD);
     }
 
     private void closeAndSave() {

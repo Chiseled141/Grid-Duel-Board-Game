@@ -147,7 +147,7 @@ public final class CardHandPanel extends JLayeredPane {
             int arc = (int) (8 * Math.pow((i - mid) / Math.max(1, mid), 2));
             JComponent card = cards.get(i);
             if (card instanceof CardPanel movement) {
-                movement.setCardScale(Math.min(1.0, (height - 12) / 244.0));
+                movement.setCardScale(Math.min(1.0, (height - 12) / 254.0));
             }
             int targetX = (int) (start + i * step);
             int finalX = targetX;

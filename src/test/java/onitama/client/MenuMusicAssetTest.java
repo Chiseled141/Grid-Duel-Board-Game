@@ -5,8 +5,8 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 class MenuMusicAssetTest {
-    @Test void eachThemeHasItsOwnDecodableLoopWithoutAnExternalPlayer() throws Exception {
-        assertNotEquals(MenuTheme.VALLEY.music(), MenuTheme.GOLDEN_FIELDS.music());
+    @Test void medievalThemeHasADecodableLoopWithoutAnExternalPlayer() throws Exception {
+        assertEquals(1, MenuTheme.values().length);
         for (MenuTheme theme : MenuTheme.values()) {
             var resource = MenuMusic.class.getResource(theme.music());
             assertNotNull(resource);

@@ -1,7 +1,7 @@
 package onitama.core;
 
 import onitama.core.duel.CardInstance;
-import onitama.core.duel.Direction;
+import onitama.core.duel.SkillTargets;
 import onitama.core.duel.GameAction;
 import onitama.core.duel.PlacedPiece;
 import onitama.core.duel.PlayerView;
@@ -14,6 +14,8 @@ import onitama.core.duel.TurnPhase;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.Objects;
 import java.util.Random;
 
@@ -97,54 +99,58 @@ public final class PracticeBot {
 
     private static GameAction chooseSkill(PlayerView view, Difficulty difficulty, Random random) {
         int mana = view.viewer() == PlayerColor.BLUE ? view.blueMana() : view.redMana();
-
-        // 25% chance for Rookie to save mana and skip skill casting
-        if (difficulty == Difficulty.ROOKIE && random.nextInt(100) < 25) {
-            return new GameAction.EndTurn();
-        }
-
-        for (CardInstance card : view.ownSkillHand()) {
+        List<GameAction.CastSkill> candidates = new ArrayList<>();
+        List<CardInstance> hand = new ArrayList<>(view.ownSkillHand());
+        Collections.shuffle(hand, random);
+        for (CardInstance card : hand) {
             SkillDefinition def = view.rules().skill(card.definitionId());
-            if (def == null || def.manaCost() > mana) {
-                continue;
-            }
-
-            // Zero-target skills (Mana Surge, Refocus)
-            SelectionOptions initial = Targeting.skillOptions(view, card.instanceId(), SelectionDraft.empty());
-            if (initial.error() == null && initial.canSubmit()) {
-                return new GameAction.CastSkill(card.instanceId(), initial.completeTargets());
-            }
-
-            // Single piece target search
-            if (initial.error() == null && !initial.selectablePieceIds().isEmpty()) {
-                for (int pieceId : initial.selectablePieceIds()) {
-                    SelectionDraft d1 = new SelectionDraft(List.of(pieceId), List.of(), null);
-                    SelectionOptions o1 = Targeting.skillOptions(view, card.instanceId(), d1);
-                    if (o1.canSubmit()) {
-                        return new GameAction.CastSkill(card.instanceId(), o1.completeTargets());
-                    }
-
-                    if (!o1.selectableSquares().isEmpty()) {
-                        Square targetSq = o1.selectableSquares().get(random.nextInt(o1.selectableSquares().size()));
-                        SelectionDraft d2 = new SelectionDraft(List.of(pieceId), List.of(targetSq), null);
-                        SelectionOptions o2 = Targeting.skillOptions(view, card.instanceId(), d2);
-                        if (o2.canSubmit()) {
-                            return new GameAction.CastSkill(card.instanceId(), o2.completeTargets());
-                        }
-                    }
-
-                    if (!o1.selectableDirections().isEmpty()) {
-                        Direction dir = o1.selectableDirections().get(random.nextInt(o1.selectableDirections().size()));
-                        SelectionDraft d2 = new SelectionDraft(List.of(pieceId), List.of(), dir);
-                        SelectionOptions o2 = Targeting.skillOptions(view, card.instanceId(), d2);
-                        if (o2.canSubmit()) {
-                            return new GameAction.CastSkill(card.instanceId(), o2.completeTargets());
-                        }
-                    }
-                }
-            }
+            if (def == null || def.manaCost() > mana) continue;
+            // Spending this single-use resource at full mana cannot help.
+            if (def.id().equals("mana-surge") && mana >= view.rules().manaCap()) continue;
+            List<GameAction.CastSkill> targets = new ArrayList<>();
+            searchSkill(view, card.instanceId(), SelectionDraft.empty(), new HashSet<>(), targets, random);
+            candidates.addAll(targets);
         }
+        if (candidates.isEmpty()) return new GameAction.EndTurn();
+        if (difficulty == Difficulty.ROOKIE) return candidates.get(random.nextInt(candidates.size()));
+        // Stronger opponents prioritize eliminations and complete multi-target effects.
+        Collections.shuffle(candidates, random);
+        return candidates.stream().max(java.util.Comparator.comparingInt(PracticeBot::skillValue)).orElseThrow();
+    }
 
-        return new GameAction.EndTurn();
+    private static void searchSkill(PlayerView view, String instanceId, SelectionDraft draft,
+                                    Set<SelectionDraft> visited, List<GameAction.CastSkill> results, Random random) {
+        // Targeting is shared with the UI. A bounded search keeps practice responsive
+        // and never constructs authoritative state or guesses hidden information.
+        if (visited.size() >= 192 || results.size() >= 24 || !visited.add(draft)) return;
+        SelectionOptions options = Targeting.skillOptions(view, instanceId, draft);
+        if (options.error() != null) return;
+        if (options.canSubmit()) results.add(new GameAction.CastSkill(instanceId, options.completeTargets()));
+        List<SelectionDraft> next = new ArrayList<>();
+        for (int piece : options.selectablePieceIds()) {
+            if (draft.pieceIds().contains(piece)) continue;
+            var pieces = new ArrayList<>(draft.pieceIds()); pieces.add(piece);
+            next.add(new SelectionDraft(pieces, draft.destinations(), draft.direction()));
+        }
+        for (Square square : options.selectableSquares()) {
+            if (draft.destinations().contains(square)) continue;
+            var squares = new ArrayList<>(draft.destinations()); squares.add(square);
+            next.add(new SelectionDraft(draft.pieceIds(), squares, draft.direction()));
+        }
+        if (draft.direction() == null) for (var direction : options.selectableDirections())
+            next.add(new SelectionDraft(draft.pieceIds(), draft.destinations(), direction));
+        Collections.shuffle(next, random);
+        for (var child : next) searchSkill(view, instanceId, child, visited, results, random);
+    }
+
+    private static int skillValue(GameAction.CastSkill cast) {
+        SkillTargets target = cast.targets();
+        if (target instanceof SkillTargets.Attack attack) return 100 * attack.enemyIds().size();
+        if (target instanceof SkillTargets.Enemy) return 100;
+        if (target instanceof SkillTargets.MoveGroup group) return 10 + group.moves().size();
+        if (target instanceof SkillTargets.Rally rally) return 10 + rally.moves().size();
+        if (target instanceof SkillTargets.ShiftEnemies shifted) return 10 + shifted.enemyIds().size();
+        if (target instanceof SkillTargets.None) return 1;
+        return 10;
     }
 }

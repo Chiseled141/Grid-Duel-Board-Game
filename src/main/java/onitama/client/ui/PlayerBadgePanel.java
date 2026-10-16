@@ -9,7 +9,7 @@ import javax.swing.JComponent;
 import javax.swing.Timer;
 import onitama.core.PlayerColor;
 
-/** Compact public player identity, abstract crest, mana and remaining pieces. */
+/** Compact public player identity, heraldic shield, mana and remaining pieces. */
 public final class PlayerBadgePanel extends JComponent {
     private final boolean own;
     private String name = "";
@@ -28,8 +28,8 @@ public final class PlayerBadgePanel extends JComponent {
     public PlayerBadgePanel(boolean own) {
         this.own = own;
         setOpaque(false);
-        setPreferredSize(new Dimension(228, 104));
-        setMinimumSize(new Dimension(180, 104));
+        setPreferredSize(new Dimension(228, 128));
+        setMinimumSize(new Dimension(180, 128));
     }
 
     /** Uses a permitted view; reserved mana is supplied only for the local player. */
@@ -63,47 +63,69 @@ public final class PlayerBadgePanel extends JComponent {
     @Override protected void paintComponent(Graphics graphics) {
         Graphics2D g = UiKit.nice(graphics);
         try {
-            g.scale(1, getHeight() / 132.0);
-            Color accent = Theme.playerColor(color);
-            g.setColor(MatchStyle.SURFACE);
-            g.fillRoundRect(1, 1, getWidth() - 2, 130, 14, 14);
-            g.setColor(active && !paused ? accent : new Color(190, 165, 114, 100));
-            g.setStroke(new BasicStroke(active && !paused ? 2.5f : 1f));
-            g.drawRoundRect(2, 2, getWidth() - 5, 127, 13, 13);
-            // An abstract compass crest avoids human portraits and needs no external asset.
-            g.setColor(accent);
-            g.drawOval(14, 19, 48, 48);
-            g.fillPolygon(new int[]{38, 52, 38, 24}, new int[]{25, 43, 61, 43}, 4);
-            g.setColor(MatchStyle.SURFACE);
-            g.fillOval(33, 38, 10, 10);
-            g.setFont(Theme.normal(9));
-            g.setColor(Theme.CREAM);
-            g.drawString((own ? "YOU" : "OPPONENT") + " / " + color, 76, 24);
-            g.setFont(Theme.bold(13));
-            g.setColor(accent);
-            g.drawString(fit(g, name, getWidth() - 90), 76, 45);
+            MatchStyle.parchment(g, getWidth(), getHeight());
+            Color accent = color == PlayerColor.BLUE ? new Color(48, 78, 91) : new Color(130, 57, 44);
+            g.setColor(active && !paused ? accent : new Color(142, 119, 79));
+            g.fillRect(0, 10, 3, Math.max(1, getHeight() - 20));
+            g.setFont(Theme.bold(9));
+            g.drawString((own ? "YOU" : "OPPONENT") + " · " + color, 14, 23);
+            paintShield(g, getWidth() - 32, 12, accent);
+            g.setFont(Theme.cardTitle(16));
+            while (g.getFontMetrics().stringWidth(name) > getWidth() - 28 && g.getFont().getSize2D() > 11)
+                g.setFont(g.getFont().deriveFont(g.getFont().getSize2D() - 1));
+            g.setColor(Theme.INK);
+            g.drawString(fit(g, name, getWidth() - 28), 14, 49);
             g.setFont(Theme.normal(10));
-            g.setColor(Theme.CREAM);
-            g.drawString(paused ? "MATCH PAUSED" : active ? "PLAYING" : "WAITING", 76, 63);
-            g.setFont(Theme.bold(12));
-            g.setColor(flash > 0 ? Color.WHITE : accent);
-            g.drawString("MANA  " + mana + "/" + cap, 16, 88);
-            g.setFont(Theme.normal(9));
-            String detail = reserved > 0 ? reserved + " RESERVED" : alive + " PIECES";
-            g.setColor(Theme.CREAM);
-            g.drawString(detail, getWidth() - 16 - g.getFontMetrics().stringWidth(detail), 88);
-            int width = Math.max(1, getWidth() - 32);
-            g.setColor(new Color(190, 165, 114, 100));
-            g.fillRoundRect(16, 101, width, 10, 6, 6);
-            g.setColor(accent);
-            g.fillRoundRect(16, 101, (int) (width * Math.max(0, Math.min(1, mana / (double) Math.max(1, cap)))), 10, 6, 6);
+            g.setColor(new Color(108, 87, 59));
+            g.drawString(alive + " pieces", 14, 69);
+            String state = paused ? "Paused" : active ? "To play" : "Waiting";
+            g.setColor(active && !paused ? accent : new Color(108, 87, 59));
+            g.drawString(state, getWidth() - 14 - g.getFontMetrics().stringWidth(state), 69);
+            g.setColor(new Color(156, 129, 84, 110));
+            g.drawLine(14, 80, getWidth() - 14, 80);
+            g.setFont(Theme.bold(9));
+            g.setColor(Theme.INK);
+            g.drawString("MANA", 14, 101);
+            String amount = mana + " / " + cap + (reserved > 0 ? " · " + reserved + " held" : "");
+            g.setFont(Theme.bold(11));
+            g.drawString(amount, getWidth() - 14 - g.getFontMetrics().stringWidth(amount), 101);
+            paintMana(g, accent);
         } finally { g.dispose(); }
+    }
+
+    private void paintMana(Graphics2D g, Color accent) {
+        int segments = Math.min(10, Math.max(1, cap));
+        int width = Math.max(1, getWidth() - 28), gap = 3;
+        double segment = (width - gap * (segments - 1)) / (double) segments;
+        double available = Math.max(0, mana - reserved) / (double) Math.max(1, cap) * segments;
+        double total = Math.max(0, mana) / (double) Math.max(1, cap) * segments;
+        for (int i = 0; i < segments; i++) {
+            int x = 14 + (int) (i * (segment + gap));
+            int w = Math.max(1, (int) segment);
+            g.setColor(new Color(201, 185, 148)); g.fillRect(x, 111, w, 7);
+            double fill = Math.max(0, Math.min(1, available - i));
+            if (fill > 0) { g.setColor(flash > 0 ? accent.brighter() : accent); g.fillRect(x, 111, (int) Math.ceil(w * fill), 7); }
+            if (reserved > 0 && total > i && available < i + 1) {
+                g.setColor(new Color(159, 116, 41)); g.drawRect(x, 111, w - 1, 6);
+            }
+        }
+    }
+
+    private void paintShield(Graphics2D g, int x, int y, Color accent) {
+        var shield = new java.awt.geom.Path2D.Double();
+        shield.moveTo(x, y); shield.lineTo(x + 17, y); shield.lineTo(x + 16, y + 11);
+        shield.quadTo(x + 13, y + 17, x + 8, y + 20);
+        shield.quadTo(x + 2, y + 16, x + 1, y + 11); shield.closePath();
+        g.setColor(accent); g.fill(shield);
+        g.setColor(new Color(244, 230, 193));
+        g.fillRect(x + 7, y + 3, 3, 11); g.fillRect(x + 4, y + 6, 9, 3);
+        g.setColor(new Color(105, 78, 41)); g.setStroke(new BasicStroke(1)); g.draw(shield);
     }
 
     private String fit(Graphics2D g, String value, int available) {
         if (g.getFontMetrics().stringWidth(value) <= available) return value;
         int end = value.length();
-        while (end > 0 && g.getFontMetrics().stringWidth(value.substring(0, end) + "...") > available) end--;
-        return value.substring(0, end) + "...";
+        while (end > 0 && g.getFontMetrics().stringWidth(value.substring(0, end) + "…") > available) end--;
+        return value.substring(0, end) + "…";
     }
 }

@@ -129,7 +129,7 @@ public final class ClientSettings {
         this.windowHeight = height;
     }
 
-    /** The preferred board-piece style (1 ink tokens, 2 seal stones, 3 ink silhouettes). */
+    /** The preferred board-piece style (1 steel helms, 2 heraldic shields, 3 carved pawns). */
     public int pieceStyle() {
         return pieceStyle;
     }

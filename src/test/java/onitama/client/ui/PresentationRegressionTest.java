@@ -85,14 +85,36 @@ class PresentationRegressionTest {
         ui.model.handleGameUpdate(new GameUpdate(sync(f.after), f.events));
     }
 
+    @Test void gestureBoundHandCardsAnimateOnHoverAndStopOnRemoval() throws Exception {
+        SwingUtilities.invokeAndWait(() -> {
+            var ui = ui(movement(false).before);
+            try {
+                for (var component : ui.hand.getComponents()) {
+                    var card = (JComponent) component;
+                    var entered = new java.awt.event.MouseEvent(card, java.awt.event.MouseEvent.MOUSE_ENTERED,
+                            System.currentTimeMillis(), 0, 20, 20, 0, false);
+                    for (var listener : card.getMouseListeners()) listener.mouseEntered(entered);
+                    var timer = (Timer) field(card, card instanceof CardPanel ? "tween" : "hoverTimer");
+                    assertNotNull(timer, "gesture binding must not disable hover feedback");
+                    assertTrue(timer.isRunning());
+                    if (card instanceof CardPanel movement) movement.setReducedMotion(true);
+                    else ((SkillCardPanel) card).setReducedMotion(true);
+                    assertFalse(timer.isRunning(), "reduced motion stops active hover animation");
+                }
+            } finally { ui.panel.removeNotify(); }
+        });
+    }
+
     @ParameterizedTest @ValueSource(booleans = {false, true})
-    void movementDepartureSurvivesReplyFirstWithCurrentHand(boolean same) throws Exception {
+    void movementKeepsBoardFeedbackWithoutASideCard(boolean same) throws Exception {
         SwingUtilities.invokeAndWait(() -> {
             var f = movement(same); var ui = ui(f.before);
             try {
                 deliver(ui, f);
                 assertEquals(f.after, ui.model.view(), "state must already be authoritative");
-                assertTrue(play(ui).busy(), "accepted play must survive hand reconciliation");
+                assertFalse(play(ui).busy(), "movement does not fly into the skill-only display");
+                assertNull(field(field(ui.panel, "ownPlay"), "face"));
+                assertNotNull(ui.model.lastMoveFrom()); assertNotNull(ui.model.lastMoveTo());
                 assertEquals(5, ui.hand.getComponentCount(), "decoration cannot intercept clicks as a child");
                 play(ui).cancel();
                 assertFalse(play(ui).busy());
@@ -173,7 +195,7 @@ class PresentationRegressionTest {
     @ParameterizedTest @ValueSource(strings = {"reconnect", "new-match", "disconnect", "dispose"})
     void lifecycleResetDiscardsTimersAndOutgoingCopy(String reason) throws Exception {
         SwingUtilities.invokeAndWait(() -> {
-            var f = movement(true); var ui = ui(f.before);
+            var f = skill(); var ui = ui(f.before);
             try {
                 deliver(ui, f);
                 var timer = (Timer) field(play(ui), "timer");
@@ -209,14 +231,14 @@ class PresentationRegressionTest {
                 Timer reflow = (Timer) field(ui.hand, "reflowTimer");
                 assertNotNull(reflow, "a visible replacement starts reflow");
                 assertTrue(reflow.isRunning(), "accepted-event cleanup must not cancel the new reflow");
-                assertTrue(play(ui).busy());
+                assertFalse(play(ui).busy(), "movement retains reflow without a skill-play flight");
             } finally { frame.dispose(); }
         });
     }
 
-    @Test void reducedMotionStillShowsTheAcceptedCardBesideTheBoard() throws Exception {
+    @Test void reducedMotionStillShowsTheAcceptedSkillBesideTheBoard() throws Exception {
         SwingUtilities.invokeAndWait(() -> {
-            var f = movement(false); var ui = ui(f.before);
+            var f = skill(); var ui = ui(f.before);
             try {
                 ui.model.setReducedMotion(true);
                 deliver(ui, f);
@@ -224,6 +246,98 @@ class PresentationRegressionTest {
                 var area = (PlayedCardArea) field(ui.panel, "ownPlay");
                 assertNotNull(field(area, "face"), "reduced motion must retain public card information");
                 assertEquals(false, field(area, "arriving"));
+            } finally { ui.panel.removeNotify(); }
+        });
+    }
+
+    @ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({"false,false", "false,true", "true,false", "true,true"})
+    void playedCardsExposeOnlyAcceptedPublicDetails(boolean skill, boolean opponent) throws Exception {
+        SwingUtilities.invokeAndWait(() -> {
+            var rules = RulesConfigLoader.load(null);
+            for (long seed = 0; seed < 1000; seed++) {
+                var game = RulesEngine.newGame(rules, seed);
+                var actor = game.turn();
+                if (skill) game = ((ActionResult.Accepted) RulesEngine.apply(game, actor,
+                        new GameAction.SkipMovement())).nextState();
+                var actorView = RulesEngine.viewFor(game, actor);
+                var resource = actorView.ownSkillHand().stream()
+                        .filter(c -> c.definitionId().equals("mana-surge")).findFirst();
+                if (skill && resource.isEmpty()) continue;
+                GameAction action = skill ? new GameAction.CastSkill(resource.orElseThrow().instanceId(), new SkillTargets.None())
+                        : Targeting.legalMoves(actorView).get(0);
+                var accepted = (ActionResult.Accepted) RulesEngine.apply(game, actor, action);
+                var viewer = opponent ? actor.opponent() : actor;
+                var ui = ui(RulesEngine.viewFor(game, viewer));
+                try {
+                    var area = (PlayedCardArea) field(ui.panel, opponent ? "enemyPlay" : "ownPlay");
+                    assertNull(area.getToolTipText());
+                    ui.model.handleGameUpdate(new GameUpdate(sync(RulesEngine.viewFor(accepted.nextState(), viewer)), accepted.events()));
+                    assertNull(area.getToolTipText(), "concealed/in-flight cards cannot expose details");
+                    play(ui).cancel();
+                    String expected = skill ? onitama.config.SkillText.render(rules.skill("mana-surge"))
+                            : CardArt.nameFor(onitama.core.CardDeck.cardById(((GameAction.MovePiece) action).movementCardId())).toUpperCase();
+                    if (skill) assertTrue(area.getToolTipText().contains(expected));
+                    else {
+                        assertNull(area.getToolTipText());
+                        assertNull(field(area, "face"), "movement must not enter either skill area");
+                        assertFalse(play(ui).busy());
+                        assertNotNull(ui.model.lastMoveFrom()); assertNotNull(ui.model.lastMoveTo());
+                    }
+                    assertTrue(java.util.Arrays.stream(area.getMouseListeners()).anyMatch(CardDetails.class::isInstance));
+                    ui.model.handleMatchSync(new MatchSync("new", "ROOM", RulesEngine.viewFor(game, viewer), false, 1));
+                    assertNull(area.getToolTipText(), "new matches clear old card details");
+                } finally { ui.panel.removeNotify(); }
+                return;
+            }
+            fail("No deterministic public-card fixture");
+        });
+    }
+
+    @ParameterizedTest @ValueSource(booleans = {false, true})
+    void movementPreservesThePreviousSkillOnEitherSide(boolean opponent) throws Exception {
+        SwingUtilities.invokeAndWait(() -> {
+            var transition = DeckPresentationFixtures.skill("mana-surge", PlayerColor.BLUE, 18);
+            var game = transition.before();
+            var viewer = opponent ? PlayerColor.RED : PlayerColor.BLUE;
+            var ui = ui(RulesEngine.viewFor(game, viewer));
+            try {
+                ui.model.setReducedMotion(true);
+                var accepted = transition.result(); game = accepted.nextState();
+                ui.model.handleGameUpdate(new GameUpdate(sync(RulesEngine.viewFor(game, viewer)), accepted.events()));
+                var area = (PlayedCardArea) field(ui.panel, opponent ? "enemyPlay" : "ownPlay");
+                Object face = field(area, "face"); String details = area.getToolTipText();
+                assertNotNull(face); assertNotNull(details);
+                accepted = (ActionResult.Accepted) RulesEngine.apply(game, game.turn(), new GameAction.EndTurn());
+                game = accepted.nextState();
+                ui.model.handleGameUpdate(new GameUpdate(sync(RulesEngine.viewFor(game, viewer)), accepted.events()));
+                var move = Targeting.legalMoves(RulesEngine.viewFor(game, game.turn())).get(0);
+                accepted = (ActionResult.Accepted) RulesEngine.apply(game, game.turn(), move); game = accepted.nextState();
+                ui.model.handleGameUpdate(new GameUpdate(sync(RulesEngine.viewFor(game, viewer)), accepted.events()));
+                assertSame(face, field(area, "face")); assertEquals(details, area.getToolTipText());
+                assertNotNull(ui.model.lastMoveFrom()); assertNotNull(ui.model.lastMoveTo());
+                assertFalse(play(ui).busy());
+            } finally { ui.panel.removeNotify(); }
+        });
+    }
+
+    @Test void turnEndDoesNotCutOffAnAcceptedPieceMove() throws Exception {
+        SwingUtilities.invokeAndWait(() -> {
+            var transition = DeckPresentationFixtures.movement(PlayerColor.RED, false);
+            var ui = ui(transition.before(PlayerColor.BLUE));
+            try {
+                var moved = transition.result();
+                ui.model.handleGameUpdate(new GameUpdate(sync(transition.after(PlayerColor.BLUE)), moved.events()));
+                var board = (BoardPanel) field(ui.panel, "boardPanel");
+                var moving = List.copyOf((List<?>) field(board, "movingPieces"));
+                assertFalse(moving.isEmpty());
+                Object started = field(board, "moveAnimStart");
+                var end = (ActionResult.Accepted) RulesEngine.apply(moved.nextState(), PlayerColor.RED, new GameAction.EndTurn());
+                ui.model.handleGameUpdate(new GameUpdate(sync(RulesEngine.viewFor(end.nextState(), PlayerColor.BLUE)), end.events()));
+                assertEquals(moving, field(board, "movingPieces"));
+                assertEquals(started, field(board, "moveAnimStart"), "non-board updates do not restart or truncate travel");
+                assertEquals(RulesEngine.viewFor(end.nextState(), PlayerColor.BLUE), ui.model.view());
+                board.finishMoveAnimation(); assertTrue(((List<?>) field(board, "movingPieces")).isEmpty());
             } finally { ui.panel.removeNotify(); }
         });
     }

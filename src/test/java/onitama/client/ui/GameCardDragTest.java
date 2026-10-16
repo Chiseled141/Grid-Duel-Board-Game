@@ -28,7 +28,7 @@ class GameCardDragTest {
         }
         return null;
     }
-    private static void gesture(CardPanel card, int pull) {
+    private static void gesture(JComponent card, int pull) {
         card.dispatchEvent(new MouseEvent(card, MouseEvent.MOUSE_PRESSED, 1, MouseEvent.BUTTON1_DOWN_MASK,
                 50, 100, 1, false, MouseEvent.BUTTON1));
         card.dispatchEvent(new MouseEvent(card, MouseEvent.MOUSE_DRAGGED, 2, MouseEvent.BUTTON1_DOWN_MASK,
@@ -81,4 +81,56 @@ class GameCardDragTest {
             } finally { panel[0].removeNotify(); }
         });
     }
+    @ParameterizedTest @CsvSource({"true,false", "false,false", "true,true", "false,true"})
+    void switchAndDeselectAtTheVisibleRaisedCard(boolean click, boolean skill) throws Exception {
+        SwingUtilities.invokeAndWait(() -> {
+            var sent = new ArrayList<Message>();
+            var model = new ClientModel(new ServerConnection() {
+                public void send(Message message) { sent.add(message); }
+                public boolean isConnected() { return true; }
+                public void ensureConnected(String host, int port) { }
+            });
+            var settings = new ClientSettings(); settings.setClickToSelectCards(click);
+            var panel = new GamePanel(model, settings);
+            try {
+                var game = RulesEngine.newGame(RulesConfigLoader.load(null), 42);
+                if (skill) game = ((ActionResult.Accepted) RulesEngine.apply(game, game.turn(),
+                        new GameAction.SkipMovement())).nextState();
+                var view = RulesEngine.viewFor(game, game.turn());
+                model.handleMatchSync(new MatchSync("switch", "ROOM", view, false, 1));
+                model.setReducedMotion(true);
+                panel.setSize(1440, 900); layout(panel);
+                var firstMove = movement(panel);
+                var cards = java.util.Arrays.stream(firstMove.getParent().getComponents())
+                        .filter(c -> skill ? c instanceof SkillCardPanel : c instanceof CardPanel)
+                        .map(c -> (JComponent) c).toList();
+                JComponent first = cards.get(0), second = cards.get(1);
+                gesture(first, click ? 0 : 60);
+                assertTrue(CardPlayOverlay.isMasked(first));
+                gesture(second, click ? 0 : 60);
+                assertFalse(CardPlayOverlay.isMasked(first), "switching restores the prior card");
+                assertTrue(CardPlayOverlay.isMasked(second));
+                assertEquals(skill ? ((SkillCardPanel) second).instance().instanceId() : ((CardPanel) second).card().id(),
+                        skill ? model.selectedSkillInstanceId() : model.selectedCardId());
+                var field = GamePanel.class.getDeclaredField("playOverlay"); field.setAccessible(true);
+                var overlay = (CardPlayOverlay) field.get(panel);
+                var slot = SwingUtilities.convertRectangle(second.getParent(), second.getBounds(), overlay);
+                int x = slot.x + slot.width / 2, y = slot.y - 42;
+                var target = SwingUtilities.getDeepestComponentAt(overlay.getParent(),
+                        x + overlay.getX(), y + overlay.getY());
+                assertSame(overlay, target, "the painted raised card must receive input");
+                overlay.dispatchEvent(new MouseEvent(overlay, MouseEvent.MOUSE_PRESSED, 10,
+                        MouseEvent.BUTTON1_DOWN_MASK, x, y, 1, false, MouseEvent.BUTTON1));
+                overlay.dispatchEvent(new MouseEvent(overlay, MouseEvent.MOUSE_RELEASED, 11,
+                        0, x, y, 1, false, MouseEvent.BUTTON1));
+                assertNull(model.selectedCardId()); assertNull(model.selectedSkillInstanceId());
+                assertFalse(CardPlayOverlay.isMasked(second));
+                assertEquals(CardPlayOverlay.State.IDLE, overlay.state());
+                assertTrue(sent.isEmpty(), "local selection must never submit a gameplay action");
+                assertEquals(view, model.view());
+            } catch (ReflectiveOperationException exception) { throw new AssertionError(exception); }
+            finally { panel.removeNotify(); }
+        });
+    }
+
 }

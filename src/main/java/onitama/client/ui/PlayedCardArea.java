@@ -4,17 +4,29 @@ import java.awt.*;
 import java.awt.image.BufferedImage;
 import javax.swing.JComponent;
 
-/** Latest public play beside the board; a visual reference, never a gameplay discard pile. */
+/** Latest public skill beside the board; a visual reference, never a gameplay discard pile. */
 final class PlayedCardArea extends JComponent {
     private final String caption;
     private BufferedImage face;
     private boolean arriving;
+    private String details;
+    private final CardDetails inspection;
 
-    PlayedCardArea(String caption) { this.caption = caption; setOpaque(false); }
+    PlayedCardArea(String caption) {
+        this.caption = caption;
+        setOpaque(false);
+        inspection = CardDetails.bind(this);
+    }
 
-    void arriving(boolean value) { arriving = value; repaint(); }
-    void showFace(BufferedImage value) { face = value; repaint(); }
-    void clear() { face = null; arriving = false; repaint(); }
+    void arriving(boolean value) { arriving = value; if (value) inspection.hide(); repaint(); }
+    void showFace(BufferedImage value) { showCard(value, null); }
+    void showCard(BufferedImage value, String text) {
+        inspection.hide();
+        face = value; details = text; repaint();
+    }
+    void clear() { inspection.hide(); face = null; details = null; arriving = false; repaint(); }
+
+    @Override public String getToolTipText() { return face == null || arriving ? null : details; }
 
     Rectangle cardBounds() {
         int width = Math.max(1, getWidth() - 6), height = Math.max(1, getHeight() - 28);
@@ -30,6 +42,8 @@ final class PlayedCardArea extends JComponent {
         var g = UiKit.nice(graphics);
         try {
             g.setFont(Theme.normal(10));
+            while (g.getFontMetrics().stringWidth(caption) > getWidth() - 6 && g.getFont().getSize2D() > 7)
+                g.setFont(g.getFont().deriveFont(g.getFont().getSize2D() - .5f));
             MatchStyle.text(g, caption, 3, 14, MatchStyle.TEXT);
             Rectangle bounds = cardBounds();
             if (face != null && !arriving) g.drawImage(face, bounds.x, bounds.y, bounds.width, bounds.height, null);

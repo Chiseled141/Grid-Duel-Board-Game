@@ -47,9 +47,12 @@ recording, cloud automation, and matchmaking beyond room codes.
 
 ### Played-card history (2026-10-16)
 
-The left game panel defaults to a local timeline of publicly played movement and
-committed skill cards from either player, showing owner, turn and artwork newest
-first. Record only accepted public events; never infer unseen opponent skills or
+The match shows the latest publicly committed skill beside each side of the board.
+Movement cards do not enter these areas; public hands and last-move board markers
+provide movement feedback. Subsequent movement preserves the last displayed skill. The previous
+left timeline panel is removed; its space holds turn actions above a hand-sized
+shared decorative draw pile. The model retains local public history.
+Record only accepted public events; never infer unseen opponent skills or
 private Foresight previews. Duplicate/stale updates do not add entries. Same-match
 reconnect preserves locally observed plays; new matches/rematches clear them.
 The separate Card details tab is removed; enlarged cards and live tooltips provide
@@ -281,8 +284,9 @@ are not yet implemented. Preserve transaction and rating behavior.
   ivory/gold actions, with the previous prominent pill design for Skip Movement,
   End Turn and Cast Skill. Remove the Card details tab, VS banner, Your hand label and
   bottom instruction strip. Keep context guidance on tooltips and board highlights.
-  A single unlabeled decorative pile anchors both kinds of draw animation; hide
-  deck titles/counts. The two authoritative decks, counts and recycling rules remain
+  Each player side has an unlabeled decorative draw origin for both card types.
+  The opponent row orders hidden skills, movement cards, then its deck at the right;
+  local hand and deck positions remain. Hide deck titles/counts. The two authoritative decks, counts and recycling rules remain
   distinct in engine/protocol. Never reveal concealed opponent skill faces.
 
 - Own cards support clicking or a left-button upward drag and release to select.
