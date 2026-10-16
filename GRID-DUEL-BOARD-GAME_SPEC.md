@@ -4,9 +4,8 @@
 This is the source of truth for gameplay, technical constraints, protocol and tests.
 The live engine is `onitama.core.duel` across server, client, practice, bots and demo.
 [Step 3 contracts](docs/step-03-engine-contracts.md) supplement these rules with
-implemented APIs, configuration and persistence contracts. The Step 1 draft is
-historical context. Legacy 5×5 classes remain for regression tests, not live matches.
-See [Step 6 readiness](docs/handoffs/step-06-readiness.md) for cleanup and validation.
+implemented APIs, configuration and persistence contracts. Obsolete 5×5 engine
+classes and unused legacy mechanics have been removed.
 
 ## 0. Agent rules and migration policy
 

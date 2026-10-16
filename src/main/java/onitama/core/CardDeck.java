@@ -4,21 +4,13 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.Random;
 import java.util.stream.Collectors;
 
 /**
  * The deck of the 16 movement cards with the fixed offset data from the
- * project brief (Appendix A). A deal takes five distinct cards: two for each
- * player and one transit card; the stamp color of the transit card decides
- * which player moves first.
+ * project brief (Appendix A).
  */
 public final class CardDeck {
-
-    /** The result of dealing the deck at the start of a game. */
-    public record Deal(List<Card> blueHand, List<Card> redHand, Card transit,
-                       PlayerColor firstPlayer) {
-    }
 
     private static final List<Card> CATALOG = buildCatalog();
     private static final Map<String, Card> BY_ID = CATALOG.stream()
@@ -88,23 +80,5 @@ public final class CardDeck {
             throw new IllegalArgumentException("unknown card: " + id);
         }
         return card;
-    }
-
-    /**
-     * Shuffles the deck and deals two cards to each player plus one transit
-     * card. The stamp color of the transit card picks the player to move first.
-     */
-    public static Deal deal(Random random) {
-        List<Card> shuffled = new ArrayList<>(CATALOG);
-        Collections.shuffle(shuffled, random);
-        List<Card> blueHand = List.copyOf(shuffled.subList(0, 2));
-        List<Card> redHand = List.copyOf(shuffled.subList(2, 4));
-        Card transit = shuffled.get(4);
-        return new Deal(blueHand, redHand, transit, transit.stamp());
-    }
-
-    /** Convenience overload that deals with a fresh random source. */
-    public static Deal deal() {
-        return deal(new Random());
     }
 }

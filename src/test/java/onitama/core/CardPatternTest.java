@@ -48,8 +48,9 @@ class CardPatternTest {
     @ParameterizedTest(name = "blue perspective of {0}")
     @MethodSource("allCards")
     void unrotatedDestinationsMatchAppendixA(Card card) {
-        Square center = new Square(2, 2);
-        Set<String> actual = relativeOffsets(card.destinationsFrom(center, PlayerColor.BLUE), center);
+        Set<String> actual = card.offsets().stream()
+                .map(offset -> offset.dx() + "," + offset.dy())
+                .collect(Collectors.toSet());
         Set<String> expected = new HashSet<>();
         for (int[] offset : APPENDIX_A.get(card.id())) {
             expected.add(offset[0] + "," + offset[1]);
@@ -60,8 +61,10 @@ class CardPatternTest {
     @ParameterizedTest(name = "red perspective of {0}")
     @MethodSource("allCards")
     void rotatedDestinationsAre180DegreeMirror(Card card) {
-        Square center = new Square(2, 2);
-        Set<String> actual = relativeOffsets(card.destinationsFrom(center, PlayerColor.RED), center);
+        Set<String> actual = card.offsets().stream()
+                .map(Offset::rotate180)
+                .map(offset -> offset.dx() + "," + offset.dy())
+                .collect(Collectors.toSet());
         Set<String> expected = new HashSet<>();
         for (int[] offset : APPENDIX_A.get(card.id())) {
             expected.add(-offset[0] + "," + -offset[1]);
@@ -78,20 +81,14 @@ class CardPatternTest {
         assertEquals(16, catalogIds.size(), "ids must be unique");
     }
 
-    /** Every offset of every card stays within the 5x5 board when started from the center. */
+    /** Every offset of every card has range at most dx,dy in [-2, 2]. */
     @org.junit.jupiter.api.Test
-    void allCatalogOffsetsAreWithinBoardRangeFromCenter() {
+    void allCatalogOffsetsAreWithinRange() {
         for (Card card : CardDeck.catalog()) {
             for (Offset offset : card.offsets()) {
                 assertTrue(Math.abs(offset.dx()) <= 2 && Math.abs(offset.dy()) <= 2,
-                        card.id() + " offset out of 5x5 range: " + offset);
+                        card.id() + " offset out of range: " + offset);
             }
         }
-    }
-
-    private static Set<String> relativeOffsets(List<Square> destinations, Square origin) {
-        return destinations.stream()
-                .map(square -> (square.x() - origin.x()) + "," + (square.y() - origin.y()))
-                .collect(Collectors.toSet());
     }
 }

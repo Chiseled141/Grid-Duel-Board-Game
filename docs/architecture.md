@@ -5,7 +5,7 @@
 ```
 onitama.Main              factory dispatcher (server/client/bots/demo), file logging
 onitama.core              shared PlayerColor, Square, Offset, Card, CardDeck, Elo,
-                          Difficulty, PracticeBot; legacy engine retained for regression tests
+                          Difficulty, PracticeBot
 onitama.core.duel         active 7×7 engine, skill effects, targeting, immutable views,
                           rules snapshot, decks, mana and private Foresight state
 onitama.config            RulesConfigLoader, ConfigException, SkillText
@@ -36,8 +36,8 @@ Resources: `src/main/resources/{fonts/outfit-*.ttf, assets/*}`, `scripts/*.sh|ba
 
 All runnable routes (server, Swing client, practice, bots and demo) use
 `onitama.core.duel`. The [Step 3 contracts](step-03-engine-contracts.md) define
-its state, action, view and targeting APIs. The old 5×5 engine is retained for
-legacy regression coverage, not used to run matches. Do not restart the migration.
+its state, action, view and targeting APIs. Obsolete 5×5 engine classes and mechanics
+have been removed.
 
 Authoritative state: 7×7, six identical pieces per side; both shared decks and
 hands; spent skills; mana; turn and phase; completed-turn count; pending choice;
