@@ -4,6 +4,7 @@ import onitama.SerializationProbe;
 import onitama.config.RulesConfigLoader;
 import onitama.core.PlayerColor;
 import onitama.core.Square;
+import onitama.core.duel.Board;
 import onitama.core.duel.EndReason;
 import onitama.core.duel.GameAction;
 import onitama.core.duel.GameState;
@@ -18,8 +19,10 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
+import java.io.Serializable;
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -57,9 +60,11 @@ class MessageWireFilterTest {
     }
 
     @Test
-    void coreAuthoritativeObjectsAreRejectedByTheFilter() throws Exception {
-        assertObjectRejected(onitama.core.GameState.newGame(onitama.core.CardDeck.deal(new java.util.Random(3))));
-        assertObjectRejected(onitama.core.Board.newGame());
+    void coreAuthoritativeObjectsAreNotWireSerializable() {
+        assertFalse(Serializable.class.isAssignableFrom(GameState.class),
+                "authoritative GameState must not be serializable over the wire");
+        assertFalse(Serializable.class.isAssignableFrom(Board.class),
+                "authoritative Board must not be serializable over the wire");
     }
 
     @Test
