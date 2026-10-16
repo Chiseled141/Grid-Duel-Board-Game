@@ -1,5 +1,7 @@
 # Step 5 — Playtest and Visual Review Report
 
+> Historical screenshot/video exports named below were removed during the requested cleanup; runtime GIFs and regeneration sources remain.
+
 **Date:** 2026-10-14  
 **Reviewer:** Agent 2 (Independent Testing & Playtest Review)  
 **Harness / Spec:** `AGENTS.md`, `GRID-DUEL-BOARD-GAME_SPEC.md`, `docs/agent2-testing-pipeline.md`, `docs/handoffs/step-05-animation.md`  

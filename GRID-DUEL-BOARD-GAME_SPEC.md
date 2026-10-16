@@ -52,7 +52,8 @@ committed skill cards from either player, showing owner, turn and artwork newest
 first. Record only accepted public events; never infer unseen opponent skills or
 private Foresight previews. Duplicate/stale updates do not add entries. Same-match
 reconnect preserves locally observed plays; new matches/rematches clear them.
-Card details remain available in a separate tab. This applies in practice too.
+The separate Card details tab is removed; enlarged cards and live tooltips provide
+card text. This applies in practice too.
 
 ### In-match chat (2026-10-16)
 
@@ -273,12 +274,27 @@ are not yet implemented. Preserve transaction and rating behavior.
 
 ## 6. Swing client and artwork
 
-- Game screen: 7×7 board; both public movement hands; own skill hand; opponent
-  skill-hand count; mana totals; deck counts; public spent skills; turn/phase;
-  skill details; skip movement, End Turn, resign and rematch. Show two shared deck
-  stacks with accepted-draw flights and two player avatar/mana badges. The Move Log
-  panel is removed; internal public history and board last-move feedback remain.
-  Remove transit-card, Master, temple and points presentation.
+- Game screen: enlarged 7×7 board; both public movement hands; enlarged own skill
+  cards with live descriptions; concealed opponent skills; mana and turn/phase;
+  played-card history, skip movement, End Turn, resign and rematch. Use the same
+  selected animated background as the menu, warm translucent surfaces and floating
+  ivory/gold actions, with the previous prominent pill design for Skip Movement,
+  End Turn and Cast Skill. Remove the Card details tab, VS banner, Your hand label and
+  bottom instruction strip. Keep context guidance on tooltips and board highlights.
+  A single unlabeled decorative pile anchors both kinds of draw animation; hide
+  deck titles/counts. The two authoritative decks, counts and recycling rules remain
+  distinct in engine/protocol. Never reveal concealed opponent skill faces.
+
+- Own cards support clicking or a left-button upward drag and release to select.
+  Settings offers Click or slide up (default) and Slide up only; persist the choice.
+  In slide-only mode clicks do not select. Short drags and Esc cancellation return
+  the card smoothly. Keep
+  selected cards raised during targeting. Only accepted actions launch card-play
+  flights to own-left/opponent-right presentation areas beside the board. Block
+  conflicting input during these flights, retain hand reflow, and reset visual
+  state on lifecycle changes. Areas never cover board squares and do not change
+  movement exchange or permanent skill consumption. Opponent skill faces may
+  appear only after their public committed event.
 - Draw from the player's side; Red flips canonical coordinates. Movement
   diagrams come from offset data, not painted rules. A compact 5×5 offset
   diagram is still valid for the existing patterns; it is not the game board.

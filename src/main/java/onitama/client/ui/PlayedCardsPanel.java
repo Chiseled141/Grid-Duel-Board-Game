@@ -21,7 +21,7 @@ final class PlayedCardsPanel extends JPanel {
     PlayedCardsPanel(ClientModel model) {
         super(new BorderLayout(0, 8));
         this.model = model;
-        setBackground(Theme.BG);
+        setOpaque(false);
         setBorder(BorderFactory.createEmptyBorder(12, 10, 10, 10));
         JPanel header = new JPanel(new BorderLayout());
         header.setOpaque(false);
@@ -33,12 +33,13 @@ final class PlayedCardsPanel extends JPanel {
         header.add(count, BorderLayout.EAST);
         add(header, BorderLayout.NORTH);
         list.setName("playedCards");
-        list.setBackground(Theme.BG);
+        list.setOpaque(false);
         list.setFixedCellHeight(124);
         list.setCellRenderer((items, value, index, selected, focus) -> new PlayRow(value));
         JScrollPane scroll = new JScrollPane(list);
+        scroll.setOpaque(false);
         scroll.setBorder(null);
-        scroll.getViewport().setBackground(Theme.BG);
+        scroll.getViewport().setOpaque(false);
         scroll.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
         scroll.getVerticalScrollBar().setUnitIncrement(24);
         scroll.setMinimumSize(new Dimension(0, 0));
@@ -63,6 +64,13 @@ final class PlayedCardsPanel extends JPanel {
             @Override public void onScreenChanged(Screen screen) { refresh(content); }
         });
         refresh(content);
+    }
+
+    @Override protected void paintComponent(Graphics graphics) {
+        var g = UiKit.nice(graphics);
+        g.setColor(MatchStyle.SURFACE);
+        g.fillRoundRect(0, 0, getWidth(), getHeight(), 10, 10);
+        g.dispose();
     }
 
     private void refresh(JPanel content) {
@@ -110,7 +118,7 @@ final class PlayedCardsPanel extends JPanel {
             try {
                 boolean own = play.actor() == model.myColor();
                 Color accent = Theme.playerColor(play.actor());
-                g.setColor(Theme.SURFACE);
+                g.setColor(MatchStyle.SURFACE);
                 g.fillRoundRect(0, 0, getWidth(), 116, 12, 12);
                 g.setColor(accent);
                 g.fillRoundRect(0, 12, 3, 88, 3, 3);

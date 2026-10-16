@@ -9,6 +9,20 @@ import static org.junit.jupiter.api.Assertions.*;
 class ClientSettingsTest {
     @TempDir Path temporary;
 
+    @Test void cardControlPreferenceDefaultsToBothGesturesAndRoundTrips() throws Exception {
+        var file = temporary.resolve("controls.properties");
+        assertTrue(ClientSettings.load(file).clickToSelectCards());
+        Files.writeString(file, "pieceStyle=2\n");
+        var settings = ClientSettings.load(file);
+        assertTrue(settings.clickToSelectCards(), "older settings gain both gestures");
+        for (boolean enabled : new boolean[]{false, true}) {
+            settings.setClickToSelectCards(enabled); settings.save(file);
+            var loaded = ClientSettings.load(file);
+            assertEquals(enabled, loaded.clickToSelectCards());
+            assertEquals(2, loaded.pieceStyle());
+        }
+    }
+
     @Test void menuThemeRoundTripsWithoutChangingOtherPreferences() throws Exception {
         var file = temporary.resolve("client.properties");
         var settings = new ClientSettings();

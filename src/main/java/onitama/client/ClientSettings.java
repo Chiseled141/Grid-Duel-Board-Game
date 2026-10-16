@@ -27,6 +27,7 @@ public final class ClientSettings {
     private int pieceStyle = 1;
     private boolean soundEnabled = true;
     private boolean reducedMotion = false;
+    private volatile boolean clickToSelectCards = true;
     private volatile MenuTheme menuTheme = MenuTheme.GOLDEN_FIELDS;
 
     /** Loads the settings file; keeps defaults when it does not exist. */
@@ -55,6 +56,8 @@ public final class ClientSettings {
                 properties.getProperty("soundEnabled"), settings.soundEnabled);
         settings.reducedMotion = parseBoolean(
                 properties.getProperty("reducedMotion"), settings.reducedMotion);
+        settings.clickToSelectCards = parseBoolean(
+                properties.getProperty("clickToSelectCards"), settings.clickToSelectCards);
         settings.menuTheme = MenuTheme.fromPreference(properties.getProperty("menuTheme"));
         return settings;
     }
@@ -73,6 +76,7 @@ public final class ClientSettings {
         properties.setProperty("pieceStyle", String.valueOf(pieceStyle));
         properties.setProperty("soundEnabled", String.valueOf(soundEnabled));
         properties.setProperty("reducedMotion", String.valueOf(reducedMotion));
+        properties.setProperty("clickToSelectCards", String.valueOf(clickToSelectCards));
         properties.setProperty("menuTheme", menuTheme.name());
         try {
             Files.createDirectories(file.toAbsolutePath().getParent());
@@ -151,6 +155,12 @@ public final class ClientSettings {
     public void setReducedMotion(boolean reducedMotion) {
         this.reducedMotion = reducedMotion;
     }
+
+    /** Whether a click may draw a card; upward dragging works in either mode. */
+    public boolean clickToSelectCards() { return clickToSelectCards; }
+
+    /** Chooses click-or-slide selection, or slide-only selection. */
+    public void setClickToSelectCards(boolean enabled) { clickToSelectCards = enabled; }
 
     /** Preferred scene shared by login and the main menu. */
     public MenuTheme menuTheme() { return menuTheme; }

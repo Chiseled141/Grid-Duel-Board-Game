@@ -25,31 +25,40 @@ public final class MenuMusic implements AutoCloseable {
     });
     private volatile boolean playingRequested;
     private volatile boolean closed;
+    private volatile MenuTheme requestedTheme = MenuTheme.GOLDEN_FIELDS;
+    private MenuTheme loadedTheme;
     // Clip ownership belongs exclusively to the audio worker, including loading and closing.
     private Clip clip;
     private boolean unavailable;
 
     /** Requests playback or pause without loading audio or waiting for a mixer on the caller. */
-    public synchronized void setPlaying(boolean playing) {
+    public synchronized void setPlaying(boolean playing, MenuTheme theme) {
         if (closed) {
             return;
         }
+        requestedTheme = java.util.Objects.requireNonNull(theme);
         playingRequested = playing;
         worker.execute(this::updatePlayback);
     }
 
     private void updatePlayback() {
-        if (closed || unavailable) {
+        if (closed) {
             return;
         }
-        if (playingRequested && clip == null) {
-            loadClip();
+        MenuTheme theme = requestedTheme;
+        if (theme != loadedTheme) {
+            if (clip != null) { clip.stop(); clip.close(); clip = null; }
+            loadedTheme = theme;
+            unavailable = false;
+        }
+        if (playingRequested && clip == null && !unavailable) {
+            loadClip(theme);
         }
         if (clip == null) {
             return;
         }
         // Loading can take time: honor the latest screen/mute choice before starting sound.
-        if (playingRequested && !closed) {
+        if (playingRequested && !closed && requestedTheme == loadedTheme) {
             if (!clip.isRunning()) {
                 clip.loop(Clip.LOOP_CONTINUOUSLY);
             }
@@ -58,10 +67,10 @@ public final class MenuMusic implements AutoCloseable {
         }
     }
 
-    private void loadClip() {
+    private void loadClip(MenuTheme theme) {
         Clip candidate = null;
         try {
-            URL resource = MenuMusic.class.getResource("/audio/menu-music.wav");
+            URL resource = MenuMusic.class.getResource(theme.music());
             if (resource == null) {
                 throw new IOException("Missing bundled menu music");
             }

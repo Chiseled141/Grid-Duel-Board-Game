@@ -22,6 +22,9 @@ public enum MenuTheme {
     /** Bundled still-image fallback filename. */
     public String still() { return still; }
 
+    /** Bundled Java Sound track for this scene. */
+    public String music() { return this == GOLDEN_FIELDS ? "/audio/golden-fields.wav" : "/audio/menu-music.wav"; }
+
     /** Missing or unknown preferences use Golden fields. */
     public static MenuTheme fromPreference(String value) {
         if (value != null) {

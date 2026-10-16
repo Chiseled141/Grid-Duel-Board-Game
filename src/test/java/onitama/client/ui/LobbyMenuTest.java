@@ -122,6 +122,27 @@ class LobbyMenuTest {
         });
     }
 
+    @Test void cardControlPickerSavesEitherModeWithoutNetworkTraffic() throws Exception {
+        SwingUtilities.invokeAndWait(() -> {
+            var ui = ui(); button(ui, "Settings").doClick();
+            assertTrue(button(ui, "Click or slide up").isSelected());
+            button(ui, "Slide up only").doClick();
+            assertFalse(ui.settings.clickToSelectCards());
+            assertTrue(button(ui, "Slide up only").isSelected());
+            assertFalse(button(ui, "Click or slide up").isSelected());
+            button(ui, "Click or slide up").doClick();
+            assertTrue(ui.settings.clickToSelectCards());
+            assertTrue(button(ui, "Click or slide up").isSelected());
+            assertEquals(2, ui.saved.get()); assertTrue(ui.sent.isEmpty());
+            layout(ui.panel);
+            for (String name : List.of("Click or slide up", "Slide up only")) {
+                var button = button(ui, name);
+                var point = SwingUtilities.convertPoint(button, 0, 0, ui.panel);
+                assertTrue(point.y >= 0 && point.y + button.getHeight() <= ui.panel.getHeight());
+            }
+        });
+    }
+
     @Test void themePickerChangesTheSceneAndSavesWithoutNetworkTraffic() throws Exception {
         SwingUtilities.invokeAndWait(() -> {
             var ui = ui();

@@ -1,5 +1,7 @@
 # Prerecorded valley menu loop
 
+> Historical screenshot/video exports named below were removed during the requested cleanup; runtime GIFs and regeneration sources remain.
+
 ## Request and acceptance
 
 Replace rejected static-image bending with an actual GIF/short video. The menu

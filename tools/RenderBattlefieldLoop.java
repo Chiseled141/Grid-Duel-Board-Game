@@ -8,10 +8,12 @@ import java.nio.file.*;
 public final class RenderBattlefieldLoop {
     private static final int WIDTH = 1280, HEIGHT = 720, FRAMES = 400;
     private final BufferedImage plate, flag, cloud;
+    private final java.util.List<Flower> flowers = new java.util.ArrayList<>();
 
     private RenderBattlefieldLoop() throws Exception {
         Path assets = Path.of("src/main/resources/assets");
         plate = ImageIO.read(assets.resolve("battlefield-animation/clean-plate.png").toFile());
+        extractFlowers();
         flag = ImageIO.read(assets.resolve("battlefield-animation/flag.png").toFile());
         cloud = ImageIO.read(assets.resolve("valley-animation/cloud.png").toFile());
     }
@@ -34,6 +36,7 @@ public final class RenderBattlefieldLoop {
             g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
             g.scale(WIDTH / 1672.0, HEIGHT / 941.0);
             g.drawImage(plate, 0, 0, 1672, 941, null);
+            swayingFlowers(g, cycle);
             driftingCloud(g, cycle, 525, 70, 750, 185, .14f);
             driftingCloud(g, cycle + 1.5, 840, 280, 780, 190, .12f);
             rotor(g, 1380, 521, 78, cycle + .5);
@@ -61,6 +64,60 @@ public final class RenderBattlefieldLoop {
                     h / (double) cloud.getHeight(), x + 70 * Math.sin(cycle), y), null);
         } finally { g.dispose(); }
     }
+
+    private void extractFlowers() {
+        // Coordinates refer to existing flower heads; every cutout pixel comes from this plate.
+        int[][] heads = {{180, 657, 13, 10}, {227, 676, 13, 10}, {260, 699, 14, 11},
+                {111, 763, 15, 10}, {205, 796, 28, 17}, {21, 794, 16, 13},
+                {78, 782, 15, 14}, {106, 809, 15, 14}, {280, 813, 16, 12},
+                {318, 834, 18, 15}, {363, 845, 15, 13}};
+        BufferedImage source = new BufferedImage(plate.getWidth(), plate.getHeight(), BufferedImage.TYPE_INT_RGB);
+        Graphics2D copy = source.createGraphics();
+        copy.drawImage(plate, 0, 0, null);
+        copy.dispose();
+        for (int index = 0; index < heads.length; index++) {
+            int[] head = heads[index];
+            int cx = head[0], cy = head[1], rx = head[2], ry = head[3];
+            BufferedImage cutout = new BufferedImage(rx * 2 + 1, ry * 2 + 1, BufferedImage.TYPE_INT_ARGB);
+            for (int y = -ry; y <= ry; y++) for (int x = -rx; x <= rx; x++) {
+                if (x * x / (double) (rx * rx) + y * y / (double) (ry * ry) > 1) continue;
+                int rgb = source.getRGB(cx + x, cy + y);
+                int red = (rgb >> 16) & 255, green = (rgb >> 8) & 255, blue = rgb & 255;
+                boolean petal = red > 145 && green > 110 && green > red * .62
+                        && (blue > green * .50 || (red > 180 && green > 135));
+                if (!petal) continue;
+                cutout.setRGB(x + rx, y + ry, rgb);
+                // Reveal nearby painted foliage, rather than leaving a stationary duplicate head.
+                plate.setRGB(cx + x, cy + y, nearbyFoliage(source, cx + x, cy + y, ry));
+            }
+            flowers.add(new Flower(cutout, cx - rx, cy - ry, rx, ry + 34, index * .35));
+        }
+    }
+
+    private int nearbyFoliage(BufferedImage source, int x, int y, int radius) {
+        for (int offset = radius + 5; offset < radius + 30; offset++) {
+            int sy = Math.min(source.getHeight() - 1, y + offset);
+            int rgb = source.getRGB(x, sy);
+            int red = (rgb >> 16) & 255, green = (rgb >> 8) & 255, blue = rgb & 255;
+            if (red < 150 && green > blue * 1.2) return rgb;
+        }
+        return source.getRGB(x, Math.min(source.getHeight() - 1, y + radius + 20));
+    }
+
+    private void swayingFlowers(Graphics2D parent, double cycle) {
+        for (Flower flower : flowers) {
+            Graphics2D g = (Graphics2D) parent.create();
+            try {
+                g.translate(flower.x(), flower.y());
+                double angle = .20 * Math.sin(3 * cycle + flower.phase())
+                        + .035 * Math.sin(5 * cycle + flower.phase());
+                g.rotate(angle, flower.pivotX(), flower.pivotY());
+                g.drawImage(flower.image(), 0, 0, null);
+            } finally { g.dispose(); }
+        }
+    }
+
+    private record Flower(BufferedImage image, int x, int y, int pivotX, int pivotY, double phase) { }
 
     private void wavingFlag(Graphics2D parent, int x, int y, int width, int height, double cycle, double phase) {
         double sx = width / (double) flag.getWidth(), sy = height / (double) flag.getHeight();

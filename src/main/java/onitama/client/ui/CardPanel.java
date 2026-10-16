@@ -37,7 +37,6 @@ public final class CardPanel extends JComponent {
     private final boolean dimmed;
     private boolean selected;
 
-    private boolean hovered;
     private float hover; // 0..1 tween for lift/tilt
     private double cardScale = 1.0;
     private Timer tween;
@@ -88,13 +87,11 @@ public final class CardPanel extends JComponent {
 
                 @Override
                 public void mouseEntered(MouseEvent event) {
-                    hovered = true;
                     startTween(1f);
                 }
 
                 @Override
                 public void mouseExited(MouseEvent event) {
-                    hovered = false;
                     startTween(0f);
                 }
             });
@@ -160,7 +157,7 @@ public final class CardPanel extends JComponent {
 
     @Override
     protected void paintComponent(Graphics graphics) {
-        if (DeckDrawOverlay.isMasked(this)) return;
+        if (DeckDrawOverlay.isMasked(this) || CardPlayOverlay.isMasked(this)) return;
         Graphics2D g = (Graphics2D) graphics.create();
         g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 
