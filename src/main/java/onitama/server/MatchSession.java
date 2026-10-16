@@ -1,29 +1,38 @@
 package onitama.server;
 
-import onitama.core.CardDeck;
 import onitama.core.Elo;
-import onitama.core.GameState;
-import onitama.core.IllegalMoveException;
-import onitama.core.Move;
 import onitama.core.PlayerColor;
-import onitama.core.RulesEngine;
-import onitama.core.WinCondition;
+import onitama.core.duel.ActionError;
+import onitama.core.duel.ActionResult;
+import onitama.core.duel.EndReason;
+import onitama.core.duel.GameAction;
+import onitama.core.duel.GameOutcome;
+import onitama.core.duel.GameState;
+import onitama.core.duel.PlayerView;
+import onitama.core.duel.PublicEvent;
+import onitama.core.duel.RulesConfig;
+import onitama.core.duel.RulesEngine;
+import onitama.core.duel.TurnPhase;
 import onitama.db.UserDao;
+import onitama.net.ActionReceipt;
+import onitama.net.ActionReply;
+import onitama.net.ActionRequest;
 import onitama.net.ErrorMessage;
 import onitama.net.GameOver;
-import onitama.net.MatchStart;
+import onitama.net.GameUpdate;
+import onitama.net.MatchSync;
 import onitama.net.Message;
-import onitama.net.MoveApplied;
-import onitama.net.MoveRejected;
-import onitama.net.MoveRequest;
 import onitama.net.OpponentLeft;
 import onitama.net.RematchAccept;
 import onitama.net.UserProfile;
 
 import java.util.EnumMap;
 import java.util.EnumSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
@@ -34,11 +43,9 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- * One live game. All mutations of the authoritative {@link GameState} happen
- * as tasks on a single-thread executor, so the game state is thread-confined
- * and needs no locks — the concurrency model of the whole server in one
- * class. Public methods only submit tasks and return immediately; they may
- * be called from any thread (client handler reader loops, grace timers).
+ * One live Grid Duel match session.
+ * All mutations of the authoritative {@link GameState} run on a single-thread executor.
+ * Concurrency model: thread-confined state, lock-free engine execution.
  */
 public final class MatchSession {
 
@@ -51,15 +58,30 @@ public final class MatchSession {
     private final String redUsername;
     private final Map<PlayerColor, ClientHandler> players = new EnumMap<>(PlayerColor.class);
     private final ExecutorService executor;
+    private final RulesConfig rulesConfig;
 
+    private static final class PlayerTrack {
+        long nextSequence = 1;
+        ActionRequest lastRequest;
+        ActionReceipt lastReceipt;
+
+        void reset() {
+            nextSequence = 1;
+            lastRequest = null;
+            lastReceipt = null;
+        }
+    }
+
+    private final Map<PlayerColor, PlayerTrack> tracks = new EnumMap<>(PlayerColor.class);
+    private String matchId;
     private GameState state;
     private volatile boolean finished;
     private GameOver gameOver;
     private boolean blueWantsRematch;
     private boolean redWantsRematch;
     private ScheduledFuture<?> forfeitTimer;
-    /** Colors currently without a live connection; confined to the executor. */
     private final Set<PlayerColor> disconnected = EnumSet.noneOf(PlayerColor.class);
+    private boolean paused;
 
     /** Creates a session between two authenticated handlers; call {@link #start()} next. */
     public MatchSession(GameServer server, String roomCode, ClientHandler blue, ClientHandler red) {
@@ -69,79 +91,107 @@ public final class MatchSession {
         this.redUsername = red.username();
         this.players.put(PlayerColor.BLUE, blue);
         this.players.put(PlayerColor.RED, red);
+        this.tracks.put(PlayerColor.BLUE, new PlayerTrack());
+        this.tracks.put(PlayerColor.RED, new PlayerTrack());
+        this.rulesConfig = server.config().rulesConfig();
         int id = SESSION_COUNTER.incrementAndGet();
         this.executor = Executors.newSingleThreadExecutor(
-                runnable -> new Thread(runnable, "onitama-match-" + id));
+                runnable -> new Thread(runnable, "grid-duel-match-" + id));
         blue.joinMatch(this, PlayerColor.BLUE);
         red.joinMatch(this, PlayerColor.RED);
     }
 
-    /** Deals the cards and sends {@link MatchStart} to both players. */
+    /** Deals the match and sends MatchSync to both players. */
     public void start() {
         submit(this::beginNewGame);
     }
 
     /** Deals a fresh game and announces it to both players. */
     private void beginNewGame() {
-        state = GameState.newGame(CardDeck.deal(server.config().dealRandom()));
+        matchId = UUID.randomUUID().toString();
+        tracks.get(PlayerColor.BLUE).reset();
+        tracks.get(PlayerColor.RED).reset();
+        long seed = server.config().dealRandom().nextLong();
+        state = RulesEngine.newGame(rulesConfig, seed);
+        paused = false;
         announceMatchStart();
     }
 
-    /** Validates and applies a move requested by {@code sender}. */
-    public void submitMove(ClientHandler sender, MoveRequest request) {
+    /**
+     * Submits an gameplay action request from a connected client.
+     */
+    public void submitAction(ClientHandler sender, ActionRequest request) {
         submit(() -> {
-            PlayerColor color = colorOf(sender);
-            if (color == null) {
-                sender.send(new MoveRejected("you are not in this match"));
+            PlayerColor actor = colorOf(sender);
+            if (actor == null || players.get(actor) != sender) {
+                sender.send(new ErrorMessage("you are not an active player in this match"));
                 return;
             }
-            if (finished) {
-                sender.send(new MoveRejected("the game is already over"));
+            if (!this.matchId.equals(request.matchId())) {
+                sender.send(new ErrorMessage("stale or invalid matchId: " + request.matchId()));
                 return;
             }
-            if (state.turn() != color) {
-                sender.send(new MoveRejected("it is not your turn"));
-                return;
-            }
-            Move move = new Move(request.from(), request.to(), request.cardId());
-            try {
-                RulesEngine.apply(state, move);
-                broadcast(new MoveApplied(state, move));
-                if (!state.isOngoing()) {
-                    finish(state.winner(), state.way());
-                }
-            } catch (IllegalMoveException e) {
-                sender.send(new MoveRejected(e.getMessage()));
-            }
-        });
-    }
 
-    /** Applies a pass requested by {@code sender} (only legal with no legal move). */
-    public void submitPass(ClientHandler sender, String cardIdToDiscard) {
-        submit(() -> {
-            PlayerColor color = colorOf(sender);
-            if (color == null || finished) {
-                sender.send(new MoveRejected("no active game"));
+            PlayerTrack track = tracks.get(actor);
+            long seq = request.sequence();
+            long nextSeq = track.nextSequence;
+
+            if (seq == nextSeq - 1) {
+                if (Objects.equals(track.lastRequest, request)) {
+                    sender.send(new ActionReply(matchId, seq, track.lastReceipt, createSync(actor)));
+                    return;
+                } else {
+                    ActionReceipt receipt = new ActionReceipt(false, state.revision(), ActionError.SEQUENCE_CONFLICT);
+                    sender.send(new ActionReply(matchId, seq, receipt, createSync(actor)));
+                    return;
+                }
+            } else if (seq < nextSeq - 1) {
+                ActionReceipt receipt = new ActionReceipt(false, state.revision(), ActionError.OLD_SEQUENCE);
+                sender.send(new ActionReply(matchId, seq, receipt, createSync(actor)));
+                return;
+            } else if (seq > nextSeq) {
+                ActionReceipt receipt = new ActionReceipt(false, state.revision(), ActionError.SEQUENCE_GAP);
+                sender.send(new ActionReply(matchId, seq, receipt, createSync(actor)));
                 return;
             }
-            try {
-                RulesEngine.pass(state, cardIdToDiscard);
-                broadcast(new MoveApplied(state, null));
-                if (!state.isOngoing()) {
-                    finish(state.winner(), state.way());
-                }
-            } catch (IllegalMoveException e) {
-                sender.send(new MoveRejected(e.getMessage()));
-            }
-        });
-    }
 
-    /** The sender resigns; the opponent wins by forfeit. */
-    public void submitResign(ClientHandler sender) {
-        submit(() -> {
-            PlayerColor color = colorOf(sender);
-            if (color != null && !finished) {
-                finish(color.opponent(), WinCondition.FORFEIT);
+            // Consume sequence
+            track.nextSequence = nextSeq + 1;
+            track.lastRequest = request;
+
+            if (paused && !(request.action() instanceof GameAction.Resign)) {
+                ActionReceipt receipt = new ActionReceipt(false, state.revision(), ActionError.MATCH_PAUSED);
+                track.lastReceipt = receipt;
+                sender.send(new ActionReply(matchId, seq, receipt, createSync(actor)));
+                return;
+            }
+
+            if (request.expectedRevision() != state.revision()) {
+                ActionReceipt receipt = new ActionReceipt(false, state.revision(), ActionError.STALE_REVISION);
+                track.lastReceipt = receipt;
+                sender.send(new ActionReply(matchId, seq, receipt, createSync(actor)));
+                return;
+            }
+
+            ActionResult result = RulesEngine.apply(state, actor, request.action());
+            if (result instanceof ActionResult.Rejected rej) {
+                ActionReceipt receipt = new ActionReceipt(false, state.revision(), rej.error());
+                track.lastReceipt = receipt;
+                sender.send(new ActionReply(matchId, seq, receipt, createSync(actor)));
+                return;
+            }
+
+            ActionResult.Accepted acc = (ActionResult.Accepted) result;
+            this.state = acc.nextState();
+            ActionReceipt receipt = new ActionReceipt(true, state.revision(), null);
+            track.lastReceipt = receipt;
+
+            sendGameUpdates(acc.events());
+            sender.send(new ActionReply(matchId, seq, receipt, createSync(actor)));
+
+            if (state.phase() == TurnPhase.FINISHED) {
+                GameOutcome outcome = state.outcome();
+                finish(outcome.winner(), outcome.reason());
             }
         });
     }
@@ -175,10 +225,8 @@ public final class MatchSession {
     }
 
     /**
-     * A player's connection dropped. If the game is still running, the
-     * opponent is told and a grace timer is armed; if it fires before a
-     * reconnect, the disconnected player forfeits. Events from a handler
-     * that was already replaced by a reconnect are ignored.
+     * A player's connection dropped. If the game is running, the opponent is notified,
+     * match is paused, and a forfeit timer is scheduled.
      */
     public void onDisconnect(ClientHandler handler) {
         submit(() -> {
@@ -191,12 +239,21 @@ public final class MatchSession {
                 maybeRetire();
                 return;
             }
+            paused = true;
             int graceSeconds = server.config().graceSeconds();
-            players.get(color.opponent()).send(new OpponentLeft(graceSeconds));
+            ClientHandler opponentHandler = players.get(color.opponent());
+            opponentHandler.send(new OpponentLeft(graceSeconds));
+            opponentHandler.send(createSync(color.opponent()));
+
             forfeitTimer = server.timers().schedule(
                     () -> submit(() -> {
                         if (!finished && players.get(color) == handler) {
-                            finish(color.opponent(), WinCondition.FORFEIT);
+                            ActionResult result = RulesEngine.forfeit(state, color);
+                            if (result instanceof ActionResult.Accepted acc) {
+                                state = acc.nextState();
+                                sendGameUpdates(acc.events());
+                                finish(color.opponent(), EndReason.FORFEIT);
+                            }
                         }
                     }),
                     graceSeconds, TimeUnit.SECONDS);
@@ -204,8 +261,7 @@ public final class MatchSession {
     }
 
     /**
-     * A player re-attached through a new connection: adopt the new handler,
-     * cancel the forfeit timer and deliver the current state.
+     * A player reconnected: adopt the new handler, cancel forfeit timer, restore state.
      */
     public void onReconnect(ClientHandler newHandler, PlayerColor color) {
         submit(() -> {
@@ -215,15 +271,21 @@ public final class MatchSession {
                 forfeitTimer.cancel(false);
                 forfeitTimer = null;
             }
+            if (disconnected.isEmpty()) {
+                paused = false;
+            }
             if (finished) {
                 newHandler.send(gameOver);
             } else {
-                newHandler.send(new MoveApplied(state, state.lastMove()));
+                newHandler.send(createSync(color));
+                if (!paused) {
+                    players.get(color.opponent()).send(createSync(color.opponent()));
+                }
             }
         });
     }
 
-    /** Stops the session immediately (server shutdown); no further messages. */
+    /** Stops the session immediately; shuts down executor. */
     public void abort() {
         executor.shutdownNow();
     }
@@ -233,17 +295,12 @@ public final class MatchSession {
         return roomCode;
     }
 
-    /**
-     * True while this session still owns its players: the game is running or
-     * finished-but-rematchable. Read from other threads to decide whether a
-     * player may start something new.
-     *
-     * <p><b>Note:</b> this reads the volatile {@code finished} flag without
-     * entering the match executor.  There is a small TOCTOU gap: the match
-     * could finish between this check and the caller's next action. In
-     * practice this is harmless because the match executor will reject any
-     * stale action submitted after the game ends.
-     */
+    /** The current active match ID. */
+    public String matchId() {
+        return matchId;
+    }
+
+    /** True while this session still owns its players. */
     public boolean isActive() {
         return !finished;
     }
@@ -251,23 +308,29 @@ public final class MatchSession {
     private void announceMatchStart() {
         for (Map.Entry<PlayerColor, ClientHandler> entry : players.entrySet()) {
             PlayerColor color = entry.getKey();
-            String opponent = color == PlayerColor.BLUE ? redUsername : blueUsername;
-            entry.getValue().send(new MatchStart(color, roomCode, opponent, state));
+            entry.getValue().send(createSync(color));
         }
+    }
+
+    private void sendGameUpdates(List<PublicEvent> events) {
+        for (Map.Entry<PlayerColor, ClientHandler> entry : players.entrySet()) {
+            PlayerColor color = entry.getKey();
+            MatchSync sync = createSync(color);
+            entry.getValue().send(new GameUpdate(sync, events));
+        }
+    }
+
+    private MatchSync createSync(PlayerColor viewer) {
+        PlayerView view = RulesEngine.project(state, viewer);
+        long nextSeq = tracks.get(viewer).nextSequence;
+        return new MatchSync(matchId, roomCode, view, paused, nextSeq);
     }
 
     private void broadcast(Message message) {
         players.values().forEach(handler -> handler.send(message));
     }
 
-    /**
-     * Ends the match: computes the Elo update, hands the result to the
-     * server's persistence hook (match row + both players' stats in one
-     * transaction), then sends {@link GameOver} to both
-     * players. The executor stays alive so the players can still agree on a
-     * rematch; it is retired once both players are gone.
-     */
-    private void finish(PlayerColor winner, WinCondition way) {
+    private void finish(PlayerColor winner, EndReason way) {
         if (finished) {
             return;
         }
@@ -279,16 +342,12 @@ public final class MatchSession {
             UserProfile red = userDao.profileOf(redUsername);
             Elo.Result elo = Elo.update(blue.elo(), red.elo(), winner);
             result = new MatchResult(roomCode, blueUsername, redUsername,
-                    winner, way, elo.blue(), elo.red(), state.moveNumber());
+                    winner, way, elo.blue(), elo.red(),
+                    state.rules().rulesVersion(), state.startedTurns(), state.completedTurns());
             server.onMatchFinished(result);
         } catch (RuntimeException e) {
-            // e.g. an account deleted mid-game (AuthenticationException) or a
-            // database failure: must not kill the match executor thread — the
-            // game still has to end gracefully for both players.
             LOG.log(Level.SEVERE, "match " + roomCode + ": recording the result failed", e);
         } finally {
-            // GameOver and cleanup run no matter what; without a recorded
-            // result the Elo fields stay at 0 (no rating change applied).
             final MatchResult recorded = result;
             gameOver = new GameOver(winner, way,
                     recorded == null ? 0 : recorded.blueEloAfter(),
@@ -299,16 +358,12 @@ public final class MatchSession {
             maybeRetire();
             LOG.info(() -> "match " + roomCode + " finished: " + way + ", winner="
                     + (recorded == null ? null : recorded.winnerUsername())
-                    + ", half-moves=" + state.moveNumber()
+                    + ", startedTurns=" + state.startedTurns()
+                    + ", completedTurns=" + state.completedTurns()
                     + (recorded == null ? " (result not recorded)" : ""));
         }
     }
 
-    /**
-     * Shuts the session executor down once the match is over and both
-     * players have disconnected; until then the session stays available for
-     * rematch votes and reconnect deliveries.
-     */
     private void maybeRetire() {
         if (disconnected.size() == 2) {
             executor.shutdown();
@@ -333,7 +388,6 @@ public final class MatchSession {
         return null;
     }
 
-    /** Submits a task, converting a rejected task (match over) into a no-op. */
     private void submit(Runnable task) {
         try {
             executor.submit(task);

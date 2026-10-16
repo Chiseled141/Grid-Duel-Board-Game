@@ -139,7 +139,8 @@ public final class GameServer {
         }
         LOG.info("match " + result.roomCode() + " finished: " + result.way()
                 + ", winner=" + result.winnerUsername()
-                + ", half-moves=" + result.moveCount());
+                + ", startedTurns=" + result.startedTurns()
+                + ", completedTurns=" + result.completedTurns());
     }
 
     ServerConfig config() {

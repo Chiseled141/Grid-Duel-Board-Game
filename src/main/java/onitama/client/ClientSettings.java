@@ -26,6 +26,7 @@ public final class ClientSettings {
     private int windowHeight = 880;
     private int pieceStyle = 1;
     private boolean soundEnabled = true;
+    private boolean reducedMotion = false;
 
     /** Loads the settings file; keeps defaults when it does not exist. */
     public static ClientSettings load() {
@@ -47,6 +48,8 @@ public final class ClientSettings {
         settings.pieceStyle = parseInt(properties.getProperty("pieceStyle"), settings.pieceStyle);
         settings.soundEnabled = parseBoolean(
                 properties.getProperty("soundEnabled"), settings.soundEnabled);
+        settings.reducedMotion = parseBoolean(
+                properties.getProperty("reducedMotion"), settings.reducedMotion);
         return settings;
     }
 
@@ -59,6 +62,7 @@ public final class ClientSettings {
         properties.setProperty("windowHeight", String.valueOf(windowHeight));
         properties.setProperty("pieceStyle", String.valueOf(pieceStyle));
         properties.setProperty("soundEnabled", String.valueOf(soundEnabled));
+        properties.setProperty("reducedMotion", String.valueOf(reducedMotion));
         try {
             Files.createDirectories(FILE.getParent());
             try (OutputStream out = Files.newOutputStream(FILE)) {
@@ -119,12 +123,21 @@ public final class ClientSettings {
         this.pieceStyle = pieceStyle;
     }
 
-    /** Whether the sound toggle in the header is on (no audio engine yet). */
+    /** Whether menu music is enabled by the persisted header sound toggle. */
     public boolean soundEnabled() {
         return soundEnabled;
     }
 
     public void setSoundEnabled(boolean soundEnabled) {
         this.soundEnabled = soundEnabled;
+    }
+
+    /** Whether reduced motion is enabled to skip travel, flips, and pulses. */
+    public boolean reducedMotion() {
+        return reducedMotion;
+    }
+
+    public void setReducedMotion(boolean reducedMotion) {
+        this.reducedMotion = reducedMotion;
     }
 }

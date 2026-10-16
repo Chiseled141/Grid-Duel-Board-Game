@@ -71,12 +71,39 @@ public final class OnitamaClient implements AutoCloseable, ServerConnection {
         }
         Socket newSocket = new Socket();
         newSocket.connect(new InetSocketAddress(host, port), CONNECT_TIMEOUT_MILLIS);
+        newSocket.setSoTimeout(CONNECT_TIMEOUT_MILLIS);
         ObjectOutputStream out = new ObjectOutputStream(newSocket.getOutputStream());
         out.flush();
         ObjectInputStream in = new ObjectInputStream(newSocket.getInputStream());
         // Reject any serialized class outside the protocol allowlist before
         // readObject can instantiate it (deserialization gadget defense).
         in.setObjectInputFilter(Message.WIRE_FILTER);
+
+        try {
+            Object greetingObj = in.readObject();
+            if (!(greetingObj instanceof onitama.net.ErrorMessage greeting)
+                    || !"GRID_DUEL_PROTOCOL:2".equals(greeting.text())) {
+                newSocket.close();
+                throw new IOException("server handshake failed: expected GRID_DUEL_PROTOCOL:2 greeting, got " + greetingObj);
+            }
+            out.reset();
+            out.writeObject(new onitama.net.ProtocolHello(2));
+            out.flush();
+
+            Object readyObj = in.readObject();
+            if (!(readyObj instanceof onitama.net.ProtocolReady ready) || ready.version() != 2) {
+                newSocket.close();
+                throw new IOException("server handshake failed: expected ProtocolReady(2), got " + readyObj);
+            }
+        } catch (java.net.SocketTimeoutException e) {
+            newSocket.close();
+            throw new IOException("handshake timed out waiting for GRID_DUEL_PROTOCOL:2: server upgrade required", e);
+        } catch (ClassNotFoundException e) {
+            newSocket.close();
+            throw new IOException("protocol error during handshake", e);
+        }
+        newSocket.setSoTimeout(0);
+
         socket = newSocket;
         running = true;
         lastReceivedAt = System.currentTimeMillis();

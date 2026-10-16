@@ -56,7 +56,7 @@ public final class LobbyPanel extends JPanel {
             super.paintComponent(graphics);
             if (getText().isEmpty() && !isFocusOwner()) {
                 Graphics2D g = (Graphics2D) graphics.create();
-                g.setColor(Theme.MUTED);
+                g.setColor(Theme.MUTED_INK);
                 g.setFont(Theme.normal(11f));
                 FontMetrics metrics = g.getFontMetrics();
                 g.drawString("ENTER CODE", 12,
@@ -225,11 +225,11 @@ public final class LobbyPanel extends JPanel {
         repaint();
     }
 
-    /** The sumi-e temple painting as the lobby background (cover, left-anchored). */
+    /** The colorful mountain-valley painting as the lobby background (cover, left-anchored). */
     @Override
     protected void paintComponent(Graphics graphics) {
         super.paintComponent(graphics);
-        java.awt.Image background = AssetStore.optional("menu-background.png");
+        java.awt.Image background = AssetStore.optional("cinematic-valley.png");
         if (background == null) {
             return;
         }

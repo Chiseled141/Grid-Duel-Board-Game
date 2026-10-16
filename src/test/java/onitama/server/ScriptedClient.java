@@ -27,12 +27,28 @@ final class ScriptedClient implements AutoCloseable {
     private final ObjectInputStream in;
 
     ScriptedClient(int port) throws IOException {
+        this(port, true);
+    }
+
+    ScriptedClient(int port, boolean autoHandshake) throws IOException {
         socket = new Socket("127.0.0.1", port);
         socket.setSoTimeout(READ_TIMEOUT_MILLIS);
         // Both ends must create the output stream first and flush the header.
         out = new ObjectOutputStream(socket.getOutputStream());
         out.flush();
         in = new ObjectInputStream(socket.getInputStream());
+        if (autoHandshake) {
+            handshake();
+        }
+    }
+
+    void handshake() {
+        onitama.net.ErrorMessage greeting = expect(onitama.net.ErrorMessage.class);
+        if (!"GRID_DUEL_PROTOCOL:2".equals(greeting.text())) {
+            fail("expected GRID_DUEL_PROTOCOL:2 greeting, got " + greeting.text());
+        }
+        send(new onitama.net.ProtocolHello(2));
+        expect(onitama.net.ProtocolReady.class);
     }
 
     /** Sends one message. */

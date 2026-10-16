@@ -1,11 +1,9 @@
 package onitama.client.ui;
 
-import onitama.core.Board;
-import onitama.core.GameState;
-import onitama.core.Move;
-import onitama.core.Piece;
 import onitama.core.PlayerColor;
 import onitama.core.Square;
+import onitama.core.duel.PlacedPiece;
+import onitama.core.duel.PlayerView;
 
 import java.awt.BasicStroke;
 import java.awt.Color;
@@ -16,63 +14,73 @@ import java.awt.Image;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseMotionAdapter;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
+import java.util.Set;
 import java.util.function.Consumer;
 
 import javax.swing.JComponent;
 import javax.swing.Timer;
 
 /**
- * The board canvas, rendered from the designed mat artwork (board-empty.png:
- * parchment tiles, ink grid, torii temple marks and the wooden frame are all
- * baked into the image). Pieces are the designed figurine sprites. The board
- * is responsive — geometry is recomputed from the panel's current size — and
- * always drawn from the viewer's side (own home row at the bottom). Highlights
- * (selection, legal moves, last move, capture effect, move animation) layer
- * on top; the drawn tiles/figurines remain the fallback when the artwork is
- * missing. Used by the game screen.
+ * Responsive 7x7 board canvas for Grid Duel.
+ * Drawn from the viewer's side (own home row at the bottom).
+ * Six identical pieces per side; no temple arch or Master distinctions.
  */
 public final class BoardPanel extends JComponent {
 
-    private static final int MIN_CELL = 30;
-    /** The playfield's share of the board image (measured from the artwork). */
+    public static final int BOARD_SIZE = onitama.core.duel.Board.SIZE; // 7
+    private static final int MIN_CELL = 26;
     private static final double GRID_SHARE = 0.89;
-    private static final double GRID_INSET = 0.053;
 
-    private GameState state;
+    private List<PlacedPiece> pieces = List.of();
     private PlayerColor viewColor = PlayerColor.BLUE;
     private Square selectedSquare;
     private List<Square> targets = List.of();
     private Consumer<Square> clickHandler;
 
-    // Current geometry, recomputed on every paint and reused by click mapping.
-    private int cell = 64;
+    private int cell = 54;
     private int originX;
     private int originY;
-    private int imgX;
-    private int imgY;
-    private int imgSize;
 
-    private Move lastMove;
+    private Square lastMoveFrom;
+    private Square lastMoveTo;
     private Square hoveredSquare;
-    private CaptureEffect captureEffect;
-    private Move animMove;
-    private long animStart;
-    private PlayerColor animPlayer;
-    private boolean animMaster;
-    /** Gentle breathing of the selection ring while a piece is selected. */
+    private boolean reducedMotion;
+
+    // Targeting feedback
+    private java.util.Set<Integer> selectablePieceIds = java.util.Set.of();
+    private List<Integer> selectedPieceIds = List.of();
+    private java.util.Set<Square> selectableSquares = java.util.Set.of();
+    private List<Square> selectedDestinations = List.of();
+
+    // Multi-piece and batch animations
+    public record MovingPiece(int pieceId, Square from, Square to, PlayerColor color) {}
+    public record EliminationEffect(Square square, Color color, long startMillis, long durationMillis) {}
+    public record SkillCue(String name, onitama.core.duel.SkillCategory category, PlayerColor actor, long startMillis, long durationMillis) {}
+
+    private final List<MovingPiece> movingPieces = new ArrayList<>();
+    private long moveAnimStart;
+    private static final long MOVE_ANIM_MS = 260;
+
+    private final List<EliminationEffect> eliminationEffects = new ArrayList<>();
+    private static final long ELIM_ANIM_MS = 380;
+
+    private final List<SkillCue> skillCues = new ArrayList<>();
+    private static final long SKILL_CUE_MS = 520;
+
+    private Timer animationTimer;
     private float selectionPulse;
     private Timer selectionPulseTimer;
 
-    /** A short expanding-ring animation where a piece was captured. */
-    private record CaptureEffect(Square square, Color color, long startMillis) {
-    }
-
-    /** Creates the panel and wires the mouse click mapping. */
     public BoardPanel() {
         addMouseListener(new MouseAdapter() {
             @Override
             public void mouseClicked(MouseEvent event) {
+                if (!movingPieces.isEmpty()) {
+                    finishMoveAnimation();
+                }
                 Square square = squareAt(event.getX(), event.getY());
                 if (square != null && clickHandler != null) {
                     clickHandler.accept(square);
@@ -92,57 +100,59 @@ public final class BoardPanel extends JComponent {
         });
     }
 
-    /**
-     * Fits the board: the mat image scales to the panel, and the playfield
-     * (its inner grid) defines the cell size and origin.
-     */
-    private void computeGeometry() {
-        int width = Math.max(getWidth(), 2 * MIN_CELL * Board.SIZE);
-        int height = Math.max(getHeight(), 2 * MIN_CELL * Board.SIZE);
-        imgSize = Math.min(width, height) - 12;
-        int gridPx = (int) (imgSize * GRID_SHARE);
-        cell = Math.max(MIN_CELL, gridPx / Board.SIZE);
-        int span = cell * Board.SIZE;
+    public void computeGeometry() {
+        int width = Math.max(1, getWidth());
+        int height = Math.max(1, getHeight());
+        int canvasSize = Math.max(1, Math.min(width, height) - 12);
+        int gridPx = (int) (canvasSize * GRID_SHARE);
+        cell = Math.max(1, gridPx / BOARD_SIZE);
+        int span = cell * BOARD_SIZE;
         originX = (width - span) / 2;
         originY = (height - span) / 2;
-        imgX = originX - (int) (imgSize * GRID_INSET);
-        imgY = originY - (int) (imgSize * GRID_INSET);
     }
 
     @Override
     public Dimension getPreferredSize() {
-        return new Dimension(2 * MIN_CELL * Board.SIZE + 40,
-                2 * MIN_CELL * Board.SIZE + 40);
+        return new Dimension(2 * MIN_CELL * BOARD_SIZE + 60,
+                2 * MIN_CELL * BOARD_SIZE + 60);
     }
 
     @Override
     public Dimension getMinimumSize() {
-        return new Dimension(2 * MIN_CELL * Board.SIZE, 2 * MIN_CELL * Board.SIZE);
+        return new Dimension(2 * MIN_CELL * BOARD_SIZE, 2 * MIN_CELL * BOARD_SIZE);
     }
 
-    /** Sets the state to render and the side to view from. */
-    public void setView(GameState state, PlayerColor viewColor) {
-        this.state = state;
-        this.viewColor = viewColor;
+    /** Sets the state to render from the player's view. */
+    public void setView(PlayerView view) {
+        if (view == null) {
+            this.pieces = List.of();
+            this.viewColor = PlayerColor.BLUE;
+        } else {
+            this.pieces = view.pieces();
+            this.viewColor = view.viewer();
+        }
         repaint();
     }
 
-    /** Sets the selected square and the highlighted legal destinations. */
+    public void setPieces(List<PlacedPiece> pieces, PlayerColor viewColor) {
+        this.pieces = pieces == null ? List.of() : List.copyOf(pieces);
+        this.viewColor = viewColor == null ? PlayerColor.BLUE : viewColor;
+        repaint();
+    }
+
     public void setSelection(Square selectedSquare, List<Square> targets) {
         this.selectedSquare = selectedSquare;
-        this.targets = targets == null ? List.of() : targets;
+        this.targets = targets == null ? List.of() : List.copyOf(targets);
         updateSelectionPulse();
         repaint();
     }
 
-    /** Clears all selection highlights and stops their animation timer. */
     public void clearHighlights() {
         setSelection(null, List.of());
     }
 
-    /** Runs the ring pulse exactly while a selection is on the board. */
     private void updateSelectionPulse() {
-        boolean active = selectedSquare != null;
+        boolean active = selectedSquare != null && !reducedMotion;
         if (active && selectionPulseTimer == null) {
             selectionPulseTimer = new Timer(60, event -> {
                 selectionPulse = (selectionPulse + 0.09f) % 1f;
@@ -156,231 +166,373 @@ public final class BoardPanel extends JComponent {
         }
     }
 
-    /** Sets the move to highlight (from/to squares), or null for none. */
-    public void setLastMove(Move lastMove) {
-        this.lastMove = lastMove;
+    public void setLastMove(Square from, Square to) {
+        this.lastMoveFrom = from;
+        this.lastMoveTo = to;
         repaint();
     }
 
-    /** Registers the callback invoked with the clicked canonical square. */
     public void onClick(Consumer<Square> clickHandler) {
         this.clickHandler = clickHandler;
     }
 
-    // The app-wide piece style (1 ink tokens, 2 seal stones, 3 ink
-    // silhouettes); shared by every board in the application.
     private static volatile int pieceStyle = 1;
 
-    /** Sets the piece style used by all boards (lobby setting). */
     public static void setDefaultPieceStyle(int style) {
         pieceStyle = Math.max(1, Math.min(3, style));
     }
 
-    /** The piece sprite for the current style, falling back to the legacy set. */
-    private static Image pieceSprite(boolean master, PlayerColor color) {
-        String kind = master ? "master" : "student";
+    private static Image pieceSprite(PlayerColor color) {
         String colorName = color.name().toLowerCase();
         Image styled = AssetStore.optional("pieces/style" + pieceStyle
-                + "-" + kind + "-" + colorName + ".png");
+                + "-student-" + colorName + ".png");
         if (styled != null) {
             return styled;
         }
-        return AssetStore.optional("piece-" + kind + "-" + colorName + ".png");
+        return AssetStore.optional("piece-student-" + colorName + ".png");
     }
 
-    /**
-     * Animates the latest half-move: the moving figurine slides from its
-     * origin to the destination instead of teleporting (§13).
-     */
-    public void animateMove(Move move, PlayerColor mover, boolean master) {
-        animMove = move;
-        animStart = System.currentTimeMillis();
-        animPlayer = mover;
-        animMaster = master;
-        Timer animation = new Timer(16, event -> {
-            if (System.currentTimeMillis() - animStart > 240) {
-                ((Timer) event.getSource()).stop();
-                animMove = null;
-            }
+    public void setReducedMotion(boolean reducedMotion) {
+        this.reducedMotion = reducedMotion;
+        updateSelectionPulse();
+        if (reducedMotion) {
+            cancelAnimations();
+        }
+    }
+
+    public boolean reducedMotion() {
+        return reducedMotion;
+    }
+
+    public void setTargetingFeedback(java.util.Set<Integer> selectablePieceIds,
+                                    List<Integer> selectedPieceIds,
+                                    java.util.Set<Square> selectableSquares,
+                                    List<Square> selectedDestinations) {
+        this.selectablePieceIds = selectablePieceIds == null ? java.util.Set.of() : java.util.Set.copyOf(selectablePieceIds);
+        this.selectedPieceIds = selectedPieceIds == null ? List.of() : List.copyOf(selectedPieceIds);
+        this.selectableSquares = selectableSquares == null ? java.util.Set.of() : java.util.Set.copyOf(selectableSquares);
+        this.selectedDestinations = selectedDestinations == null ? List.of() : List.copyOf(selectedDestinations);
+        updateSelectionPulse();
+        repaint();
+    }
+
+    public void clearTargetingFeedback() {
+        this.selectablePieceIds = java.util.Set.of();
+        this.selectedPieceIds = List.of();
+        this.selectableSquares = java.util.Set.of();
+        this.selectedDestinations = List.of();
+        repaint();
+    }
+
+    private Runnable moveAnimCallback;
+
+    public void animateMoves(List<MovingPiece> moves, Runnable onComplete) {
+        if (reducedMotion || moves == null || moves.isEmpty()) {
+            movingPieces.clear();
             repaint();
-        });
-        animation.start();
+            if (onComplete != null) {
+                onComplete.run();
+            }
+            return;
+        }
+        movingPieces.clear();
+        movingPieces.addAll(moves);
+        this.moveAnimCallback = onComplete;
+        moveAnimStart = System.currentTimeMillis();
+        ensureAnimationTimer();
+        repaint();
     }
 
-    /**
-     * Plays a brief expanding-ring effect where a piece was just captured,
-     * in the capturing player's color (§23: tasteful, no neon).
-     */
+    public void animateMoves(List<MovingPiece> moves) {
+        animateMoves(moves, null);
+    }
+
+    public void animateMove(Square from, Square to, PlayerColor mover) {
+        if (from != null && to != null && mover != null) {
+            animateMoves(List.of(new MovingPiece(0, from, to, mover)));
+        }
+    }
+
+    public void playEliminations(List<Square> squares, PlayerColor byColor) {
+        if (reducedMotion || squares == null || squares.isEmpty()) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        Color c = Theme.playerColor(byColor);
+        for (Square sq : squares) {
+            eliminationEffects.add(new EliminationEffect(sq, c, now, ELIM_ANIM_MS));
+        }
+        ensureAnimationTimer();
+        repaint();
+    }
+
     public void playCaptureEffect(Square square, PlayerColor byColor) {
-        captureEffect = new CaptureEffect(square, Theme.playerColor(byColor),
-                System.currentTimeMillis());
-        Timer animation = new Timer(40, event -> {
-            if (System.currentTimeMillis() - captureEffect.startMillis > 450) {
-                ((Timer) event.getSource()).stop();
-                captureEffect = null;
+        if (square != null) {
+            playEliminations(List.of(square), byColor);
+        }
+    }
+
+    public void playSkillCue(String name, onitama.core.duel.SkillCategory category, PlayerColor actor) {
+        if (reducedMotion || name == null) {
+            return;
+        }
+        skillCues.add(new SkillCue(name, category, actor, System.currentTimeMillis(), SKILL_CUE_MS));
+        ensureAnimationTimer();
+        repaint();
+    }
+
+    public void finishMoveAnimation() {
+        movingPieces.clear();
+        Runnable cb = moveAnimCallback;
+        moveAnimCallback = null;
+        checkStopAnimationTimer();
+        repaint();
+        if (cb != null) {
+            cb.run();
+        }
+    }
+
+    /** Discards all effects and callbacks; cancellation must never spawn another effect. */
+    public void cancelAnimations() {
+        if (animationTimer != null) animationTimer.stop();
+        if (selectionPulseTimer != null) { selectionPulseTimer.stop(); selectionPulseTimer = null; }
+        selectionPulse = 0f;
+        movingPieces.clear();
+        eliminationEffects.clear();
+        skillCues.clear();
+        moveAnimCallback = null;
+        repaint();
+    }
+
+    @Override public void removeNotify() {
+        cancelAnimations();
+        super.removeNotify();
+    }
+
+    private void ensureAnimationTimer() {
+        if (animationTimer == null) {
+            animationTimer = new Timer(16, event -> onAnimTick());
+        }
+        if (!animationTimer.isRunning()) {
+            animationTimer.start();
+        }
+    }
+
+    private void checkStopAnimationTimer() {
+        if (movingPieces.isEmpty() && eliminationEffects.isEmpty() && skillCues.isEmpty()) {
+            if (animationTimer != null) {
+                animationTimer.stop();
             }
-            repaint();
-        });
-        animation.start();
+        }
+    }
+
+    private void onAnimTick() {
+        long now = System.currentTimeMillis();
+        if (!movingPieces.isEmpty() && now - moveAnimStart >= MOVE_ANIM_MS) {
+            movingPieces.clear();
+            Runnable cb = moveAnimCallback;
+            moveAnimCallback = null;
+            if (cb != null) {
+                cb.run();
+            }
+        }
+        eliminationEffects.removeIf(eff -> now - eff.startMillis() >= eff.durationMillis());
+        skillCues.removeIf(cue -> now - cue.startMillis() >= cue.durationMillis());
+        checkStopAnimationTimer();
+        repaint();
+    }
+
+    private boolean isPieceMoving(int pieceId, Square square, PlayerColor color) {
+        if (movingPieces.isEmpty()) return false;
+        long elapsed = System.currentTimeMillis() - moveAnimStart;
+        if (elapsed >= MOVE_ANIM_MS) return false;
+        for (MovingPiece mp : movingPieces) {
+            if (mp.pieceId() == pieceId) return true;
+            if (mp.pieceId() == 0 && mp.color() == color && mp.to().equals(square)) return true;
+        }
+        return false;
     }
 
     @Override
     protected void paintComponent(Graphics graphics) {
         Graphics2D g = UiKit.nice(graphics);
-        Image mat = AssetStore.optional("board-empty.png");
-        if (mat == null) {
-            // No mat artwork: paint the dark app background behind the
-            // drawn fallback frame.
-            g.setColor(Theme.BG);
-            g.fillRect(0, 0, getWidth(), getHeight());
-        }
         computeGeometry();
-        if (state == null) {
-            g.dispose();
-            return;
+
+        paintBoard(g);
+
+        if (lastMoveFrom != null) {
+            overlay(g, lastMoveFrom);
         }
-        if (mat != null) {
-            // The mat (with its own frame) lies directly on the scene.
-            g.drawImage(mat, imgX, imgY, imgSize, imgSize, null);
-        } else {
-            paintFallbackFrame(g);
+        if (lastMoveTo != null) {
+            overlay(g, lastMoveTo);
         }
-        if (lastMove != null) {
-            overlay(g, lastMove.from());
-            overlay(g, lastMove.to());
-        }
-        boolean animating = animMove != null;
-        Square animTo = animating ? animMove.to() : null;
-        for (int y = 0; y < Board.SIZE; y++) {
-            for (int x = 0; x < Board.SIZE; x++) {
-                if (animating && animTo.equals(new Square(x, y))) {
-                    continue; // the moving figurine is drawn mid-flight below
-                }
-                Piece piece = state.board().pieceAt(x, y);
-                if (piece != null) {
-                    drawPiece(g, x, y, piece);
-                }
+
+        for (PlacedPiece pp : pieces) {
+            if (isPieceMoving(pp.piece().id(), pp.square(), pp.piece().color())) {
+                continue;
             }
+            drawPiece(g, pp.square().x(), pp.square().y(), pp.piece().color());
         }
-        if (animating) {
-            drawMovingPiece(g);
+
+        if (!movingPieces.isEmpty()) {
+            drawMovingPieces(g);
         }
+
         if (selectedSquare != null) {
             drawTargetConnectors(g);
         }
+
         for (Square target : targets) {
             drawTargetDot(g, target);
         }
+
         if (selectedSquare != null) {
             drawSelectionRing(g, selectedSquare);
         }
-        if (captureEffect != null) {
-            drawCaptureEffect(g, captureEffect);
+
+        drawSkillTargetingFeedback(g);
+
+        if (!eliminationEffects.isEmpty()) {
+            drawEliminationEffects(g);
         }
+
+        if (!skillCues.isEmpty()) {
+            drawSkillCues(g);
+        }
+
         g.dispose();
     }
 
-    /** Drawn wooden frame + parchment tiles when the mat artwork is absent. */
-    private void paintFallbackFrame(Graphics2D g) {
-        int grid = Board.SIZE * cell;
-        int frameOut = 12;
-        g.setColor(Theme.SHADOW);
-        g.fillRoundRect(originX - frameOut + 6, originY - frameOut + 6,
-                grid + 2 * frameOut, grid + 2 * frameOut, 22, 22);
-        g.setColor(Theme.BOARD_FRAME);
-        g.fillRoundRect(originX - frameOut, originY - frameOut,
-                grid + 2 * frameOut, grid + 2 * frameOut, 22, 22);
+    /** Lacquered jade frame and ceramic tiles share the landscape's warm/cool palette. */
+    private void paintBoard(Graphics2D g) {
+        int grid = BOARD_SIZE * cell;
+        int rim = Math.max(3, Math.min(18, cell / 4));
+        int shadow = Math.max(2, rim / 3);
+        int left = originX - rim, top = originY - rim;
+        int size = grid + 2 * rim;
+        int arc = rim * 2;
+
+        g.setColor(Theme.withAlpha(Theme.SHADOW, 180));
+        g.fillRoundRect(left + shadow, top + shadow, size, size, arc, arc);
+        g.setPaint(new java.awt.GradientPaint(left, top, UiKit.lighten(Theme.BOARD_FRAME),
+                left + size, top + size, Theme.BOARD_FRAME));
+        g.fillRoundRect(left, top, size, size, arc, arc);
         g.setColor(Theme.INK);
-        g.setStroke(new BasicStroke(2.5f));
-        g.drawRoundRect(originX - frameOut, originY - frameOut,
-                grid + 2 * frameOut, grid + 2 * frameOut, 22, 22);
-        for (int y = 0; y < Board.SIZE; y++) {
-            for (int x = 0; x < Board.SIZE; x++) {
+        g.setStroke(new BasicStroke(2f));
+        g.drawRoundRect(left, top, size, size, arc, arc);
+        g.setColor(Theme.BOARD_GOLD);
+        g.setStroke(new BasicStroke(1.25f));
+        int inlay = Math.max(2, rim / 3);
+        g.drawRoundRect(left + inlay, top + inlay, size - 2 * inlay, size - 2 * inlay,
+                Math.max(2, arc - inlay), Math.max(2, arc - inlay));
+
+        for (int y = 0; y < BOARD_SIZE; y++) {
+            for (int x = 0; x < BOARD_SIZE; x++) {
                 int px = displayX(x) * cell + originX;
                 int py = displayY(y) * cell + originY;
-                g.setColor((x + y) % 2 == 0 ? Theme.BOARD_LIGHT : Theme.BOARD_LIGHT.darker());
+                Color tile = (x + y) % 2 == 0 ? Theme.BOARD_LIGHT : Theme.BOARD_JADE;
+                g.setColor(tile);
                 g.fillRect(px, py, cell, cell);
-                g.setColor(Theme.withAlpha(Theme.INK, 70));
-                g.drawRect(px, py, cell, cell);
+                // A restrained top-edge highlight suggests glazed stone without visual noise.
+                g.setColor(Theme.withAlpha(Color.WHITE, 40));
+                g.setStroke(new BasicStroke(1f));
+                g.drawLine(px + 1, py + 1, px + cell - 1, py + 1);
             }
         }
-        drawTempleMark(g, new Square(2, 0));
-        drawTempleMark(g, new Square(2, 4));
+        g.setColor(Theme.withAlpha(Theme.INK, 100));
+        g.setStroke(new BasicStroke(1f));
+        for (int i = 0; i <= BOARD_SIZE; i++) {
+            int offset = i * cell;
+            g.drawLine(originX + offset, originY, originX + offset, originY + grid);
+            g.drawLine(originX, originY + offset, originX + grid, originY + offset);
+        }
+        g.setColor(Theme.BOARD_GOLD);
+        g.setStroke(new BasicStroke(1.5f));
+        g.drawRect(originX - 2, originY - 2, grid + 4, grid + 4);
+        if (rim >= 8) paintCornerInlays(g, grid, rim);
     }
 
-    /** A subtle torii-style marker on the temple arch squares (fallback only). */
-    private void drawTempleMark(Graphics2D g, Square square) {
-        int px = displayX(square.x()) * cell + originX;
-        int py = displayY(square.y()) * cell + originY;
-        g.setColor(Theme.withAlpha(Theme.INK, 70));
-        g.setStroke(new BasicStroke(2f));
-        int top = py + cell / 5;
-        g.drawLine(px + cell / 4, top, px + cell - cell / 4, top);
-        g.drawLine(px + cell / 3, top + 3, px + cell / 3, top + cell / 4);
-        g.drawLine(px + cell - cell / 3, top + 3, px + cell - cell / 3, top + cell / 4);
+    /** Matching brass corner brackets stay entirely outside the playable squares. */
+    private void paintCornerInlays(Graphics2D g, int grid, int rim) {
+        int inset = Math.max(3, rim / 2);
+        int length = Math.max(4, rim - 2);
+        g.setStroke(new BasicStroke(2f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        for (int horizontal : new int[]{-1, 1}) {
+            for (int vertical : new int[]{-1, 1}) {
+                int x = horizontal < 0 ? originX - inset : originX + grid + inset;
+                int y = vertical < 0 ? originY - inset : originY + grid + inset;
+                var corner = new java.awt.geom.Path2D.Float();
+                corner.moveTo(x, y - vertical * length);
+                corner.lineTo(x, y);
+                corner.lineTo(x - horizontal * length, y);
+                g.draw(corner);
+            }
+        }
     }
 
-    private void drawPiece(Graphics2D g, int x, int y, Piece piece) {
-        Image sprite = pieceSprite(piece.master(), piece.color());
+    private void drawPiece(Graphics2D g, int x, int y, PlayerColor color) {
+        Image sprite = pieceSprite(color);
         int px = displayX(x) * cell + originX;
         int py = displayY(y) * cell + originY;
         if (sprite != null) {
-            int inset = (int) (cell * (piece.master() ? 0.06 : 0.10));
+            int inset = (int) (cell * 0.08);
             g.drawImage(sprite, px + inset, py + inset,
                     cell - 2 * inset, cell - 2 * inset, null);
             return;
         }
-        Color fill = piece.color() == PlayerColor.BLUE ? Theme.P1 : Theme.P2;
+        Color fill = color == PlayerColor.BLUE ? Theme.P1 : Theme.P2;
         UiKit.drawFigurine(g, px + cell / 2, py + cell - 7,
-                (int) (cell * (piece.master() ? 0.82 : 0.64)), fill, piece.master());
+                (int) (cell * 0.68), fill, false);
     }
 
-    /** Draws the sliding figurine between origin and destination. */
-    private void drawMovingPiece(Graphics2D g) {
-        long elapsed = System.currentTimeMillis() - animStart;
-        double progress = Math.min(1.0, elapsed / 240.0);
-        double eased = 1 - (1 - progress) * (1 - progress); // ease-out
-        boolean master = animMaster;
-        Image sprite = pieceSprite(master, animPlayer);
-        int fromX = displayX(animMove.from().x()) * cell + originX + cell / 2;
-        int fromY = displayY(animMove.from().y()) * cell + originY;
-        int toX = displayX(animMove.to().x()) * cell + originX + cell / 2;
-        int toY = displayY(animMove.to().y()) * cell + originY;
-        int cx = (int) (fromX + (toX - fromX) * eased);
-        int cy = (int) (fromY + (toY - fromY) * eased - Math.sin(progress * Math.PI) * cell * 0.15);
-        if (sprite != null) {
-            int size = (int) (cell * (master ? 0.88 : 0.76));
-            g.drawImage(sprite, cx - size / 2, cy - size / 2, size, size, null);
-        } else {
-            UiKit.drawFigurine(g, cx, cy + cell / 2 - 7,
-                    (int) (cell * (master ? 0.82 : 0.64)),
-                    Theme.playerColor(animPlayer), master);
+    private void drawMovingPieces(Graphics2D g) {
+        long elapsed = System.currentTimeMillis() - moveAnimStart;
+        double progress = Math.min(1.0, elapsed / (double) MOVE_ANIM_MS);
+        double eased = 1 - (1 - progress) * (1 - progress);
+
+        for (MovingPiece mp : movingPieces) {
+            Image sprite = pieceSprite(mp.color());
+
+            int fromX = displayX(mp.from().x()) * cell + originX + cell / 2;
+            int fromY = displayY(mp.from().y()) * cell + originY + cell / 2;
+            int toX = displayX(mp.to().x()) * cell + originX + cell / 2;
+            int toY = displayY(mp.to().y()) * cell + originY + cell / 2;
+
+            int cx = (int) (fromX + (toX - fromX) * eased);
+            int cy = (int) (fromY + (toY - fromY) * eased - Math.sin(progress * Math.PI) * cell * 0.16);
+
+            if (sprite != null) {
+                int inset = (int) (cell * 0.08);
+                int size = cell - 2 * inset;
+                g.drawImage(sprite, cx - size / 2, cy - size / 2, size, size, null);
+            } else {
+                UiKit.drawFigurine(g, cx, cy + cell / 2 - 7,
+                        (int) (cell * 0.68), Theme.playerColor(mp.color()), false);
+            }
         }
     }
 
     private void drawTargetDot(Graphics2D g, Square target) {
         int cx = displayX(target.x()) * cell + originX + cell / 2;
         int cy = displayY(target.y()) * cell + originY + cell / 2;
-        Piece occupant = state.board().pieceAt(target);
+        boolean isOccupiedEnemy = pieces.stream()
+                .anyMatch(pp -> pp.square().equals(target) && pp.piece().color() != viewColor);
         boolean hovered = target.equals(hoveredSquare);
-        // Legal moves glow in the player's own accent color (§23).
+
         Color accent = Theme.playerColor(viewColor);
         if (hovered) {
             accent = UiKit.lighten(accent);
         }
-        g.setColor(accent);
-        // Free squares get a half-transparent dot (solid on hover); enemy
-        // pieces get a double capture ring.
         g.setColor(new Color(accent.getRed(), accent.getGreen(),
                 accent.getBlue(), hovered ? 255 : 190));
-        if (occupant == null) {
+
+        if (!isOccupiedEnemy) {
             int dot = hovered ? Math.max(16, cell / 3) : Math.max(12, cell / 4);
             g.fillOval(cx - dot / 2, cy - dot / 2, dot, dot);
             g.setColor(Theme.INK);
             g.setStroke(new BasicStroke(1.5f));
             g.drawOval(cx - dot / 2, cy - dot / 2, dot, dot);
         } else {
-            // Enemy piece: double ring signals a capture.
             g.setStroke(new BasicStroke(hovered ? 4f : 3f));
             int radius = cell / 2 - (hovered ? 4 : 6);
             g.drawOval(cx - radius, cy - radius, 2 * radius, 2 * radius);
@@ -391,14 +543,12 @@ public final class BoardPanel extends JComponent {
     private void drawSelectionRing(Graphics2D g, Square square) {
         int px = displayX(square.x()) * cell + originX;
         int py = displayY(square.y()) * cell + originY;
-        // Bold 4px ring that breathes softly so the eye locks onto it.
         g.setColor(Theme.withAlpha(Theme.playerColor(viewColor),
                 215 + (int) (40 * selectionPulse)));
         g.setStroke(new BasicStroke(4f));
         g.drawOval(px + 3, py + 3, cell - 6, cell - 6);
     }
 
-    /** Faint dashed gold lines from the selected square to each legal target. */
     private void drawTargetConnectors(Graphics2D g) {
         int fromX = displayX(selectedSquare.x()) * cell + originX + cell / 2;
         int fromY = displayY(selectedSquare.y()) * cell + originY + cell / 2;
@@ -415,8 +565,6 @@ public final class BoardPanel extends JComponent {
     private void overlay(Graphics2D g, Square square) {
         int px = displayX(square.x()) * cell + originX;
         int py = displayY(square.y()) * cell + originY;
-        // Pale gold wash + a thin gold outline so the last-played squares
-        // also read clearly on the light parchment mat.
         g.setColor(new Color(Theme.LAST_MOVE.getRed(), Theme.LAST_MOVE.getGreen(),
                 Theme.LAST_MOVE.getBlue(), 170));
         g.fillRect(px, py, cell, cell);
@@ -425,46 +573,188 @@ public final class BoardPanel extends JComponent {
         g.drawRect(px + 1, py + 1, cell - 2, cell - 2);
     }
 
-    /** Expanding, fading ring at the capture square. */
-    private void drawCaptureEffect(Graphics2D g, CaptureEffect effect) {
-        long elapsed = System.currentTimeMillis() - effect.startMillis();
-        double progress = Math.min(1.0, elapsed / 450.0);
-        int cx = displayX(effect.square().x()) * cell + originX + cell / 2;
-        int cy = displayY(effect.square().y()) * cell + originY + cell / 2;
-        int radius = (int) (cell * 0.3 + cell * 0.45 * progress);
-        g.setColor(new Color(effect.color().getRed(), effect.color().getGreen(),
-                effect.color().getBlue(), (int) (200 * (1 - progress))));
-        g.setStroke(new BasicStroke(4f));
-        g.drawOval(cx - radius, cy - radius, 2 * radius, 2 * radius);
+    private void drawSkillTargetingFeedback(Graphics2D g) {
+        // Highlight selectable piece IDs
+        if (!selectablePieceIds.isEmpty()) {
+            for (PlacedPiece pp : pieces) {
+                if (selectablePieceIds.contains(pp.piece().id())) {
+                    int px = displayX(pp.square().x()) * cell + originX;
+                    int py = displayY(pp.square().y()) * cell + originY;
+                    g.setColor(new Color(64, 160, 190, 190 + (int) (65 * selectionPulse)));
+                    g.setStroke(new BasicStroke(3f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND,
+                            10f, reducedMotion ? null : new float[]{6f, 4f}, 0f));
+                    g.drawRoundRect(px + 3, py + 3, cell - 6, cell - 6, 12, 12);
+                }
+            }
+        }
+
+        // Highlight selected piece IDs from draft
+        if (!selectedPieceIds.isEmpty()) {
+            for (int i = 0; i < selectedPieceIds.size(); i++) {
+                int pid = selectedPieceIds.get(i);
+                for (PlacedPiece pp : pieces) {
+                    if (pp.piece().id() == pid) {
+                        int px = displayX(pp.square().x()) * cell + originX;
+                        int py = displayY(pp.square().y()) * cell + originY;
+                        g.setColor(Theme.AMBER);
+                        g.setStroke(new BasicStroke(3.5f));
+                        g.drawRoundRect(px + 2, py + 2, cell - 4, cell - 4, 12, 12);
+                        if (selectedPieceIds.size() > 1) {
+                            drawOrderBadge(g, px + cell - 18, py + 3, i + 1);
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Highlight selectable empty squares
+        if (!selectableSquares.isEmpty()) {
+            for (Square sq : selectableSquares) {
+                int cx = displayX(sq.x()) * cell + originX + cell / 2;
+                int cy = displayY(sq.y()) * cell + originY + cell / 2;
+                boolean hovered = sq.equals(hoveredSquare);
+                int r = hovered ? Math.max(14, cell / 3) : Math.max(10, cell / 4);
+                g.setColor(new Color(50, 140, 180, hovered ? 230 : 160));
+                g.fillOval(cx - r, cy - r, r * 2, r * 2);
+                g.setColor(Theme.INK);
+                g.setStroke(new BasicStroke(1.5f));
+                g.drawOval(cx - r, cy - r, r * 2, r * 2);
+            }
+        }
+
+        // Highlight selected destination squares from draft
+        if (!selectedDestinations.isEmpty()) {
+            for (int i = 0; i < selectedDestinations.size(); i++) {
+                Square sq = selectedDestinations.get(i);
+                int cx = displayX(sq.x()) * cell + originX + cell / 2;
+                int cy = displayY(sq.y()) * cell + originY + cell / 2;
+                drawDestinationDiamond(g, cx, cy, i + 1, selectedDestinations.size() > 1);
+            }
+        }
     }
 
-    /** Maps a mouse position to a canonical square, or null outside the grid. */
-    private Square squareAt(int mouseX, int mouseY) {
+    private void drawOrderBadge(Graphics2D g, int x, int y, int num) {
+        g.setColor(Theme.INK);
+        g.fillOval(x, y, 16, 16);
+        g.setColor(Theme.AMBER);
+        g.setStroke(new BasicStroke(1.5f));
+        g.drawOval(x, y, 16, 16);
+        g.setColor(Theme.CREAM);
+        g.setFont(Theme.display(10f));
+        String s = Integer.toString(num);
+        int tw = g.getFontMetrics().stringWidth(s);
+        g.drawString(s, x + 8 - tw / 2, y + 12);
+    }
+
+    private void drawDestinationDiamond(Graphics2D g, int cx, int cy, int num, boolean showNum) {
+        int r = Math.max(14, cell / 3);
+        int[] xs = {cx, cx + r, cx, cx - r};
+        int[] ys = {cy - r, cy, cy + r, cy};
+        g.setColor(new Color(Theme.AMBER.getRed(), Theme.AMBER.getGreen(), Theme.AMBER.getBlue(), 180));
+        g.fillPolygon(xs, ys, 4);
+        g.setColor(Theme.INK);
+        g.setStroke(new BasicStroke(2f));
+        g.drawPolygon(xs, ys, 4);
+        if (showNum) {
+            drawOrderBadge(g, cx + r - 8, cy - r, num);
+        }
+    }
+
+    private void drawEliminationEffects(Graphics2D g) {
+        long now = System.currentTimeMillis();
+        for (EliminationEffect eff : eliminationEffects) {
+            long elapsed = now - eff.startMillis();
+            if (elapsed > eff.durationMillis()) continue;
+            double p = Math.min(1.0, elapsed / (double) eff.durationMillis());
+            int cx = displayX(eff.square().x()) * cell + originX + cell / 2;
+            int cy = displayY(eff.square().y()) * cell + originY + cell / 2;
+            int radius = (int) (cell * 0.25 + cell * 0.40 * p);
+            int alpha = (int) (220 * (1.0 - p));
+            Color c = eff.color();
+            g.setColor(new Color(c.getRed(), c.getGreen(), c.getBlue(), alpha));
+            g.setStroke(new BasicStroke(3.5f * (float) (1.0 - p * 0.6)));
+            g.drawOval(cx - radius, cy - radius, 2 * radius, 2 * radius);
+            int slash = (int) (radius * 0.55);
+            g.drawLine(cx - slash, cy - slash, cx + slash, cy + slash);
+            g.drawLine(cx - slash, cy + slash, cx + slash, cy - slash);
+        }
+    }
+
+    private void drawSkillCues(Graphics2D g) {
+        long now = System.currentTimeMillis();
+        for (SkillCue cue : skillCues) {
+            long elapsed = now - cue.startMillis();
+            if (elapsed > cue.durationMillis()) continue;
+            double p = Math.min(1.0, elapsed / (double) cue.durationMillis());
+            float alpha = (float) (p < 0.2 ? (p / 0.2) : (p > 0.7 ? (1.0 - p) / 0.3 : 1.0));
+            alpha = Math.max(0f, Math.min(1f, alpha));
+
+            int bw = Math.min(240, cell * 4);
+            int bh = 34;
+            int bx = originX + (BOARD_SIZE * cell - bw) / 2;
+            int by = originY + (int) (cell * 2.8 - p * cell * 0.3);
+
+            g.setColor(new Color(24, 20, 16, (int) (215 * alpha)));
+            g.fillRoundRect(bx, by, bw, bh, 14, 14);
+
+            Color catColor = switch (cue.category()) {
+                case MOVEMENT -> new Color(41, 85, 106);
+                case ATTACK -> new Color(178, 64, 40);
+                case CONTROL -> new Color(194, 138, 42);
+                case RESOURCE -> new Color(52, 110, 80);
+            };
+            g.setColor(new Color(catColor.getRed(), catColor.getGreen(), catColor.getBlue(), (int) (240 * alpha)));
+            g.setStroke(new BasicStroke(2f));
+            g.drawRoundRect(bx, by, bw, bh, 14, 14);
+
+            g.setColor(new Color(245, 238, 220, (int) (255 * alpha)));
+            g.setFont(Theme.display(13f));
+            String text = cue.name().toUpperCase();
+            int tw = g.getFontMetrics().stringWidth(text);
+            g.drawString(text, bx + (bw - tw) / 2, by + 22);
+        }
+    }
+
+    /**
+     * Converts mouse coordinates to canonical square.
+     * Blue viewer: home row y=0 at bottom.
+     * Red viewer: home row y=6 at bottom, flipped horizontally and vertically.
+     */
+    public Square squareAt(int mouseX, int mouseY) {
         if (getWidth() < 100 || getHeight() < 100) {
-            // Not laid out yet (or sliver-sized): geometry from a zero area
-            // would map every click to a bogus square.
             return null;
         }
         computeGeometry();
         int displayCol = (mouseX - originX) / cell;
         int displayRow = (mouseY - originY) / cell;
         if (mouseX < originX || mouseY < originY
-                || displayCol < 0 || displayCol >= Board.SIZE
-                || displayRow < 0 || displayRow >= Board.SIZE) {
+                || displayCol < 0 || displayCol >= BOARD_SIZE
+                || displayRow < 0 || displayRow >= BOARD_SIZE) {
             return null;
         }
-        // Same flip as painting: the viewer's own home row (Blue y=0, Red y=4)
-        // must sit at the BOTTOM of the screen.
-        int x = viewColor == PlayerColor.BLUE ? displayCol : Board.SIZE - 1 - displayCol;
-        int y = viewColor == PlayerColor.BLUE ? Board.SIZE - 1 - displayRow : displayRow;
+        int x = viewColor == PlayerColor.BLUE ? displayCol : BOARD_SIZE - 1 - displayCol;
+        int y = viewColor == PlayerColor.BLUE ? BOARD_SIZE - 1 - displayRow : displayRow;
         return new Square(x, y);
     }
 
-    private int displayX(int x) {
-        return viewColor == PlayerColor.BLUE ? x : Board.SIZE - 1 - x;
+    public int displayX(int x) {
+        return viewColor == PlayerColor.BLUE ? x : BOARD_SIZE - 1 - x;
     }
 
-    private int displayY(int y) {
-        return viewColor == PlayerColor.BLUE ? Board.SIZE - 1 - y : y;
+    public int displayY(int y) {
+        return viewColor == PlayerColor.BLUE ? BOARD_SIZE - 1 - y : y;
+    }
+
+    public int cell() {
+        return cell;
+    }
+
+    public int originX() {
+        return originX;
+    }
+
+    public int originY() {
+        return originY;
     }
 }

@@ -1,127 +1,207 @@
-# Grid-Duel-Board-Game ONLINE — Demo Brief (lean)
+# Grid Duel — Authoritative specification
 
-**Status:** complete, working demo (2026-10-04). All milestones (M1–M8), the M9
-visual redesign and the single-player practice mode are implemented; `mvn clean
-verify` = 125 tests green. This file is the compact spec of the technical
-requirements the project must keep satisfying and how to run it. It replaced the
-long build brief deliberately (original recoverable from git history) — no
-course, report, or deployment material.
+**Status (2026-10-15): gameplay migration complete; Step 5 presentation integrated.**
+This is the source of truth for gameplay, technical constraints, protocol and tests.
+The live engine is `onitama.core.duel` across server, client, practice, bots and demo.
+[Step 3 contracts](docs/step-03-engine-contracts.md) supplement these rules with
+implemented APIs, configuration and persistence contracts. The Step 1 draft is
+historical context. Legacy 5×5 classes remain for regression tests, not live matches.
+See [Step 6 readiness](docs/handoffs/step-06-readiness.md) for cleanup and validation.
 
-## 0. Ground rules for agents
+## 0. Agent rules and migration policy
 
-1. **Java 17, Maven, nothing else.** Allowed dependencies: `org.xerial:sqlite-jdbc`
-   and `org.junit.jupiter:junit-jupiter`. GUI is **Swing** (JDK-built-in);
-   networking is **raw TCP** (`ServerSocket`/`Socket`). No Spring, JavaFX, Netty,
-   Gson/Jackson, Lombok, game engines, or cloud SDKs.
-2. **No cloud, ever.** Everything runs on localhost out of the box; the server is
-   a plain headless `java -jar` process.
-3. Clarity over cleverness — every line must be explainable: short methods,
-   Javadoc on public classes/methods (1–3 sentences), comments explain *why*.
-   Keep ~30–50 classes; no filler.
-4. No dead code, no commented-out code, no `System.out.println` debugging (use
-   `java.util.logging`), no fabricated numbers or results anywhere.
-5. After every change the project must compile and `mvn test` must pass; commit
-   per logical change with a clear message.
-6. Where a design detail is open, pick the simplest option and record the why in
-   the class Javadoc or the commit message.
+- Java 17, single-module Maven. Dependencies: `org.xerial:sqlite-jdbc` and
+  test-only `org.junit.jupiter:junit-jupiter`. Swing UI, raw TCP sockets, Java
+  object serialization. No Spring, JavaFX, Netty, Gson/Jackson, Lombok, game
+  engine, animation library, cloud SDK, or cloud service.
+- Everything runs on localhost. Keep the current accounts, lobby, Elo,
+  leaderboard, practice, rematch, and reconnect capabilities.
+- Short explainable methods, public API Javadoc, meaningful comments, logging
+  via `java.util.logging`. No dead code or invented validation results.
+- Implement one bounded migration task at a time. This documentation change
+  does not authorize rewriting the entire engine immediately.
+- Keep `mvn test` green. When implementing an intentionally changed rule, replace
+  obsolete assertions with meaningful new-rule coverage in the same change.
+  Never remove or disable tests solely to conceal a failure. Unrelated security,
+  concurrency, serialization, and persistence coverage remains mandatory.
+- The 125-test baseline is historical, not a fixed expected count. Report actual
+  counts. Delegated implementations must use the state/action/view interfaces
+  and exact message names in Step 3; do not invent competing contracts.
 
-## 1. What the project is
+## 1. Product scope
 
-Two players play Grid-Duel-Board-Game through a central **authoritative** Java server.
+Two players control six identical pieces each on a plain 7×7 board. Reusable
+movement cards establish positioning; 24 distinct single-use skills and mana
+create tactical variety. Eliminate all enemy pieces to win; 60 completed player
+turns without a winner is a draw. No points, objectives, terrain, random battle
+boards, Masters, temples, HP, armor, reactions, or ongoing statuses in version 1.
 
-- **Server** (headless): accounts, open lobbies (5-char room codes), live matches,
-  disconnection handling (60 s reconnect grace), Elo ratings, match history.
-  Multiple simultaneous matches.
-- **Client** (Swing): login/register, lobby, game board with the five movement
-  cards, move history, game-over/rematch flow, leaderboard — plus
-  **single-player practice** against a built-in bot (rookie / senior / legend).
-- **Bots** (headless): load-test fleet playing random legal games; writes CSV
-  stats to `results/`.
-- **Database** (SQLite via JDBC): users (salted password hashes + Elo), matches.
+Server: headless authoritative matches, accounts, five-character room codes,
+multiple matches, reconnect grace, match records and Elo. Client: Swing
+login/register, lobby, game, leaderboard, and practice against a bot. Headless
+bots remain a load-test tool with CSV output. SQLite stores users and matches.
 
-Run: `mvn package` → `target/onitama.jar`. `Main` dispatches on `args[0]`:
-`server` / `client` / `bots` / `demo`. Scripts: `scripts/run-server.sh [port]
-[db]`, `run-client.sh`, `run-bots.sh [bots] [games]` (`.bat` twins exist).
+`mvn package` builds `target/onitama.jar`; `onitama.Main` dispatches `server`,
+`client`, `bots`, or `demo`. Existing shell/batch launch scripts remain supported.
+Out of scope: web/mobile clients, HTTP/WebSocket, spectators, chat, replay
+recording, cloud automation, and matchmaking beyond room codes.
 
-Out of scope (do NOT add): web/mobile clients, WebSocket/HTTP, matchmaking beyond
-room codes, spectators, in-game chat, replay recording, cloud automation.
+## 2. Gameplay rules
 
-## 2. Game rules (the engine implements exactly this)
+### 2.1 Setup
 
-- 5×5 grid; `x` = column 0–4, `y` = row 0–4. **Blue home row y=0, Red y=4**;
-  "forward" = toward the opponent's home row. Each side: **1 Master + 4 Students**
-  on the home row; Master at (2,0)/(2,4) — that square is the **Temple Arch**.
-  All pieces move identically; type matters only for win conditions.
-- **16 movement cards** (Appendix). Each shows destination offsets `(dx, dy)`
-  relative to the moving piece, `+x` = right, `+y` = forward, in the card's
-  native orientation. **Rotation rule:** when the non-native player uses the
-  card, rotate 180°: `(dx,dy) → (−dx,−dy)`. Blue uses stored offsets, Red uses
-  rotated (be consistent; UT01 guards it).
-- Pieces **jump** (no pathing/blocked lines); may not land on a friendly piece;
-  landing on an enemy **captures** it.
-- **Deal:** shuffle the 16-card deck, deal 2/2/1 (hand/hand/**transit**). All
-  information is public. Each card has a fixed **stamp color** (8 RED / 8 BLUE);
-  the transit card's stamp picks the first player (implemented as a fixed map in
-  `CardDeck` — documented deviation: stamps are not publicly standardized).
-- **Turn:** move one piece to a legal destination of one of your 2 hand cards —
-  passing is illegal while any legal move exists. With **no legal move**, pass
-  but still perform the **card exchange** (used/chosen card → transit, old
-  transit → hand). Your used card reaches the opponent two half-moves later.
-- **Win:** Way of the Stone (capture the enemy Master) or Way of the Stream
-  (your Master reaches the enemy Temple Arch). House rule: 300 half-move cap →
-  draw.
+The following defaults define the first playable version.
+
+- Coordinates: `x=0..6`, `y=0..6`. Blue begins on `y=0`; Red begins on `y=6`.
+- Place Blue pieces at `(0,0), (1,0), (2,0), (4,0), (5,0), (6,0)`.
+- Place Red pieces at `(0,6), (1,6), (2,6), (4,6), (5,6), (6,6)`.
+- Leaving the middle starting square empty gives a symmetric six-piece formation. Every piece has a stable identity, but identical abilities.
+- There are no temples, special pieces, HP, armor, upgrades, or passive statuses.
+- Use the existing 16 movement-card patterns, one copy each. Preserve their offsets; enlarge the board, not the patterns. Native offsets are Blue-relative; Red negates both components.
+- Shuffle each shared deck separately. Deal alternately Blue then Red: two movement cards each and three skill cards each.
+- This leaves 12 movement cards and 18 skill cards in their respective decks.
+- Choose the starting player randomly, independently of card stamps. Use seeded randomness for repeatable tests.
+- Both players begin with 2 mana. At their first turn start, they gain 1, so each first acts with 3 mana.
+
+### 2.2 Turn sequence
+
+A player turn contains these ordered phases:
+
+1. **Start:** gain 1 mana, capped at 5. This happens exactly once per turn, including after reconnecting.
+2. **Movement:** play at most one movement card, or skip movement.
+3. **Skill:** play at most one skill card, or skip the skill.
+4. **End:** finish the turn, increase the completed-turn count, then give the opponent the turn unless the match has ended.
+
+Once movement is played or skipped, the player cannot return to that phase. A skill cannot be played before movement has been played or skipped. A replacement skill cannot be played again in the same turn.
+
+An End Turn action skips any remaining optional phases. A player may end a turn even when legal actions exist. If no movement is legal, they may still cast a legal skill. Doing nothing does not cycle or draw cards. The turn limit prevents indefinite passing.
+
+### 2.3 Movement and captures
+
+- Select a movement card in your hand, one friendly piece, and a destination matching one of the card's oriented offsets.
+- Pieces jump over intervening pieces. The destination must be on the board and cannot contain a friendly piece.
+- Landing on an enemy eliminates that enemy and occupies its square.
+- After successful movement, remove the used card from the hand, insert it into the shared movement deck, shuffle the deck, then draw one replacement.
+- The played card may be drawn again immediately. This follows the **return → shuffle → draw** ordering and must not be silently changed to a discard-pile system.
+- Each player keeps two movement cards. Skipping movement draws nothing.
+- Skill-generated movement does not consume or replace a movement card unless the skill explicitly says so; Refocus is such an exception.
+
+### 2.4 Skill use, mana, and replacement draws
+
+- A cast requires the player's skill phase, the card in their hand, sufficient mana, and all legal target selections.
+- Validate the complete action before committing it. Illegal casts change no board state, mana, hand, deck, turn phase, or random-generator state.
+- On success: pay the mana cost, resolve the entire effect, move the used card to the public spent pile, then draw one replacement if the skill deck is nonempty.
+- Spent skills never return to play. With one copy per skill, each effect can be cast at most once across the whole match.
+- When the shared skill deck is empty, casts still work but hands shrink. Having no skills does not cause a loss.
+- No automatic skill draw occurs at turn start or when movement is performed.
+- Mana persists between turns. Captures grant no mana. There are no refunds after a successful cast.
+- Mana Surge costs 0, obeys the cap, and consumes the one skill opportunity. It can be played at the cap even though its mana gain is zero.
+- No reactions, stacks, opponent-turn casts, or ongoing status effects in the first set.
+
+### 2.5 Targeting conventions and special cases
+
+- Distance means Manhattan distance: `abs(dx) + abs(dy)`.
+- Adjacent means horizontally or vertically adjacent unless a card explicitly says diagonal.
+- Empty means unoccupied at the point the rule checks it; all destinations must be on the board.
+- Any two-piece swap requires two distinct pieces. Swaps exchange positions without elimination or checking intermediate squares.
+- For “up to 2,” choose one or two distinct pieces/targets, never zero. Destinations must be distinct; no skill leaves two pieces on one square.
+- Skills do not capture by landing on an occupied square unless their rule explicitly allows it. Flank explicitly does.
+- “Starting row” always means the initial edge for that color, regardless of current piece locations.
+- Advance moves both chosen allies one row toward the enemy starting edge into squares empty before the cast; resolve together.
+- Gust and Scatter resolve together, into squares empty before the cast. “Both destinations” means every selected destination even when selecting only one target.
+- Rally chooses a stationary friendly anchor and one or two other allies. The player supplies their resolution order; each move reduces distance to the anchor and lands on a square empty at that step. Validate that entire sequence on a temporary state first.
+- Sweep removes its selected enemies together. Chain Strike's second target is adjacent to the first target's original square and must be a different enemy.
+- Crossfire requires two allies on opposite sides of the enemy in the same row or column, each at most distance 3 from the target, with clear intervening squares.
+- Refocus returns both of the caster's movement cards to the shared movement deck, shuffles once, then draws two. It works even after a normal movement this turn and does not reopen the movement phase.
+- Foresight privately reveals up to three top skill cards to the caster, accepts an ordering of exactly those cards, and puts them back before the normal replacement draw. Thus the first ordered card becomes the replacement. Opponents learn neither the preview nor the chosen order. An empty-deck cast is allowed and draws nothing.
+
+### 2.6 Winning and ending a match
+
+- After a complete movement or skill resolves, zero opposing pieces means an immediate win. Do not wait for End Turn.
+- Resolve mandatory card bookkeeping as part of that successful action before marking it complete; no further player actions follow a win.
+- If an elimination win happens on the 60th player turn, that win takes precedence over the turn-limit draw.
+- Otherwise, End Turn on completed turn 60 ends the match as a draw. This means 30 turns each in a normal alternating match, not 60 turns each.
+- Remaining-piece count and remaining mana do not break a draw.
+- Resignation loses immediately. Keep the existing 60-second reconnect grace and forfeit behavior for the online game.
+- No objective points, kill points, temple victory, or Master-capture victory in this version.
+
+### 2.7 Public and private information
+
+Public: board, turn and phase, both mana totals, both movement hands, skill-hand counts, remaining deck counts, spent skills, completed-turn count, and match result.
+
+Private to a player: their skill hand and any active Foresight preview. Undrawn deck identities/order and the match random seed stay server-private during play.
+
+The existing full-state network broadcast cannot be reused unchanged under these rules. The server retains the authoritative state and sends each player only their permitted view. Reconnect must restore the same phase, hand, and pending Foresight choice without granting extra mana or another draw. Practice bots receive only the information their player is allowed to know.
+
 
 ## 3. Architecture requirements
 
-- `onitama.core` is **pure** game logic: no I/O, no sockets; shared verbatim by
-  server (authority) and client (rendering/prediction). Package-private mutators.
-- **Authoritative server:** clients never mutate state — they send `MoveRequest`
-  and receive validated `MoveApplied` (full `GameState`) / `MoveRejected`.
-  Rejection never changes state. Full-state broadcast every half-move (simple,
-  robust; bandwidth irrelevant at this scale).
-- **Thread model:** accept loop (main) → fixed client-handler pool → **one
-  single-thread executor per match** ⇒ match state is thread-confined, **zero
-  locks** in game logic. Shared registries (`SessionRegistry`, `LobbyManager`)
-  use `ConcurrentHashMap`. Per-client socket writes happen only from that
-  client's handler (single-writer rule). Clean shutdown via shutdown hook.
-- **Serialization:** one Java-serialized object per message over
-  `Object(ObjectOutput|Input)Stream`, flush after every message; every message
-  class is `final` with `serialVersionUID = 1L`; `ObjectOutputStream.reset()`
-  before every write (back-reference pitfall — otherwise receivers keep stale
-  copies).
-- **Heartbeats:** client `Ping` every 30 s; server `soTimeout` 90 s ⇒ disconnect.
-- **Reconnect:** `LoginResponse` carries a random token; after a drop the
-  opponent sees `OpponentLeft(60)` and the session parks; `ReconnectRequest`
-  with the token restores the full `GameState`; grace expiry ⇒ forfeit.
-- Maven single module, shade plugin → runnable jar. Package layout:
-  `core` (Board, Piece, PlayerColor, Move, Card, CardDeck, RulesEngine,
-  GameState, WinCondition, Elo, PracticeBot, Difficulty) · `net` (sealed
-  `Message` interface + one record per message) · `server` (GameServer,
-  ClientHandler, LobbyManager, MatchSession, SessionRegistry,
-  MatchPersistence) · `db` (Database, `UserDao`/`MatchDao` interfaces + SQLite
-  impls) · `client` (OnitamaClient, ClientSettings,
-  `state` model + listeners, `ui` panels, `bot` load-test).
+- `onitama.core` stays pure: no file I/O, sockets, or Swing. Server, practice, and
+  client-visible legality checks share rule definitions. Keep mutations confined
+  to engine-controlled paths; do not let UI code mutate received views.
+- The server owns both decks, all hands, RNG state, phase, mana, pending choices,
+  and result. Validate all actions against that state. Rejections mutate nothing,
+  including random state. Multi-target skills validate completely before commit.
+- Send a full **player-specific view**, not full authoritative GameState, after
+  each accepted action/phase transition and on match start/reconnect. Include
+  public state and only that recipient's permitted private data. Full snapshots
+  remain sufficient; delta synchronization is not required.
+- Accept loop → handler pool → one single-thread executor per `MatchSession`.
+  Match state is thread-confined; no locks inside game logic. Shared registries
+  use `ConcurrentHashMap`; each client socket retains a single writer. Preserve
+  clean shutdown behavior.
+- Java serialization: sealed `Message`, final message records, explicit
+  `serialVersionUID=1L`; flush and reset for every write so references cannot
+  deliver stale state. Maintain and test the deserialization allowlist for all
+  new payloads; reject unknown/foreign objects safely.
+- Ping every 30 seconds; socket timeout 90 seconds. Reconnect token comes from
+  LoginResponse. On disconnect, park the match and notify the opponent with
+  the 60-second grace. Restore the same permitted view and pending choice;
+  never repeat turn-start mana or a draw. Grace expiry forfeits.
+- Load and validate `.properties` balance definitions outside core, then inject
+  an immutable rules snapshot at match creation. Edits affect future matches.
+  Clients display the match's definitions, never independently selected local
+  balance values. Only public definitions may be distributed to clients.
+- Seeded randomness makes tests reproducible. Never send the live match seed,
+  RNG state, or undrawn deck sequence to clients or practice-bot policy code.
 
-## 4. Network protocol
+## 4. Protocol requirements (target, not implemented APIs)
 
-| Message | Dir | Fields / purpose |
-|---|---|---|
-| `RegisterRequest` / `LoginRequest` | C→S | username, password |
-| `LoginResponse` | S→C | ok, errorText?, profile (Elo/W/L) + reconnect token |
-| `CreateMatchRequest` / `JoinMatchRequest` | C→S | — / roomCode |
-| `MatchCreated` / `MatchStart` | S→C | room code / yourColor, code, initial full `GameState` |
-| `ListMatchesRequest` / `ListMatchesResponse` | C→S / S→C | lobby browser data |
-| `MoveRequest` | C→S | cardId, from, to |
-| `MoveApplied` | S→C | full `GameState` + lastMove, broadcast to both players |
-| `MoveRejected` | S→C | reason (illegal / out-of-turn / card not in hand) |
-| `PassTurn` | C→S | cardIdToDiscard — only legal with zero legal moves (server verifies) |
-| `GameOver` | S→C | winnerColor, way (STONE/STREAM/DRAW/FORFEIT), both Elos after |
-| `RematchRequest` / `RematchAccept` | C→S / S→C | new game, fresh deal |
-| `OpponentLeft` | S→C | graceSeconds (60) before forfeit |
-| `ReconnectRequest` | C→S | reconnect token |
-| `LeaderboardRequest` / `LeaderboardResponse` | C→S / S→C | top 20 users |
-| `Ping` / `Pong` | both | heartbeat every 30 s |
-| `ErrorMessage` | S→C | friendly failure text |
+Keep login/registration, lobby listing/create/join, leaderboard, ping/pong,
+rematch, error reporting, and token reconnect. Replace legacy gameplay payloads
+when their migration task lands; `PassTurn(cardIdToDiscard)` and broadcasts of
+full `GameState` are legacy behavior, not valid redesign contracts.
+
+| Operation | Direction | Required semantics |
+| --- | --- | --- |
+| Match start | Server → each player | Color, room, public rules snapshot, recipient-specific initial view |
+| Movement | Client → server | Selected held card, friendly piece/from square, destination; only movement phase |
+| Skip movement | Client → server | Enter skill phase without drawing or spending a movement card |
+| Cast skill | Client → server | Held skill and complete typed targets/selections; verify phase, mana and legality |
+| Resolve private choice | Client → server | Submit exactly a permutation of the active Foresight preview |
+| End turn | Client → server | Skip remaining optional phases and advance once; unavailable during a pending choice |
+| Accepted action | Server → each player | Updated permitted view and public action details; never opponent draw identities |
+| Rejected action | Server → requester | Useful error; no state mutation or disclosure of hidden information |
+| Game over | Server → each player | Winner or draw, ELIMINATION/FORFEIT/DRAW, updated ratings |
+| Reconnect | Client → server → recipient | Token verification; restore view and phase/private pending choice, not a fresh turn |
+
+Step 3 §8 defines match IDs, per-player request sequences, revision checks,
+receipts and the protocol handshake so stale/duplicate requests cannot spend
+cards twice or advance two turns. Broadcast views share
+public state, but their private payloads intentionally differ. Update both peers,
+serialization tests and filters together; mixed legacy/new gameplay peers are
+not supported and must fail clearly rather than silently deserialize incompatible
+state.
+
+Foresight requires a two-stage interaction: validate the cast before revealing
+anything, then enter a server-owned pending choice. Once a preview is revealed,
+the cast cannot be cancelled and no other gameplay action can run until its
+ordering is completed (resignation and disconnect handling still apply). Reserve
+the card and required mana; finish payment, reorder, disposal and replacement
+exactly once when a valid ordering arrives. Invalid order submissions preserve
+the pending choice. Reconnect restores it. With zero cards, resolve immediately
+without a choice. A final one-card ordering is deterministic. This commitment
+prevents repeatedly previewing the deck for free.
 
 ## 5. Database (SQLite via JDBC)
 
@@ -144,7 +224,7 @@ CREATE TABLE IF NOT EXISTS matches (
   blue_user_id INTEGER NOT NULL REFERENCES users(id),
   red_user_id INTEGER NOT NULL REFERENCES users(id),
   winner_user_id INTEGER REFERENCES users(id),  -- NULL on draw
-  end_reason TEXT NOT NULL,                     -- STONE|STREAM|FORFEIT|DRAW
+  end_reason TEXT NOT NULL,                     -- new: ELIMINATION|FORFEIT|DRAW; legacy: STONE|STREAM
   move_count INTEGER NOT NULL,
   elo_blue_after INTEGER NOT NULL,
   elo_red_after INTEGER NOT NULL,
@@ -158,81 +238,117 @@ CREATE TABLE IF NOT EXISTS matches (
 - **Elo:** standard, K=32, zero-sum, pure static function in `core`, unit-tested.
 - Passwords never stored/logged in plaintext (`javax.crypto`, JDK-built-in).
 
-## 6. Client (Swing)
 
-Five screens: **login/register**, **lobby** (profile, create/join, open matches,
-leaderboard button, settings, practice entry), **game** (board, two
-hand cards, opponent's two cards pre-rotated to *your* perspective, transit
-card, turn banner, move history, piece counts, resign, rematch dialog),
-**leaderboard**.
+Migration requirement: preserve historical STONE/STREAM rows. New matches use
+ELIMINATION, FORFEIT, or DRAW (resignation is FORFEIT). Do not reinterpret legacy
+records. The existing `move_count` field remains a legacy field; Step 3 §10
+defines the additive `rules_version`, `started_turns`, `completed_turns` migration
+and the version-aware `move_count=0` sentinel for new rows. A winning action may end a turn before End Turn; persist the
+number of turns started, including that terminal turn, separately from the
+completed-turn counter used for the draw check. These documented schema/API changes
+are not yet implemented. Preserve transaction and rating behavior.
 
-- Board always drawn **from your own side** (own pieces at the bottom; Red's
-  view flips canonical coordinates). Custom `JPanel` + `paintComponent` +
-  `Graphics2D`; card patterns render as mini 5×5 grids from the same `Card`
-  data the engine uses (single source of truth).
-- Click flow: card + piece (either order) → legal destinations highlight
-  (from `RulesEngine` running locally on the authoritative state) → click
-  destination sends `MoveRequest`; ESC / re-click clears selection.
-- **EDT discipline:** all UI state on the Swing EDT; the socket **reader thread**
-  only parses and hands messages to the model via `SwingUtilities.invokeLater`;
-  UI actions enqueue outgoing messages. Never block the EDT on I/O; never touch
-  Swing from the reader thread. Panels are swappable views over `ClientModel`
-  (Observer via `ClientModelListener`) — UI never touches the socket.
-- The visual redesign (M9) is implemented: sumi-e painting backgrounds, theme
-  tokens in `ui/Theme`, hand-designed card/piece art loaded via `AssetStore`
-  with drawn fallbacks when a file is absent; piece-style preference persisted
-  in `client.properties`.
+## 6. Swing client and artwork
 
-## 7. Design-pattern & OOP map (apply, don't just claim)
+- Game screen: 7×7 board; both public movement hands; own skill hand; opponent
+  skill-hand count; mana totals; deck counts; public spent skills; turn/phase;
+  skill details; skip movement, End Turn, resign and rematch. Show two shared deck
+  stacks with accepted-draw flights and two player avatar/mana badges. The Move Log
+  panel is removed; internal public history and board last-move feedback remain.
+  Remove transit-card, Master, temple and points presentation.
+- Draw from the player's side; Red flips canonical coordinates. Movement
+  diagrams come from offset data, not painted rules. A compact 5×5 offset
+  diagram is still valid for the existing patterns; it is not the game board.
+- Movement selection highlights legal landings. Skill selection follows shared
+  target constraints, supports ordered/multiple targets, and allows cancellation
+  before submission. Foresight's committed private choice cannot be cancelled.
+- Read only the player view. Local highlighting can use visible information;
+  server validation remains final. Never require hidden decks for UI legality.
+- Socket reader parses, then `SwingUtilities.invokeLater` updates ClientModel.
+  Panels observe ClientModelListener; no socket access or blocking I/O on EDT.
+  Animations use Swing timers and cannot mutate authoritative state or delay
+  network handling.
+- Retain parchment/sumi-e visual style and asset fallbacks. Skill art uses nature,
+  objects and structures, avoiding humans/faces. The existing 24 full-face PNGs
+  are design assets with baked text, not live balance data. Render card names,
+  costs and descriptions from the match definitions over separate artwork.
 
-| Where | Pattern / principle | How |
-|---|---|---|
-| `core` | Strategy | Each card = immutable strategy object (offset list); `RulesEngine` is strategy-agnostic. |
-| Client | Observer | `ClientModel` fires typed events; panels subscribe; no socket polling in UI. |
-| Messages | Polymorphism + handler registry | Sealed `Message` interface, one record per message, dispatched without `instanceof` chains. |
-| `db` | Interfaces + composition | `UserDao`/`MatchDao` interfaces, SQLite impls swappable. |
-| `Main` | Factory method | Builds the right application (server/client/bots/demo) from args. |
-| General | SOLID | SRP via packages; DIP server→DAO interfaces; OCP new message = new record. |
-| Errors | Exception hierarchy | `OnitamaException` → IllegalMove (core) / Authentication / Persistence (db). UI shows friendly text; server logs stack traces; nothing crashes. |
+## 7. Design and package boundaries
 
-Functional style used naturally: stream pipelines for legal-move filtering,
-leaderboard top-N sorting.
+Preserve `core`, `net`, `server`, `db`, `client/state`, `client/ui`, and
+`client/bot`. Keep Observer for ClientModel/panels, the sealed message handler
+registry, DAO interfaces/composition, and Main dispatch. Add only abstractions
+needed for skill effects, target validation, rules snapshots and restricted
+player views. Reuse shared effect operations where behavior matches; do not
+build a general scripting engine for this finite card set.
 
-## 8. Test inventory (all must keep passing)
+## 8. Test inventory and migration acceptance
 
-| ID | Test class | Proves |
-|---|---|---|
-| UT01 | `CardPatternTest` | All 16 cards: destinations + 180° rotation match the Appendix exactly. |
-| UT02 | `RulesEngineTest` | Jumps allowed; friendly-landing rejected; capture removes; off-board rejected. |
-| UT03 | `WinConditionTest` | STONE (master captured) and STREAM (master on temple arch) wins; student on arch does not win. |
-| UT04 | `CardCycleTest` | Card exchange, hands always size 2, rotated view for opponent, pass only with zero legal moves. |
-| UT05 | `CardDeckTest` | Deal = 5 distinct cards; transit stamp picks first player. |
-| UT06 | `EloTest` | Elo math (win/loss/draw, K=32). |
-| UT07 | `UserDaoTest` | Register/login, wrong password, duplicates, Elo/W/L persistence (temp DB). |
-| UT08 | `MatchDaoTest` | Match insert in transaction; rollback leaves no partial data; leaderboard order. |
-| UT09 | `MessageSerializationTest` | Every message round-trips byte-identical. |
-| IT01 | `ServerClientIntegrationTest` | Two scripted clients register, create/join, play a full game to a STONE win; identical broadcast sequences. |
-| IT02 | `DisconnectReconnectTest` | Drop mid-match → `OpponentLeft` → token reconnect with identical state → grace expiry forfeits. |
-| LT01 | `BotSmokeTest` | 8 bots, 4 concurrent random games, no errors. |
+The original 125-test baseline covered the legacy game. The table below records
+the migration requirements; current validation is recorded in the handoff reports.
 
-Rules: localhost only, ephemeral ports, temp dirs for DB tests, everything in
-`mvn test`. Practice-mode bot: `PracticeBotTest` covers the three difficulties.
+| Existing area | Required treatment during implementation |
+| --- | --- |
+| CardPatternTest (UT01) | Preserve all 16 Appendix offsets and Red rotation; adapt board-boundary expectations only where necessary |
+| RulesEngineTest (UT02) | Preserve jumping/friendly-landing/capture checks; expand to 7×7, phase and rejection atomicity |
+| WinConditionTest (UT03) | Replace Master/temple assertions with elimination, 60-turn draw and win-before-draw precedence |
+| CardCycleTest (UT04) | Replace transit and forced-pass tests with return/shuffle/draw and optional skip/end semantics |
+| CardDeckTest (UT05) | Replace 2/2/1 deal and stamp start with two public movement hands, shared decks, three private skills each and seeded random start |
+| EloTest (UT06), UserDaoTest (UT07), MatchDaoTest (UT08) | Preserve security, math, rollback and account behavior; cover new result/version/turn fields and legacy records when migrated |
+| MessageSerializationTest (UT09), MessageWireFilterTest | Round-trip new views/actions; allowed payloads work, foreign classes fail; verify no hidden data in serialized opponent views |
+| ServerClientIntegrationTest (IT01) | Full two-client elimination game; matching public state, distinct private views; stale/duplicate and illegal casts rejected |
+| DisconnectReconnectTest (IT02) | Preserve grace/forfeit; restore phase, hand and pending Foresight without extra mana/draw |
+| BotSmokeTest (LT01), PracticeBotTest | Complete games with legal movement/skills using permitted information; retain load-test and practice coverage |
 
-## 9. File I/O
+Additional coverage required with the implementing tasks:
 
-- **Client settings:** `client.properties` (last host/port, window size, piece
-  style). **Server:** CLI args override defaults; logging via
-  `java.util.logging` (console + rotating file).
+- Setup: six identical pieces per side at specified squares, 12/18 undealt
+  movement/skill cards, first active player's mana 3 and opponent's mana 2.
+- Card conservation: movement cards stay in hands/deck; skills stay in
+  hands/deck/spent pile, no duplicates or replenishment after exhaustion.
+- Every one of 24 effects: legal resolution, illegal targets and relevant
+  boundaries, both colors, correct payment/draw and phase consumption.
+- Simultaneous effects versus Rally's ordered movement; all-or-nothing rejection,
+  including unchanged RNG. Skills cannot eliminate by pushing off-board.
+- Mana cap, income exactly once, zero-cost cast, no mana from kills; no second
+  skill from a replacement draw and no movement-phase return.
+- Foresight valid permutations, malformed/duplicate choices, non-cancellable
+  preview, privacy and reconnect; Refocus's two-card reshuffle; empty skill deck.
+- Configuration validation, stable per-match snapshots, and UI text matching
+  those definitions. Baseline balance defaults in Appendix B load correctly.
+- Elimination after movement or skill, terminal action bookkeeping, 60th-turn
+  win precedence, optional all-pass draw, resignation and grace forfeits.
 
-## 10. Demo verification checklist
+Tests use ephemeral localhost ports, temporary DBs/directories and no external
+running server. Run `mvn test` after changes; clean release verification uses
+`mvn clean verify`. Report actual test counts and limitations.
 
-- [ ] `mvn clean verify` green from a clean clone; jar builds via shade plugin.
-- [ ] Two GUI clients + server on localhost: register → lobby → full game →
-      game over → rematch, end to end.
-- [ ] Practice mode plays on all three difficulties and the leaderboard works.
-- [ ] Server survives illegal moves, unknown cards, malformed/foreign socket
-      objects (reject + log, never crash), mid-game disconnects, Ctrl-C.
-- [ ] No plaintext passwords, no dead/debug code, no `println` debugging.
+## 9. File I/O and balance configuration
+
+Retain `client.properties` settings (host/port, window, piece style), server CLI
+overrides and `java.util.logging`. Future balance `.properties` loader must
+validate IDs, effect parameters, costs, copy counts and deck/hand constraints
+before creating a match; errors must identify the bad setting. Do not silently
+fall back from malformed supplied values. Never parse files inside core.
+
+First-version structural rules remain 7×7 with the specified six-piece setup.
+Balance defaults: two movement cards, three skills initially, starting mana 2,
+income 1, cap 5, 60-turn limit, one copy of each skill. Costs/ranges/counts must be
+editable within supported effect constraints. Typed fields, file layout and
+validation boundaries are defined in Step 3 §9 and its complete example; they
+do not permit inventing new mechanics. Artwork manifest JSON requires no new runtime JSON dependency.
+
+## 10. Release verification (pending implementation)
+
+- [ ] `mvn clean verify` passes and the shaded jar runs.
+- [ ] Two localhost clients play the new 7×7 rules through lobby, full game,
+      result and rematch; all 24 skills can be exercised.
+- [ ] Practice and load bots use legal actions without hidden information.
+- [ ] Private hands/deck order/preview never reach the wrong client's object
+      graph, logs, action history or error payloads.
+- [ ] Reconnect restores pending choices; malformed and duplicate requests do
+      not corrupt state; clean shutdown and persistence rollback still work.
+- [ ] Live card text matches match configuration; no transit/temple UI remains.
 
 ## Appendix — the 16 movement cards (authoritative offsets)
 
@@ -258,5 +374,43 @@ orientation); rotate 180° for the other player. `UT01` encodes exactly this.
 | Eel | (−1,+1), (−1,−1), (+1,0) |
 | Cobra | (+1,+1), (+1,−1), (−1,0) |
 
-Rules source: Grid-Duel-Board-Game, Shimpei Sato, Arcane Wonders (2014); offsets
-cross-verified against two independent open-source implementations.
+
+## Appendix B — Initial skill definitions
+
+These are the authoritative first-playtest defaults, clarified by §2.5. Category
+labels describe presentation, not turn phases: a MOVEMENT-category skill still
+uses the skill phase. All 24 skills have one copy. Costs are not claimed to be
+balanced; Dash/Vault at equal cost is a known playtest concern. Exchange swaps
+identical allies and therefore changes identity rather than tactical position;
+its practical benefit is currently only cycling a skill. Keep this adopted
+effect for now and reassess it during the balance pass. Later balance
+changes must update definitions and tests, not merely PNG text. The asset
+manifest at `output/skill-cards-v1/cards.json` mirrors this initial set; it is not
+a loaded runtime config and cannot override this specification.
+
+| ID | Name | Mana | Category | Effect |
+| --- | --- | --- | --- | --- |
+| `sidestep` | SIDESTEP | 1 | MOVEMENT | Move one friendly piece 1 square horizontally or vertically to an empty square. |
+| `dash` | DASH | 2 | MOVEMENT | Move one friendly piece exactly 2 squares horizontally or vertically. Both squares must be empty. |
+| `blink` | BLINK | 3 | MOVEMENT | Teleport one friendly piece to an empty square within distance 3. Ignore pieces between. |
+| `exchange` | EXCHANGE | 2 | MOVEMENT | Swap two friendly pieces within distance 3 of each other. |
+| `advance` | ADVANCE | 3 | MOVEMENT | Move two different friendly pieces 1 square each toward the enemy starting edge. Both destinations must be empty. |
+| `recall` | RECALL | 1 | MOVEMENT | Teleport one friendly piece to any empty square on your starting row. |
+| `strike` | STRIKE | 3 | ATTACK | Choose a friendly piece. Eliminate 1 enemy horizontally or vertically adjacent to it. Your piece stays still. |
+| `pierce` | PIERCE | 4 | ATTACK | Choose a friendly piece. Eliminate an enemy exactly 2 squares away horizontally or vertically. The square between must be empty. |
+| `surround` | SURROUND | 2 | ATTACK | Eliminate 1 enemy horizontally or vertically adjacent to at least two friendly pieces. |
+| `sweep` | SWEEP | 5 | ATTACK | Choose a friendly piece. Eliminate up to 2 enemies horizontally or vertically adjacent to it. |
+| `shove` | SHOVE | 1 | CONTROL | Choose a friendly piece. Push an adjacent enemy 1 square directly away. The destination must be empty and on the board. |
+| `pull` | PULL | 1 | CONTROL | Choose a friendly piece. Pull an enemy exactly 2 squares away horizontally or vertically into the empty square between. |
+| `vault` | VAULT | 2 | MOVEMENT | Move one friendly piece exactly 2 squares horizontally or vertically to an empty square. You may jump over a piece. |
+| `flank` | FLANK | 3 | ATTACK | Move one friendly piece 1 square diagonally. The destination must be empty or contain an enemy. Eliminate that enemy if present. |
+| `transposition` | TRANSPOSITION | 4 | CONTROL | Swap one friendly piece with one enemy within distance 2. Neither piece is eliminated. |
+| `gust` | GUST | 3 | CONTROL | Move up to 2 enemies 1 square each in the same horizontal or vertical direction. Both destinations must be empty before the skill. |
+| `rally` | RALLY | 3 | MOVEMENT | Choose a friendly anchor. Move up to 2 other friendly pieces 1 square each horizontally or vertically toward it. Each move must reduce distance and land empty. |
+| `scatter` | SCATTER | 3 | MOVEMENT | Move up to 2 different friendly pieces 1 square diagonally each. Both destinations must be empty before the skill. |
+| `crossfire` | CROSSFIRE | 4 | ATTACK | Eliminate an enemy between two friendly pieces in one row or column. Each ally must be within distance 3 with no pieces between it and the target. |
+| `chain-strike` | CHAIN STRIKE | 5 | ATTACK | Choose a friendly piece. Eliminate an adjacent enemy, then optionally 1 enemy adjacent to the first target. Adjacency is horizontal or vertical. |
+| `mana-surge` | MANA SURGE | 0 | RESOURCE | Gain 2 mana, up to the mana cap. This uses your skill for the turn. |
+| `refocus` | REFOCUS | 1 | RESOURCE | Return both movement cards to the movement deck. Shuffle, then draw 2 movement cards. |
+| `foresight` | FORESIGHT | 1 | RESOURCE | Look at the top 3 skill cards, or all remaining cards if fewer. Return them to the top in any order before drawing your replacement. |
+| `banish` | BANISH | 4 | CONTROL | Choose a friendly piece. Send an adjacent enemy to an empty square on that enemy's starting row. Adjacency is horizontal or vertical. |

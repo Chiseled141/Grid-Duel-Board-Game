@@ -68,6 +68,46 @@ public final class Database implements AutoCloseable {
                       played_at      TEXT NOT NULL
                     )""");
         }
+        migrateMatchesTable();
+    }
+
+    private void migrateMatchesTable() throws SQLException {
+        boolean hasRulesVersion = false;
+        boolean hasStartedTurns = false;
+        boolean hasCompletedTurns = false;
+        try (java.sql.PreparedStatement pragma = connection.prepareStatement("PRAGMA table_info(matches)")) {
+            try (java.sql.ResultSet rs = pragma.executeQuery()) {
+                while (rs.next()) {
+                    String col = rs.getString("name");
+                    if ("rules_version".equalsIgnoreCase(col)) {
+                        hasRulesVersion = true;
+                    } else if ("started_turns".equalsIgnoreCase(col)) {
+                        hasStartedTurns = true;
+                    } else if ("completed_turns".equalsIgnoreCase(col)) {
+                        hasCompletedTurns = true;
+                    }
+                }
+            }
+        }
+        if (!hasRulesVersion || !hasStartedTurns || !hasCompletedTurns) {
+            final boolean addRulesVersion = !hasRulesVersion;
+            final boolean addStartedTurns = !hasStartedTurns;
+            final boolean addCompletedTurns = !hasCompletedTurns;
+            inTransaction(conn -> {
+                try (Statement stmt = conn.createStatement()) {
+                    if (addRulesVersion) {
+                        stmt.execute("ALTER TABLE matches ADD COLUMN rules_version TEXT NOT NULL DEFAULT 'legacy-onitama-v1'");
+                    }
+                    if (addStartedTurns) {
+                        stmt.execute("ALTER TABLE matches ADD COLUMN started_turns INTEGER");
+                    }
+                    if (addCompletedTurns) {
+                        stmt.execute("ALTER TABLE matches ADD COLUMN completed_turns INTEGER");
+                    }
+                }
+                return null;
+            });
+        }
     }
 
     /** Runs a read or a single-statement write under the database lock. */

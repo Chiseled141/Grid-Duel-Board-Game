@@ -1,12 +1,15 @@
 package onitama;
 
-import onitama.core.Card;
-import onitama.core.CardDeck;
-import onitama.core.GameState;
-import onitama.core.Move;
+import onitama.config.RulesConfigLoader;
 import onitama.core.PlayerColor;
-import onitama.core.RulesEngine;
-import onitama.core.Square;
+import onitama.core.duel.CardInstance;
+import onitama.core.duel.GameAction;
+import onitama.core.duel.GameState;
+import onitama.core.duel.PlayerView;
+import onitama.core.duel.RulesConfig;
+import onitama.core.duel.RulesEngine;
+import onitama.core.duel.SkillDefinition;
+import onitama.core.duel.Targeting;
 import onitama.db.Database;
 import onitama.db.MatchDao;
 import onitama.db.SqliteMatchDao;
@@ -33,12 +36,11 @@ import javax.swing.SwingUtilities;
  * from the first argument.
  *
  * <pre>
- *   java -jar onitama.jar demo   [--seed n]              # print a board and legal moves
- *   java -jar onitama.jar server --port 5555             # headless server
- *   java -jar onitama.jar client --host &lt;ip&gt; --port 5555 # Swing client
+ *   java -jar onitama.jar demo   [--seed n] [--config file] # print a board and legal moves
+ *   java -jar onitama.jar server --port 5555 [--config file]# headless server
+ *   java -jar onitama.jar client [--host &lt;ip&gt; --port 5555] # Swing client
+ *   java -jar onitama.jar bots   --host 127.0.0.1 --port 5555 --bots 8 --games 4
  * </pre>
- *
- * The {@code bots} mode is added by a later milestone.
  */
 public final class Main {
 
@@ -75,10 +77,10 @@ public final class Main {
     }
 
     private static void usage() {
-        System.err.println("usage: onitama demo [--seed n]");
-        System.err.println("       onitama server --port <port>");
+        System.err.println("usage: onitama demo [--seed n] [--config <path>]");
+        System.err.println("       onitama server --port <port> [--config <path>] [--db <path>]");
         System.err.println("       onitama client [--host <host>] [--port <port>]");
-        System.err.println("       onitama bots --host <host> --port <port> --bots <n> --games <g>");
+        System.err.println("       onitama bots --host <host> --port <port> --bots <n> --games <g> [--seed n]");
     }
 
     /**
@@ -108,29 +110,40 @@ public final class Main {
     /** Prints the starting position, the dealt cards and all legal first moves. */
     private static void runDemo(Map<String, String> options) {
         long seed = Long.parseLong(options.getOrDefault("seed", "42"));
-        GameState state = GameState.newGame(CardDeck.deal(new Random(seed)));
+        Path configOverride = options.containsKey("config") ? Path.of(options.get("config")) : null;
+        RulesConfig rules = RulesConfigLoader.load(configOverride);
+        GameState state = RulesEngine.newGame(rules, seed);
+        System.out.println("Grid Duel 7x7 Demo (Rules version: " + rules.rulesVersion() + ")");
         System.out.println("First to move: " + state.turn());
-        System.out.println("Blue hand: " + cardNames(state.hand(PlayerColor.BLUE)));
-        System.out.println("Red hand:  " + cardNames(state.hand(PlayerColor.RED)));
-        System.out.println("Transit:   " + state.transit().name());
+        System.out.println("Blue movement: " + cardNames(state.blueMovementHand()));
+        System.out.println("Blue skills:   " + skillNames(rules, state.blueSkillHand()));
+        System.out.println("Red movement:  " + cardNames(state.redMovementHand()));
+        System.out.println("Red skills:    " + skillNames(rules, state.redSkillHand()));
+        System.out.println("Mana: Blue=" + state.blueMana() + ", Red=" + state.redMana());
         System.out.println();
-        System.out.println(state.board());
+        System.out.print(state.board());
 
-        PlayerColor mover = state.turn();
-        List<Move> legal = RulesEngine.legalMoves(state);
-        System.out.println(legal.size() + " legal moves for " + mover + ":");
-        for (Move move : legal) {
-            Square from = move.from();
-            Square to = move.to();
-            String piece = state.board().pieceAt(from).master() ? "Master" : "Student";
-            System.out.printf("  %-8s %-7s %s -> %s%n",
-                    move.cardId(), piece, from, to);
+        PlayerView moverView = RulesEngine.viewFor(state, state.turn());
+        List<GameAction.MovePiece> legal = Targeting.legalMoves(moverView);
+        System.out.println(legal.size() + " legal movement moves for " + state.turn() + ":");
+        for (GameAction.MovePiece move : legal) {
+            System.out.printf("  card=%-10s piece#%-2d -> %s%n",
+                    move.movementCardId(), move.pieceId(), move.to());
         }
     }
 
-    private static String cardNames(List<Card> cards) {
+    private static String cardNames(List<String> cards) {
+        return String.join(", ", cards);
+    }
+
+    private static String skillNames(RulesConfig rules, List<CardInstance> cards) {
         return cards.stream()
-                .map(card -> card.name() + " (" + card.id() + ")")
+                .map(card -> {
+                    SkillDefinition def = rules.skill(card.definitionId());
+                    String name = def != null ? def.name() : card.definitionId();
+                    int cost = def != null ? def.manaCost() : 0;
+                    return name + " (" + cost + "m) [" + card.instanceId() + "]";
+                })
                 .collect(java.util.stream.Collectors.joining(", "));
     }
 
@@ -141,12 +154,15 @@ public final class Main {
     private static void runServer(Map<String, String> options) {
         int port = Integer.parseInt(options.getOrDefault("port", "5555"));
         Path dbFile = Path.of(options.getOrDefault("db", "data/onitama.db"));
+        Path configOverride = options.containsKey("config") ? Path.of(options.get("config")) : null;
+        RulesConfig rules = RulesConfigLoader.load(configOverride);
         installFileLogging();
         try (Database database = new Database(dbFile)) {
             SqliteUserDao userDao = new SqliteUserDao(database);
             MatchDao matchDao = new SqliteMatchDao(database, userDao);
-            GameServer server = new GameServer(ServerConfig.defaults(port), userDao,
+            GameServer server = new GameServer(ServerConfig.defaults(port, rules), userDao,
                     new MatchPersistence(database, matchDao));
+
             Runtime.getRuntime().addShutdownHook(new Thread(() -> {
                 server.stop();
                 try {
