@@ -18,25 +18,103 @@ public sealed interface Message extends Serializable
         permits RegisterRequest, LoginRequest, LoginResponse,
         CreateMatchRequest, MatchCreated, JoinMatchRequest,
         ListMatchesRequest, ListMatchesResponse,
-        MatchStart, MoveRequest, MoveApplied, MoveRejected, PassTurn,
-        GameOver, RematchRequest, RematchAccept, ResignRequest,
+        GameOver, RematchRequest, RematchAccept,
         OpponentLeft, ReconnectRequest, LeaderboardRequest, LeaderboardResponse,
-        Ping, Pong, ErrorMessage {
+        Ping, Pong, ErrorMessage,
+        ProtocolHello, ProtocolReady, ActionRequest, MatchSync, ActionReply, GameUpdate {
 
     /**
-     * The deserialization filter (JEP 290) every endpoint installs on its
-     * {@code ObjectInputStream} immediately after creating it. It is an
-     * allowlist: only message records, the {@code core} classes they embed
-     * (GameState, Board, Card, ...) and JDK classes may be read — anything
-     * else, such as a crafted gadget-chain class, is rejected during
-     * {@code readObject} before any of its code can run.
-     *
-     * <p>Only {@code maxdepth} (per object graph, resets with every
-     * {@code readObject}) is used as a size guard: {@code maxrefs} and
-     * {@code maxbytes} are cumulative over the whole stream and would reject
-     * legitimate traffic once a long-lived connection has carried enough
-     * messages.
+     * The deserialization filter (JEP 290) installed on every {@code ObjectInputStream}.
+     * Specifically rejects full game state, boards, RNG, and pending host state.
+     * Enforces depth bounds and per-array length limits.
      */
     ObjectInputFilter WIRE_FILTER = ObjectInputFilter.Config.createFilter(
-            "maxdepth=64;onitama.net.*;onitama.core.*;java.base/*;!*");
+            "maxdepth=64;maxarray=1000;"
+                    + "onitama.net.RegisterRequest;"
+                    + "onitama.net.LoginRequest;"
+                    + "onitama.net.LoginResponse;"
+                    + "onitama.net.CreateMatchRequest;"
+                    + "onitama.net.MatchCreated;"
+                    + "onitama.net.JoinMatchRequest;"
+                    + "onitama.net.ListMatchesRequest;"
+                    + "onitama.net.ListMatchesResponse;"
+                    + "onitama.net.GameOver;"
+                    + "onitama.net.RematchRequest;"
+                    + "onitama.net.RematchAccept;"
+                    + "onitama.net.OpponentLeft;"
+                    + "onitama.net.ReconnectRequest;"
+                    + "onitama.net.LeaderboardRequest;"
+                    + "onitama.net.LeaderboardResponse;"
+                    + "onitama.net.Ping;"
+                    + "onitama.net.Pong;"
+                    + "onitama.net.ErrorMessage;"
+                    + "onitama.net.ProtocolHello;"
+                    + "onitama.net.ProtocolReady;"
+                    + "onitama.net.ActionRequest;"
+                    + "onitama.net.MatchSync;"
+                    + "onitama.net.ActionReply;"
+                    + "onitama.net.ActionReceipt;"
+                    + "onitama.net.GameUpdate;"
+                    + "onitama.net.UserProfile;"
+                    + "onitama.net.MatchSummary;"
+                    + "onitama.core.PlayerColor;"
+                    + "onitama.core.Square;"
+                    + "onitama.core.Offset;"
+                    + "onitama.core.Card;"
+                    + "onitama.core.duel.PlayerView;"
+                    + "onitama.core.duel.RulesConfig;"
+                    + "onitama.core.duel.SkillDefinition;"
+                    + "onitama.core.duel.SkillCategory;"
+                    + "onitama.core.duel.SkillParameter;"
+                    + "onitama.core.duel.CardInstance;"
+                    + "onitama.core.duel.PlacedPiece;"
+                    + "onitama.core.duel.Piece;"
+                    + "onitama.core.duel.TurnPhase;"
+                    + "onitama.core.duel.ForesightView;"
+                    + "onitama.core.duel.GameOutcome;"
+                    + "onitama.core.duel.EndReason;"
+                    + "onitama.core.duel.Direction;"
+                    + "onitama.core.duel.Relocation;"
+                    + "onitama.core.duel.ActionError;"
+                    + "onitama.core.duel.GameAction$MovePiece;"
+                    + "onitama.core.duel.GameAction$SkipMovement;"
+                    + "onitama.core.duel.GameAction$CastSkill;"
+                    + "onitama.core.duel.GameAction$ResolveForesight;"
+                    + "onitama.core.duel.GameAction$EndTurn;"
+                    + "onitama.core.duel.GameAction$Resign;"
+                    + "onitama.core.duel.SkillTargets$Relocate;"
+                    + "onitama.core.duel.SkillTargets$Swap;"
+                    + "onitama.core.duel.SkillTargets$Attack;"
+                    + "onitama.core.duel.SkillTargets$Enemy;"
+                    + "onitama.core.duel.SkillTargets$Displace;"
+                    + "onitama.core.duel.SkillTargets$RelocateEnemy;"
+                    + "onitama.core.duel.SkillTargets$ShiftEnemies;"
+                    + "onitama.core.duel.SkillTargets$MoveGroup;"
+                    + "onitama.core.duel.SkillTargets$Rally;"
+                    + "onitama.core.duel.SkillTargets$None;"
+                    + "onitama.core.duel.PublicEvent$PieceMoved;"
+                    + "onitama.core.duel.PublicEvent$PieceEliminated;"
+                    + "onitama.core.duel.PublicEvent$MovementPlayed;"
+                    + "onitama.core.duel.PublicEvent$SkillCommitted;"
+                    + "onitama.core.duel.PublicEvent$TurnStarted;"
+                    + "onitama.core.duel.PublicEvent$MatchEnded;"
+                    + "java.lang.Object;"
+                    + "java.lang.String;"
+                    + "java.lang.Enum;"
+                    + "java.lang.Number;"
+                    + "java.lang.Integer;"
+                    + "java.util.CollSer;"
+                    + "java.util.ImmutableCollections$List12;"
+                    + "java.util.ImmutableCollections$ListN;"
+                    + "java.util.ImmutableCollections$Map1;"
+                    + "java.util.ImmutableCollections$MapN;"
+                    + "java.util.ArrayList;"
+                    + "java.util.LinkedList;"
+                    + "java.util.Arrays$ArrayList;"
+                    + "java.util.Collections$UnmodifiableCollection;"
+                    + "java.util.Collections$UnmodifiableList;"
+                    + "java.util.Collections$UnmodifiableRandomAccessList;"
+                    + "java.util.Collections$EmptyList;"
+                    + "java.util.Collections$SingletonList;"
+                    + "!*");
 }

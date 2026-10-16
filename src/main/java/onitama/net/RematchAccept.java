@@ -4,7 +4,7 @@ import java.io.Serial;
 
 /**
  * S→C. Tells a player that the opponent has offered or accepted a rematch.
- * The new game itself is announced with {@link MatchStart}.
+ * The new game itself is announced with {@link MatchSync}.
  */
 public record RematchAccept() implements Message {
 

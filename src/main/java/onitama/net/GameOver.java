@@ -1,7 +1,7 @@
 package onitama.net;
 
 import onitama.core.PlayerColor;
-import onitama.core.WinCondition;
+import onitama.core.duel.EndReason;
 
 import java.io.Serial;
 
@@ -10,7 +10,7 @@ import java.io.Serial;
  * players' Elo ratings after the update. The server persists the match
  * before sending this.
  */
-public record GameOver(PlayerColor winnerColor, WinCondition way,
+public record GameOver(PlayerColor winnerColor, EndReason way,
                        int blueEloAfter, int redEloAfter) implements Message {
 
     @Serial

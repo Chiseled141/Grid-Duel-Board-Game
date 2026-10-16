@@ -1,7 +1,7 @@
 package onitama.db;
 
 import onitama.core.PlayerColor;
-import onitama.core.WinCondition;
+import onitama.core.duel.EndReason;
 import onitama.server.MatchResult;
 
 import java.sql.Connection;
@@ -40,8 +40,9 @@ public final class SqliteMatchDao implements MatchDao {
         long matchId;
         try (PreparedStatement insert = connection.prepareStatement(
                 "INSERT INTO matches (blue_user_id, red_user_id, winner_user_id, end_reason, "
-                        + "move_count, elo_blue_after, elo_red_after, played_at) "
-                        + "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                        + "move_count, elo_blue_after, elo_red_after, played_at, "
+                        + "rules_version, started_turns, completed_turns) "
+                        + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 Statement.RETURN_GENERATED_KEYS)) {
             insert.setLong(1, blueId);
             insert.setLong(2, redId);
@@ -51,11 +52,14 @@ public final class SqliteMatchDao implements MatchDao {
                 insert.setLong(3, winnerId);
             }
             insert.setString(4, result.way().name());
-            insert.setInt(5, result.moveCount());
+            insert.setInt(5, 0); // legacy not-applicable sentinel
             insert.setInt(6, result.blueEloAfter());
             insert.setInt(7, result.redEloAfter());
             insert.setString(8, java.time.LocalDateTime.now()
                     .format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE_TIME));
+            insert.setString(9, result.rulesVersion());
+            insert.setInt(10, result.startedTurns());
+            insert.setInt(11, result.completedTurns());
             insert.executeUpdate();
             try (ResultSet keys = insert.getGeneratedKeys()) {
                 keys.next();
@@ -75,7 +79,7 @@ public final class SqliteMatchDao implements MatchDao {
         String username = color == PlayerColor.BLUE ? result.blueUsername() : result.redUsername();
         onitama.net.UserProfile profile = userDao.profileOf(username);
         int newElo = color == PlayerColor.BLUE ? result.blueEloAfter() : result.redEloAfter();
-        if (result.way() == WinCondition.DRAW) {
+        if (result.way() == EndReason.DRAW) {
             // A draw moves Elo only: with no winner, counting !won would add
             // a loss to BOTH players.
             userDao.updateStatsInside(connection, username, newElo,
@@ -94,7 +98,7 @@ public final class SqliteMatchDao implements MatchDao {
             try (PreparedStatement select = connection.prepareStatement("""
                     SELECT m.id, ub.username AS blue, ur.username AS red, uw.username AS winner,
                            m.end_reason, m.move_count, m.elo_blue_after, m.elo_red_after,
-                           m.played_at
+                           m.played_at, m.rules_version, m.started_turns, m.completed_turns
                     FROM matches m
                     JOIN users ub ON ub.id = m.blue_user_id
                     JOIN users ur ON ur.id = m.red_user_id
@@ -104,11 +108,16 @@ public final class SqliteMatchDao implements MatchDao {
                 select.setInt(1, limit);
                 try (ResultSet row = select.executeQuery()) {
                     while (row.next()) {
+                        Integer startedTurns = row.getObject("started_turns") != null
+                                ? row.getInt("started_turns") : null;
+                        Integer completedTurns = row.getObject("completed_turns") != null
+                                ? row.getInt("completed_turns") : null;
                         records.add(new MatchRecord(row.getLong("id"), row.getString("blue"),
                                 row.getString("red"), row.getString("winner"),
                                 row.getString("end_reason"), row.getInt("move_count"),
                                 row.getInt("elo_blue_after"), row.getInt("elo_red_after"),
-                                row.getString("played_at")));
+                                row.getString("played_at"), row.getString("rules_version"),
+                                startedTurns, completedTurns));
                     }
                 }
             }

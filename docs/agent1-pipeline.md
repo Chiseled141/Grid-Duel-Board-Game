@@ -3,7 +3,7 @@
 > The ONLY coding agent. Follow steps in order. Do not skip validation.
 
 ## 1. Read task
-Restate the requirement in one sentence. List acceptance criteria explicitly. If ambiguous, pick the simplest interpretation and note it.
+Restate the requirement in one sentence. List acceptance criteria explicitly. For implementation details, pick the simplest interpretation and note it. Gameplay semantics must follow the authoritative spec; do not reinvent adopted rules.
 
 ## 2. Read harness
 Read `AGENTS.md` fully. Read `docs/architecture.md` sections relevant to the task. Read `GRID-DUEL-BOARD-GAME_SPEC.md` (renamed from `ONITAMA_AGENT_BRIEF.md`) sections relevant to the task (rules/protocol/schema). Do not re-read unrelated sections to save tokens.
@@ -33,7 +33,7 @@ mvn test
 If the task is isolated, you may run a subset first (`mvn -Dtest=FooTest test`), but before finishing always run the full `mvn test`. Capture output; do not claim green without it.
 
 ## 7. Diagnose failures
-If red: read the failure message, locate the offending file:line, check whether the failure is in your changed code, a harness invariant, or a pre-existing flake. Do not edit unrelated tests to make them pass.
+If red: read the failure message, locate the offending file:line, check whether the failure is in your changed code, a harness invariant, or a pre-existing flake. Do not edit unrelated tests to make them pass. For an assigned rule migration, replace obsolete gameplay assertions with meaningful coverage of the new spec in the same change; document which rules changed. The legacy 125-test count is not a fixed target.
 
 ## 8. Fix failures
 Fix one cause at a time, re-run `mvn test` after each fix. If a fix requires changing scope, note why.

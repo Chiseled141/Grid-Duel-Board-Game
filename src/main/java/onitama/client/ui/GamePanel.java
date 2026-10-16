@@ -3,9 +3,20 @@ package onitama.client.ui;
 import onitama.client.state.ClientModel;
 import onitama.client.state.ClientModelListener;
 import onitama.client.state.Screen;
-import onitama.core.Board;
-import onitama.core.GameState;
-import onitama.core.Piece;
+import onitama.core.Card;
+import onitama.core.CardDeck;
+import onitama.core.PlayerColor;
+import onitama.core.Square;
+import onitama.core.duel.CardInstance;
+import onitama.core.duel.Direction;
+import onitama.core.duel.PlacedPiece;
+import onitama.core.duel.PlayerView;
+import onitama.core.duel.PublicEvent;
+import onitama.core.duel.SelectionDraft;
+import onitama.core.duel.SelectionOptions;
+import onitama.core.duel.SkillCategory;
+import onitama.core.duel.SkillDefinition;
+import onitama.core.duel.TurnPhase;
 import onitama.net.GameOver;
 
 import java.awt.BorderLayout;
@@ -20,32 +31,26 @@ import java.awt.GridBagLayout;
 import java.awt.GridLayout;
 import java.awt.Insets;
 import java.awt.RenderingHints;
+import java.awt.Window;
 import java.awt.event.KeyEvent;
+import java.util.ArrayList;
 import java.util.List;
 
 import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
-import javax.swing.DefaultListCellRenderer;
 import javax.swing.JButton;
 import javax.swing.JComponent;
 import javax.swing.JLabel;
-import javax.swing.JList;
-import javax.swing.JOptionPane;
 import javax.swing.JPanel;
-import javax.swing.JScrollPane;
 import javax.swing.KeyStroke;
-import javax.swing.ScrollPaneConstants;
 import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
 
 /**
- * The game screen, composed like the physical tabletop: your hand cards big
- * on the left, the turn banner + player badge + stats + NEXT CARD + controls
- * + move history stacked on the right, the opponent's cards on top with
- * their identity chip, and the big board in the center. Click a card and a
- * piece (either order) to see legal destinations, then click a destination
- * to move. ESC clears the selection.
+ * 7x7 Grid Duel game screen.
+ * Displays public movement hands, private skill cards, live definitions,
+ * mana counter, deck counters, and action buttons.
  */
 public final class GamePanel extends JPanel {
 
@@ -54,29 +59,59 @@ public final class GamePanel extends JPanel {
     private final BoardPanel boardPanel = new BoardPanel();
     private final UiKit.HeadingLabel turnLabel = new UiKit.HeadingLabel(15f);
     private final JLabel opponentLabel = UiKit.label("", 14f);
-    private final JLabel nameLabel = UiKit.boldLabel("", 14f);
-    private final JLabel statsLabel = UiKit.label("", 10f);
-    private final JLabel turnCountLabel = new JLabel("00", SwingConstants.CENTER);
-    private final JLabel turnCaption = UiKit.caption("TURN", Theme.CREAM);
-    private final PieceCountRow redPips = new PieceCountRow(Theme.P2);
-    private final PieceCountRow bluePips = new PieceCountRow(Theme.P1);
-    private final JPanel opponentBadge = UiKit.badge("OPPONENT", () -> {
-        var opponent = opponentColor();
-        return opponent == null ? Theme.AMBER : Theme.playerColor(opponent);
-    });
-    private final JPanel myBadge = UiKit.badge("YOU", () -> {
-        var mine = myColor();
-        return mine == null ? Theme.AMBER : Theme.playerColor(mine);
-    });
-    private final JPanel goesBadge = UiKit.badge("GOES TO —", this::turnDotColor);
-    private final JPanel opponentCards =
-            new JPanel(new FlowLayout(FlowLayout.CENTER, 20, 0));
-    private final JPanel myCards = new JPanel(new GridLayout(2, 1, 12, 12));
-    private final JPanel transitHolder = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 4));
-    private final JList<ClientModel.MoveInfo> historyList = new JList<>();
-    private final JLabel lastMoveLabel = UiKit.label("Last move: —", 11f);
-    private final CaptureTray myCaptureTray = new CaptureTray();
-    private final CaptureTray enemyCaptureTray = new CaptureTray();
+    private final JLabel turnCountLabel = UiKit.caption("TURN 01", Theme.INK);
+    private final PlayerBadgePanel ownBadge = new PlayerBadgePanel(true);
+    private final PlayerBadgePanel opponentBadge = new PlayerBadgePanel(false);
+    private final DeckStackPanel movementDeck = new DeckStackPanel(true);
+    private final DeckStackPanel skillDeck = new DeckStackPanel(false);
+    private final DeckDrawOverlay drawOverlay;
+    private long drawGeneration;
+    private final List<CardPanel> opponentMovementPanels = new ArrayList<>();
+    private final List<CardBackPanel> opponentSkillPanels = new ArrayList<>();
+    private List<String> builtOpponentMoves = List.of();
+    private PlayerColor builtOpponentColor;
+
+    private final JPanel opponentCards = new JPanel(new FlowLayout(FlowLayout.CENTER, 8, 0));
+    private final CardHandPanel hand = new CardHandPanel();
+    private final List<SkillCardPanel> mySkillPanels = new ArrayList<>();
+    private List<CardInstance> builtSkills = List.of();
+    private onitama.core.duel.RulesConfig handRules;
+    private PlayerColor handColor;
+
+    private final JButton skipMovementButton = UiKit.pill("Skip Movement", UiKit.Pill.CREAM_OUTLINE);
+    private final JButton endTurnButton = UiKit.pill("End Turn", UiKit.Pill.GOLD);
+    private final JButton castSkillButton = UiKit.pill("Cast Skill", UiKit.Pill.GOLD);
+    private final JPanel directionPanel = new JPanel(new GridLayout(2, 2, 4, 4));
+    private final UiKit.PillButton dirForward = UiKit.pill("Forward", UiKit.Pill.CREAM_OUTLINE);
+    private final UiKit.PillButton dirBackward = UiKit.pill("Back", UiKit.Pill.CREAM_OUTLINE);
+    private final UiKit.PillButton dirLeft = UiKit.pill("Left", UiKit.Pill.CREAM_OUTLINE);
+    private final UiKit.PillButton dirRight = UiKit.pill("Right", UiKit.Pill.CREAM_OUTLINE);
+    private final CardInspectorPanel inspector = new CardInspectorPanel(this::refreshInspector);
+    private JComponent hoveredCard;
+    private String inspectorSelection;
+    private String currentInstruction = "";
+    private final JLabel instructionLabel = UiKit.caption("", Theme.INK);
+
+    private enum RelativeDirection { FORWARD, BACKWARD, LEFT, RIGHT }
+
+    private static Direction relativeToCanonical(RelativeDirection rel, PlayerColor viewer) {
+        if (viewer == PlayerColor.RED) {
+            return switch (rel) {
+                case FORWARD -> Direction.NORTH;
+                case BACKWARD -> Direction.SOUTH;
+                case LEFT -> Direction.EAST;
+                case RIGHT -> Direction.WEST;
+            };
+        } else { // BLUE
+            return switch (rel) {
+                case FORWARD -> Direction.SOUTH;
+                case BACKWARD -> Direction.NORTH;
+                case LEFT -> Direction.WEST;
+                case RIGHT -> Direction.EAST;
+            };
+        }
+    }
+
     private final JComponent waitPulseDot = new JComponent() {
         {
             setPreferredSize(new Dimension(12, 12));
@@ -87,8 +122,7 @@ public final class GamePanel extends JPanel {
         @Override
         protected void paintComponent(Graphics graphics) {
             Graphics2D g = (Graphics2D) graphics.create();
-            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
-                    RenderingHints.VALUE_ANTIALIAS_ON);
+            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
             g.setColor(new Color(252, 186, 40, 90 + (int) (150 * pulse)));
             g.fillOval(1, 1, 10, 10);
             g.setColor(Theme.INK);
@@ -101,74 +135,28 @@ public final class GamePanel extends JPanel {
         pulse = (pulse + 0.09f) % 1f;
         waitPulseDot.repaint();
     });
-    private JPanel historyViews;
-    private int lastEffectMove = -1;
     private JButton resignButton;
-    /** True while a ResignRequest is on the wire and GameOver not yet back. */
-    private boolean resignPending;
-    private final List<CardPanel> myCardPanels = new java.util.ArrayList<>();
-    /** The hand card ids the current {@link #myCardPanels} were built for. */
-    private List<String> builtHandIds = List.of();
-    /** Last scale applied to the hand cards (reused when they are rebuilt). */
-    private double handScale = 0.9;
-    private JPanel handColumn;
-    /** A hand card's native height at scale 1 (CardPanel H + shadow room). */
-    private static final double CARD_NATIVE_H = 244;
-    /** Fixed scale for the opponent's two cards (≈168px wide, never rescales). */
-    private static final double OPPONENT_CARD_SCALE = 0.78;
-    /** Fixed scale for the transit card inside the NEXT CARD panel. */
-    private static final double TRANSIT_CARD_SCALE = 0.62;
-    /** The sidebar column's fixed width — all its cards align to it. */
-    private static final int SIDEBAR_WIDTH = 264;
+    private final List<CardPanel> myCardPanels = new ArrayList<>();
+    private List<String> builtMovementCardIds = List.of();
+    private static final double OPPONENT_CARD_SCALE = 0.36;
+    private static final int SIDEBAR_WIDTH = 270;
 
-    private onitama.core.PlayerColor myColor() {
+    private ForesightDialog foresightDialog;
+    private String foresightMatchId;
+    private long foresightChoiceId;
+
+    private PlayerColor myColor() {
         return model.myColor();
     }
 
-    private onitama.core.PlayerColor opponentColor() {
+    private PlayerColor opponentColor() {
         return myColor() == null ? null : myColor().opponent();
     }
 
-    /** Dot color for the GOES TO badge: the side the transit card is heading to. */
-    private Color turnDotColor() {
-        var turn = model.state() == null ? null : model.state().turn();
-        return turn == null ? Theme.AMBER : Theme.playerColor(turn);
-    }
-
-    /** Swaps between the move list and the themed empty state. */
-    private void showHistory(boolean hasMoves) {
-        ((java.awt.CardLayout) historyViews.getLayout()).show(historyViews,
-                hasMoves ? "moves" : "empty");
-    }
-
-    /** The avatar: a mini Master figurine in the player's color. */
-    private final JComponent avatar = new JComponent() {
-        {
-            setPreferredSize(new Dimension(32, 36));
-            setOpaque(false);
-        }
-
-        @Override
-        protected void paintComponent(Graphics graphics) {
-            Graphics2D g = (Graphics2D) graphics.create();
-            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
-                    RenderingHints.VALUE_ANTIALIAS_ON);
-            var color = myColor();
-            UiKit.drawFigurine(g, getWidth() / 2, getHeight() - 6,
-                    getHeight() - 12,
-                    color == null ? Theme.AMBER : Theme.playerColor(color), true);
-            g.dispose();
-        }
-    };
-
-    /** The online indicator dot (top-right of the player badge). */
-    private final JComponent onlineDot = UiKit.statusDot(9, () -> Theme.GREEN);
-
-    /** The sumi-e painting behind the match (same artwork as the lobby). */
     @Override
     protected void paintComponent(Graphics graphics) {
         super.paintComponent(graphics);
-        java.awt.Image background = AssetStore.optional("menu-background.png");
+        java.awt.Image background = AssetStore.optional("cinematic-valley.png");
         if (background == null) {
             return;
         }
@@ -178,50 +166,63 @@ public final class GamePanel extends JPanel {
         int w = (int) (background.getWidth(null) * scale);
         int h = (int) (background.getHeight(null) * scale);
         g.drawImage(background, (getWidth() - w) / 2, (getHeight() - h) / 2, w, h, null);
+        g.setColor(new Color(255, 241, 208, 24));
+        g.fillRect(0, 0, getWidth(), getHeight());
         g.dispose();
     }
 
-    /** Builds the game screen and subscribes it to the model. */
+    /** Builds the board, public opponent hand, and unified private hand. */
     public GamePanel(ClientModel model) {
+        this(model, new DeckDrawOverlay());
+    }
+
+    // Tests inject a visual clock without changing the model or authoritative rules.
+    GamePanel(ClientModel model, DeckDrawOverlay drawOverlay) {
         this.model = model;
-        setLayout(new BorderLayout(14, 10));
-        setBorder(BorderFactory.createEmptyBorder(12, 16, 12, 16));
+        this.drawOverlay = drawOverlay;
+        setLayout(new BorderLayout(12, 6));
+        setBorder(BorderFactory.createEmptyBorder(10, 16, 10, 16));
         setBackground(Theme.BG);
 
-        // Top band: the VS headline, the opponent's two cards side by side,
-        // and their identity badge — all centered against the board.
-        JPanel north = new JPanel(new BorderLayout(0, Theme.GRID));
+        // Top opponent band
+        JPanel north = new JPanel(new BorderLayout(0, 4));
         north.setOpaque(false);
-        north.setBorder(BorderFactory.createEmptyBorder(Theme.GRID, 0, 0, 0));
         opponentLabel.setHorizontalAlignment(SwingConstants.CENTER);
-        opponentLabel.setFont(Theme.display(17f));
-        opponentLabel.setBorder(BorderFactory.createEmptyBorder(0, 0, 6, 0));
+        opponentLabel.setFont(Theme.display(16f));
+        backCaption(opponentLabel);
         opponentCards.setOpaque(false);
         north.add(opponentLabel, BorderLayout.NORTH);
         north.add(opponentCards, BorderLayout.CENTER);
-        JPanel opponentBadgeWrap = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 6));
-        opponentBadgeWrap.setOpaque(false);
-        opponentBadgeWrap.add(opponentBadge);
-        north.add(opponentBadgeWrap, BorderLayout.SOUTH);
 
-        // The board column: opponent band on top of the board only, so the
-        // side columns (hand + sidebar) keep the full window height.
-        JPanel center = new JPanel(new BorderLayout(0, Theme.GRID));
+        // The complete hand has its own space so hovered cards cannot hide board squares.
+        JPanel center = new JPanel(new BorderLayout(0, 6));
         center.setOpaque(false);
         center.add(north, BorderLayout.NORTH);
         center.add(boardPanel, BorderLayout.CENTER);
-        add(center, BorderLayout.CENTER);
+        center.add(buildBottomControls(), BorderLayout.SOUTH);
+        JPanel scene = new JPanel(new BorderLayout(12, 6));
+        scene.setOpaque(false);
+        scene.add(buildTurnControls(), BorderLayout.WEST);
+        scene.add(center, BorderLayout.CENTER);
+        scene.add(buildRightColumn(), BorderLayout.EAST);
+        add(DeckDrawOverlay.wrap(scene, drawOverlay), BorderLayout.CENTER);
+        addComponentListener(new java.awt.event.ComponentAdapter() {
+            @Override public void componentResized(java.awt.event.ComponentEvent event) { cancelDraws(); }
+        });
 
-        add(buildHandColumn(), BorderLayout.WEST);
-        add(buildRightColumn(), BorderLayout.EAST);
+        boardPanel.onClick(sq -> {
+            hoveredCard = null;
+            cancelDraws();
+            boardPanel.finishMoveAnimation();
+            model.boardClicked(sq);
+        });
 
-        boardPanel.onClick(model::boardClicked);
-        // ESC clears the card/piece selection.
         getInputMap(WHEN_IN_FOCUSED_WINDOW).put(
                 KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0), "clearSelection");
         getActionMap().put("clearSelection", new javax.swing.AbstractAction() {
             @Override
             public void actionPerformed(java.awt.event.ActionEvent event) {
+                cancelDraws();
                 model.clearSelection();
                 refresh();
             }
@@ -233,8 +234,8 @@ public final class GamePanel extends JPanel {
                 if (screen == Screen.GAME) {
                     refresh();
                 } else {
-                    // Off the game screen: drop selection highlights and the
-                    // animations that only make sense over a live board.
+                    cancelPresentation();
+                    closeForesightDialog();
                     boardPanel.clearHighlights();
                 }
             }
@@ -245,13 +246,36 @@ public final class GamePanel extends JPanel {
             }
 
             @Override
+            public void onPresentationReset() {
+                hoveredCard = null;
+                inspector.clear();
+                cancelPresentation();
+                ownBadge.reset();
+                opponentBadge.reset();
+            }
+
+            @Override
+            public void onAcceptedPresentation(PlayerView priorView, PlayerView currentView, List<PublicEvent> events) {
+                handleAcceptedPresentation(priorView, currentView, events);
+            }
+
+            @Override
             public void onGameOver(GameOver over) {
+                cancelPresentation();
+                closeForesightDialog();
                 showGameOverDialog(over);
             }
 
             @Override
+            public void onConnectionLost() {
+                cancelPresentation();
+                closeForesightDialog();
+            }
+
+            @Override
             public void onOpponentLeft(int graceSeconds) {
-                turnLabel.setText("OPPONENT LOST CONNECTION");
+                cancelPresentation();
+                turnLabel.setText("OPPONENT DISCONNECTED (" + graceSeconds + "s)");
             }
 
             @Override
@@ -261,503 +285,759 @@ public final class GamePanel extends JPanel {
         });
     }
 
-    // ------------------------------------------------------------------
-    // Left: your hand cards, big
-    // ------------------------------------------------------------------
-
-    private JPanel buildHandColumn() {
-        handColumn = new JPanel(new BorderLayout());
-        handColumn.setOpaque(false);
-        handColumn.setPreferredSize(new Dimension(230, 100));
-        myCards.setOpaque(false);
-        handColumn.add(myCards, BorderLayout.NORTH);
-        // Cards rescale when the window height changes: two cards always
-        // fit the column exactly, so nothing clips and no space is wasted.
-        handColumn.addComponentListener(new java.awt.event.ComponentAdapter() {
-            @Override
-            public void componentResized(java.awt.event.ComponentEvent event) {
-                fitHandCards();
-            }
-        });
-        return handColumn;
-    }
-
-    /** Rebuilds the two hand-card panels from scratch (only on card swaps). */
-    private void rebuildMyHand(java.util.List<onitama.core.Card> hand) {
-        myCards.removeAll();
-        myCardPanels.clear();
-        builtHandIds = hand.stream().map(onitama.core.Card::id).toList();
-        // A card that just left the hand (played into the transit slot) can
-        // no longer be selected: drop the stale id so targets never compute
-        // against a card the rules engine would reject.
-        String selectedId = model.selectedCardId();
-        if (selectedId != null && !builtHandIds.contains(selectedId)) {
-            model.clearSelection();
-        }
-        hand.forEach(card -> {
-            CardPanel panel = new CardPanel(card, model.myColor(), false,
-                    () -> model.cardClicked(card.id()));
-            panel.setCardScale(handScale);
-            myCardPanels.add(panel);
-            JPanel slot = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 0));
-            slot.setOpaque(false);
-            slot.add(panel);
-            myCards.add(slot);
-            panel.playDealPop();
-        });
-        fitHandCards();
-    }
-
-    /** Scales the two hand cards so the pair fills the column height. */
-    private void fitHandCards() {
-        int available = handColumn.getHeight();
-        if (available <= 0) {
+    private void handleAcceptedPresentation(PlayerView priorView, PlayerView currentView, List<PublicEvent> events) {
+        if (priorView == null || currentView == null || events == null) {
             return;
         }
-        double perCard = (available - 12) / 2.0;
-        handScale = Math.max(0.30, Math.min(0.85, perCard / CARD_NATIVE_H));
-        for (CardPanel panel : myCardPanels) {
-            panel.setCardScale(handScale);
+
+        cancelActionAnimations(true);
+        if (model.reducedMotion() || model.screen() != Screen.GAME || currentView.outcome() != null
+                || model.currentSync().paused()) return;
+        scheduleDraws(priorView, currentView, events);
+
+        // 1. Multi-piece moves
+        List<BoardPanel.MovingPiece> moves = new ArrayList<>();
+        for (PublicEvent ev : events) {
+            if (ev instanceof PublicEvent.PieceMoved pm) {
+                PlayerColor pColor = null;
+                for (PlacedPiece pp : priorView.pieces()) {
+                    if (pp.piece().id() == pm.pieceId()) {
+                        pColor = pp.piece().color();
+                        break;
+                    }
+                }
+                if (pColor == null) {
+                    for (PlacedPiece pp : currentView.pieces()) {
+                        if (pp.piece().id() == pm.pieceId()) {
+                            pColor = pp.piece().color();
+                            break;
+                        }
+                    }
+                }
+                if (pColor == null) {
+                    pColor = currentView.turn();
+                }
+                moves.add(new BoardPanel.MovingPiece(pm.pieceId(), pm.from(), pm.to(), pColor));
+            }
         }
-        handColumn.revalidate();
+
+        // 2. Eliminations
+        List<Square> elimSquares = new ArrayList<>();
+        PlayerColor elimActor = currentView.turn();
+        for (PublicEvent ev : events) {
+            if (ev instanceof PublicEvent.PieceEliminated pe) {
+                elimSquares.add(pe.at());
+            }
+        }
+
+        // 3. Skill committed & cue
+        PublicEvent.SkillCommitted committedSkill = null;
+        for (PublicEvent ev : events) {
+            if (ev instanceof PublicEvent.SkillCommitted sc) {
+                committedSkill = sc;
+                break;
+            }
+        }
+        if (committedSkill != null) {
+            SkillDefinition def = currentView.rules().skill(committedSkill.skill().definitionId());
+            String sName = def != null ? def.name() : committedSkill.skill().definitionId();
+            SkillCategory cat = def != null ? def.category() : SkillCategory.CONTROL;
+            boardPanel.playSkillCue(sName, cat, committedSkill.actor());
+
+            if (committedSkill.actor() == currentView.viewer()
+                    && !currentView.ownSkillHand().contains(committedSkill.skill())) {
+                CardInstance spent = committedSkill.skill();
+                int index = priorView.ownSkillHand().indexOf(spent);
+                if (index >= 0) {
+                    SkillCardPanel face = new SkillCardPanel(spent, priorView.rules(), priorView.viewer(),
+                            priorView.viewer() == PlayerColor.BLUE ? priorView.blueMana() : priorView.redMana(),
+                            priorView.phase(), true, false, null);
+                    hand.animateDeparture(face, 2 + index, 2 + priorView.ownSkillHand().size());
+                }
+            }
+        }
+
+        for (PublicEvent event : events) {
+            if (event instanceof PublicEvent.MovementPlayed played && played.actor() == currentView.viewer()) {
+                List<String> prior = currentView.viewer() == PlayerColor.BLUE
+                        ? priorView.blueMovementHand() : priorView.redMovementHand();
+                int index = prior.indexOf(played.cardId());
+                if (index >= 0) {
+                    CardPanel face = new CardPanel(CardDeck.cardById(played.cardId()), currentView.viewer(), false, null);
+                    hand.animateDeparture(face, index, 2 + priorView.ownSkillHand().size());
+                }
+            }
+        }
+
+        // 5. Board animation trigger
+        if (!moves.isEmpty()) {
+            boardPanel.animateMoves(moves, () -> {
+                if (!elimSquares.isEmpty()) {
+                    boardPanel.playEliminations(elimSquares, elimActor);
+                }
+            });
+        } else if (!elimSquares.isEmpty()) {
+            boardPanel.playEliminations(elimSquares, elimActor);
+        }
     }
 
-    // ------------------------------------------------------------------
-    // Right: banner + badge + stats + help + next card + controls + moves
-    // ------------------------------------------------------------------
+    private void scheduleDraws(PlayerView before, PlayerView after, List<PublicEvent> events) {
+        List<CardDraws.Draw> draws = CardDraws.between(before, after, events);
+        if (draws.isEmpty()) return;
+        long generation = drawGeneration;
+        String match = model.currentSync().matchId();
+        // Reconciliation has already adopted the new hand. Let Swing validate new slots first.
+        SwingUtilities.invokeLater(() -> {
+            if (generation != drawGeneration || model.screen() != Screen.GAME || model.reducedMotion()
+                    || model.currentSync() == null || model.currentSync().paused()
+                    || !match.equals(model.currentSync().matchId()) || model.view().revision() != after.revision()
+                    || model.isMatchOver()) return;
+            layoutTree(this);
+            var flights = new ArrayList<DeckDrawOverlay.Flight>();
+            for (CardDraws.Draw draw : draws) {
+                boolean own = draw.actor() == after.viewer();
+                List<? extends JComponent> cards = draw.movement()
+                        ? (own ? myCardPanels : opponentMovementPanels)
+                        : (own ? mySkillPanels : opponentSkillPanels);
+                if (draw.slot() < 0 || draw.slot() >= cards.size()) continue;
+                JComponent target = cards.get(draw.slot());
+                if (target.getWidth() <= 0 || target.getHeight() <= 0) continue;
+                DeckStackPanel deck = draw.movement() ? movementDeck : skillDeck;
+                String key = draw.movement() ? "move:" + draw.actor() + ":" + ((CardPanel) target).card().id()
+                        : own ? "own-skill:" + ((SkillCardPanel) target).instance().instanceId()
+                        : "opponent-slot:" + draw.slot();
+                java.util.function.Supplier<java.awt.Rectangle> source = () ->
+                        SwingUtilities.convertRectangle(deck, deck.topBounds(), drawOverlay);
+                var destination = DeckDrawOverlay.boundsOf(target, drawOverlay);
+                int delay = flights.size() * 80;
+                // Concealed destinations never construct a SkillCardPanel or receive a skill identity.
+                flights.add(!draw.movement() && !own
+                        ? DeckDrawOverlay.Flight.concealed(key, deck.backImage(), source, destination, delay)
+                        : DeckDrawOverlay.Flight.reveal(key, deck.backImage(), DeckDrawOverlay.snapshot(target),
+                                source, destination, delay));
+                drawOverlay.bind(target, key);
+            }
+            drawOverlay.play(flights);
+        });
+    }
 
-    private java.awt.Component buildRightColumn() {
-        // Fixed header column (banner, badge, stats, next card, controls) +
-        // a moves list that scrolls internally — nothing scrolls out of view.
-        // The header stack is budgeted to ~470px so MOVES always stays
-        // visible at the 720px minimum window height.
-        JPanel column = new JPanel(new BorderLayout(0, Theme.GRID));
+    private static void layoutTree(java.awt.Container parent) {
+        parent.doLayout();
+        for (Component child : parent.getComponents())
+            if (child instanceof java.awt.Container container) layoutTree(container);
+    }
+
+    private void cancelDraws() {
+        drawGeneration++;
+        drawOverlay.cancel();
+    }
+
+    /** Gives smaller windows more board space while keeping the hand readable. */
+    @Override
+    public void doLayout() {
+        int handHeight = Math.max(196, Math.min(226, getHeight() - 464));
+        if (hand.getPreferredSize().height != handHeight) {
+            hand.setPreferredSize(new Dimension(720, handHeight));
+            hand.setMinimumSize(new Dimension(280, handHeight));
+        }
+        super.doLayout();
+    }
+
+    private void rebuildHand(PlayerView view, List<String> cardIds) {
+        boolean reuse = view.rules().equals(handRules) && view.viewer() == handColor;
+        List<CardPanel> oldCardPanels = reuse ? new ArrayList<>(myCardPanels) : List.of();
+        List<SkillCardPanel> oldSkillPanels = reuse ? new ArrayList<>(mySkillPanels) : List.of();
+        myCardPanels.clear();
+        mySkillPanels.clear();
+        builtMovementCardIds = List.copyOf(cardIds);
+        builtSkills = List.copyOf(view.ownSkillHand());
+        handRules = view.rules();
+        handColor = view.viewer();
+        List<JComponent> cards = new ArrayList<>();
+
+        for (String id : cardIds) {
+            CardPanel existing = null;
+            for (CardPanel cp : oldCardPanels) {
+                if (cp.card().id().equals(id)) {
+                    existing = cp;
+                    break;
+                }
+            }
+            if (existing != null) {
+                existing.setReducedMotion(model.reducedMotion());
+                myCardPanels.add(existing);
+                cards.add(existing);
+            } else {
+                Card card = CardDeck.cardById(id);
+                CardPanel panel = new CardPanel(card, view.viewer(), false, () -> {
+                    cancelDraws();
+                    boardPanel.finishMoveAnimation();
+                    model.cardClicked(id);
+                });
+                panel.setReducedMotion(model.reducedMotion());
+                panel.setCardScale(.76);
+                inspectOnHover(panel);
+                myCardPanels.add(panel);
+                cards.add(panel);
+            }
+        }
+
+        int mana = view.viewer() == PlayerColor.BLUE ? view.blueMana() : view.redMana();
+        for (CardInstance instance : view.ownSkillHand()) {
+            SkillCardPanel existing = null;
+            for (SkillCardPanel sp : oldSkillPanels) {
+                if (sp.instance().instanceId().equals(instance.instanceId())) {
+                    existing = sp;
+                    break;
+                }
+            }
+            if (existing != null) {
+                existing.setReducedMotion(model.reducedMotion());
+                existing.updateState(mana, view.phase(), model.myTurn(),
+                        instance.instanceId().equals(model.selectedSkillInstanceId()));
+                mySkillPanels.add(existing);
+                cards.add(existing);
+            } else {
+                SkillCardPanel panel = new SkillCardPanel(instance, view.rules(), view.viewer(),
+                        mana, view.phase(), model.myTurn(),
+                        instance.instanceId().equals(model.selectedSkillInstanceId()),
+                        () -> {
+                            cancelDraws();
+                            boardPanel.finishMoveAnimation();
+                            model.skillClicked(instance.instanceId());
+                        });
+                panel.setReducedMotion(model.reducedMotion());
+                inspectOnHover(panel);
+                mySkillPanels.add(panel);
+                cards.add(panel);
+            }
+        }
+
+        hand.setReducedMotion(model.reducedMotion());
+        hand.setCards(cards);
+    }
+
+    /** Local text plates preserve contrast without bleaching the entire landscape. */
+    private static void backCaption(JLabel label) {
+        label.setOpaque(true);
+        label.setBackground(Theme.CREAM);
+        label.setBorder(BorderFactory.createEmptyBorder(0, 8, 0, 8));
+    }
+
+    private JPanel buildBottomControls() {
+        JPanel bottom = new JPanel();
+        bottom.setLayout(new BoxLayout(bottom, BoxLayout.Y_AXIS));
+        bottom.setOpaque(false);
+
+        JLabel handLabel = UiKit.caption("YOUR HAND  ·  MOVEMENT PUBLIC / SKILLS PRIVATE", Theme.INK);
+        handLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+        backCaption(handLabel);
+        bottom.add(handLabel);
+        bottom.add(hand);
+
+        instructionLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+        instructionLabel.setFont(Theme.normal(12f));
+        instructionLabel.setHorizontalAlignment(SwingConstants.CENTER);
+        instructionLabel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 26));
+        instructionLabel.setForeground(Theme.INK);
+        backCaption(instructionLabel);
+        bottom.add(Box.createVerticalStrut(4));
+        bottom.add(instructionLabel);
+        bottom.add(Box.createVerticalStrut(2));
+
+        return bottom;
+    }
+
+    /** Keeps turn actions in the unused left margin, freeing height for the board. */
+    private JPanel buildTurnControls() {
+        JPanel rail = new JPanel(new BorderLayout(0, 12));
+        rail.setOpaque(false);
+        int width = Math.max(skipMovementButton.getPreferredSize().width, 236);
+        rail.setPreferredSize(new Dimension(width, 100));
+        JPanel actions = new JPanel();
+        actions.setLayout(new BoxLayout(actions, BoxLayout.Y_AXIS));
+        actions.setOpaque(false);
+        for (JButton button : List.of(skipMovementButton, castSkillButton, endTurnButton)) {
+            button.setAlignmentX(Component.CENTER_ALIGNMENT);
+            button.setMaximumSize(new Dimension(Integer.MAX_VALUE, button.getPreferredSize().height));
+        }
+        directionPanel.setAlignmentX(Component.CENTER_ALIGNMENT);
+        for (JButton button : List.of(dirForward, dirBackward, dirLeft, dirRight)) {
+            button.setFont(Theme.bold(10f));
+        }
+
+        skipMovementButton.addActionListener(e -> {
+            cancelDraws();
+            boardPanel.finishMoveAnimation();
+            model.skipMovement();
+        });
+        actions.add(skipMovementButton);
+        actions.add(Box.createVerticalStrut(10));
+
+        castSkillButton.addActionListener(e -> {
+            cancelDraws();
+            boardPanel.finishMoveAnimation();
+            model.castSkill();
+        });
+        castSkillButton.setVisible(false);
+        actions.add(castSkillButton);
+
+        // Direction buttons for skills like Shove/Pull/Gust
+        directionPanel.setOpaque(false);
+        directionPanel.setVisible(false);
+        dirForward.addActionListener(e -> {
+            cancelDraws();
+            boardPanel.finishMoveAnimation();
+            model.selectDirection(relativeToCanonical(RelativeDirection.FORWARD, myColor()));
+        });
+        dirBackward.addActionListener(e -> {
+            cancelDraws();
+            boardPanel.finishMoveAnimation();
+            model.selectDirection(relativeToCanonical(RelativeDirection.BACKWARD, myColor()));
+        });
+        dirLeft.addActionListener(e -> {
+            cancelDraws();
+            boardPanel.finishMoveAnimation();
+            model.selectDirection(relativeToCanonical(RelativeDirection.LEFT, myColor()));
+        });
+        dirRight.addActionListener(e -> {
+            cancelDraws();
+            boardPanel.finishMoveAnimation();
+            model.selectDirection(relativeToCanonical(RelativeDirection.RIGHT, myColor()));
+        });
+        directionPanel.add(dirForward);
+        directionPanel.add(dirBackward);
+        directionPanel.add(dirLeft);
+        directionPanel.add(dirRight);
+        actions.add(directionPanel);
+        actions.add(Box.createVerticalStrut(10));
+
+        endTurnButton.addActionListener(e -> {
+            cancelDraws();
+            boardPanel.finishMoveAnimation();
+            model.endTurn();
+        });
+        actions.add(endTurnButton);
+
+        rail.add(inspector, BorderLayout.CENTER);
+        rail.add(actions, BorderLayout.SOUTH);
+        return rail;
+    }
+
+    private Component buildRightColumn() {
+        JPanel column = new JPanel(new BorderLayout(0, 16));
         column.setOpaque(false);
         column.setPreferredSize(new Dimension(SIDEBAR_WIDTH, 100));
-
-        JPanel top = new JPanel();
+        JPanel top = new JPanel(new BorderLayout(0, 12));
         top.setOpaque(false);
-        top.setLayout(new BoxLayout(top, BoxLayout.Y_AXIS));
+        JPanel banner = new JPanel(new FlowLayout(FlowLayout.CENTER, 6, 0));
+        banner.setOpaque(false);
+        banner.add(turnLabel);
+        banner.add(waitPulseDot);
+        top.add(banner, BorderLayout.NORTH);
+        top.add(opponentBadge, BorderLayout.CENTER);
+        column.add(top, BorderLayout.NORTH);
 
-        // Turn banner with a pulsing dot while waiting for the opponent.
-        JPanel bannerRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
-        bannerRow.setOpaque(false);
-        bannerRow.add(turnLabel);
-        bannerRow.add(waitPulseDot);
-        top.add(bannerRow);
-        top.add(Box.createVerticalStrut(10));
+        JPanel decks = new JPanel(new GridLayout(1, 2, 8, 0));
+        decks.setOpaque(false);
+        decks.add(movementDeck);
+        decks.add(skillDeck);
+        JPanel middle = new JPanel(new GridBagLayout());
+        middle.setOpaque(false);
+        var constraints = new GridBagConstraints();
+        constraints.gridx = 0;
+        constraints.gridy = 0;
+        constraints.fill = GridBagConstraints.HORIZONTAL;
+        constraints.weightx = 1;
+        middle.add(decks, constraints);
+        constraints.gridy++;
+        constraints.insets = new Insets(8, 0, 0, 0);
+        turnCountLabel.setHorizontalAlignment(SwingConstants.CENTER);
+        backCaption(turnCountLabel);
+        middle.add(turnCountLabel, constraints);
+        column.add(middle, BorderLayout.CENTER);
 
-        // Player badge.
-        JPanel badge = buildPlayerBadge();
-        badge.setAlignmentX(Component.CENTER_ALIGNMENT);
-        top.add(badge);
-        top.add(Box.createVerticalStrut(10));
-
-        // Stats block: turn counter and both piece counts, monospaced
-        // numbers on one shared top baseline.
-        JPanel stats = new JPanel(new GridLayout(1, 2, 10, 0));
-        stats.setBackground(Theme.INK);
-        stats.setBorder(BorderFactory.createEmptyBorder(8, 10, 8, 10));
-        stats.setAlignmentX(Component.CENTER_ALIGNMENT);
-        JPanel turnBox = new JPanel(new GridLayout(2, 1, 0, 0));
-        turnBox.setBackground(Theme.INK);
-        turnCountLabel.setForeground(Theme.AMBER);
-        turnCountLabel.setFont(Theme.mono(17f));
-        turnBox.add(turnCountLabel);
-        turnBox.add(turnCaption);
-        JPanel piecesBox = new JPanel(new GridLayout(2, 1, 0, 0));
-        piecesBox.setBackground(Theme.INK);
-        // Piece counts as five pips per side: filled = alive, hollow = captured.
-        JPanel redRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
-        redRow.setBackground(Theme.INK);
-        redRow.add(redPips);
-        redRow.add(UiKit.caption("RED PIECES", Theme.CREAM));
-        JPanel blueRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
-        blueRow.setBackground(Theme.INK);
-        blueRow.add(bluePips);
-        blueRow.add(UiKit.caption("BLUE PIECES", Theme.CREAM));
-        piecesBox.add(redRow);
-        piecesBox.add(blueRow);
-        stats.add(turnBox);
-        stats.add(piecesBox);
-        top.add(stats);
-        top.add(Box.createVerticalStrut(10));
-
-        // NEXT CARD: header row + the transit card, scaled to fit the panel.
-        JPanel nextCard = UiKit.sticker(10);
-        nextCard.setLayout(new BorderLayout(6, 6));
-        JPanel nextHeader = new JPanel(new BorderLayout());
-        nextHeader.setOpaque(false);
-        nextHeader.add(UiKit.inkLabel("NEXT CARD", 13f), BorderLayout.WEST);
-        nextHeader.add(goesBadge, BorderLayout.EAST);
-        nextCard.add(nextHeader, BorderLayout.NORTH);
-        JPanel transitCenter = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 4));
-        transitCenter.setOpaque(false);
-        transitCenter.add(transitHolder);
-        nextCard.add(transitCenter, BorderLayout.CENTER);
-        nextCard.setAlignmentX(Component.CENTER_ALIGNMENT);
-        top.add(nextCard);
-        top.add(Box.createVerticalStrut(10));
-
-        // Controls: equal-width pair directly under the card panel.
+        JPanel bottom = new JPanel(new BorderLayout(0, 12));
+        bottom.setOpaque(false);
+        bottom.add(ownBadge, BorderLayout.CENTER);
         JPanel controls = new JPanel(new GridLayout(1, 2, 10, 0));
         controls.setOpaque(false);
-        controls.setAlignmentX(Component.CENTER_ALIGNMENT);
         JButton menu = UiKit.pill("Menu", UiKit.Pill.CREAM_OUTLINE);
         menu.addActionListener(event -> model.leaveToLobby());
         controls.add(menu);
         resignButton = UiKit.pill("Resign", UiKit.Pill.DANGER);
         resignButton.addActionListener(event -> confirmResign());
         controls.add(resignButton);
-        top.add(controls);
-
-        column.add(top, BorderLayout.NORTH);
-
-        // MATCH INFO: captures, the last half-move and a compact move
-        // history. A Y stack with a glue keeps every info row at its natural
-        // height and pins a capped 80px history strip to the card bottom —
-        // nothing scrolls the info rows out of view.
-        JPanel infoCard = UiKit.surface(10);
-        infoCard.setLayout(new BorderLayout(6, 8));
-        infoCard.setMinimumSize(new Dimension(0, 150));
-
-        JPanel info = new JPanel();
-        info.setOpaque(false);
-        info.setLayout(new BoxLayout(info, BoxLayout.Y_AXIS));
-        info.add(cappedRow(leftRow(UiKit.boldLabel("MATCH INFO", 12f))));
-        info.add(Box.createVerticalStrut(8));
-        info.add(cappedRow(infoRow("CAPTURED BY YOU", myCaptureTray)));
-        info.add(Box.createVerticalStrut(4));
-        info.add(cappedRow(infoRow("CAPTURED BY OPPONENT", enemyCaptureTray)));
-        info.add(Box.createVerticalStrut(6));
-        lastMoveLabel.setHorizontalAlignment(SwingConstants.LEFT);
-        info.add(cappedRow(lastMoveLabel));
-        info.add(Box.createVerticalGlue());
-        info.add(cappedRow(leftRow(UiKit.boldLabel("MOVES", 11f))));
-        info.add(Box.createVerticalStrut(4));
-
-        historyList.setBackground(Theme.SURFACE);
-        historyList.setForeground(Theme.CREAM);
-        historyList.setCellRenderer(new MoveRowRenderer());
-        historyList.setFixedCellHeight(26);
-        JScrollPane scroll = new JScrollPane(historyList);
-        scroll.setBorder(BorderFactory.createEmptyBorder());
-        scroll.getViewport().setBackground(Theme.SURFACE);
-        scroll.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
-        historyViews = new JPanel(new java.awt.CardLayout());
-        historyViews.setOpaque(false);
-        historyViews.add(scroll, "moves");
-
-        JPanel emptyState = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 4));
-        emptyState.setBackground(Theme.SURFACE);
-        JLabel emptyLabel = UiKit.label("Waiting for the first move…", 11f);
-        emptyLabel.setForeground(Theme.MUTED);
-        var emptyIcon = new java.awt.image.BufferedImage(24, 24,
-                java.awt.image.BufferedImage.TYPE_INT_ARGB);
-        AnimalIcon.paint((Graphics2D) emptyIcon.getGraphics(), "frog", 0, 0, 24,
-                Theme.MUTED, Theme.INK, Theme.CREAM);
-        emptyLabel.setIcon(new javax.swing.ImageIcon(emptyIcon));
-        emptyState.add(emptyLabel);
-        historyViews.add(emptyState, "empty");
-
-        JPanel historyHolder = new JPanel(new BorderLayout());
-        historyHolder.setOpaque(false);
-        historyHolder.add(historyViews, BorderLayout.CENTER);
-        historyHolder.setPreferredSize(new Dimension(0, 80));
-        historyHolder.setMinimumSize(new Dimension(0, 60));
-        historyHolder.setMaximumSize(new Dimension(Integer.MAX_VALUE, 80));
-        info.add(historyHolder);
-
-        infoCard.add(info, BorderLayout.CENTER);
-        column.add(infoCard, BorderLayout.CENTER);
+        bottom.add(controls, BorderLayout.SOUTH);
+        column.add(bottom, BorderLayout.SOUTH);
         return column;
     }
 
-    /** A left-aligned row inside the MATCH INFO stack. */
-    private JPanel leftRow(JComponent inner) {
-        JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
-        row.setOpaque(false);
-        row.add(inner);
-        return row;
-    }
-
-    /** Keeps a Y-stack child at its natural height (no BoxLayout stretch). */
-    private JComponent cappedRow(JComponent inner) {
-        inner.setMaximumSize(new Dimension(Integer.MAX_VALUE,
-                inner.getPreferredSize().height));
-        return inner;
-    }
-
-    /** A left-aligned sidebar row: a small caption followed by its content. */
-    private JPanel infoRow(String caption, JComponent content) {
-        JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
-        row.setOpaque(false);
-        row.add(UiKit.caption(caption, Theme.CREAM));
-        row.add(content);
-        return row;
-    }
-
-    /** A row of tiny captured-piece figurines; a muted dash when empty. */
-    private static final class CaptureTray extends JComponent {
-        private static final int SLOT = 16;
-        private List<Piece> captured = List.of();
-
-        CaptureTray() {
-            setOpaque(false);
-            setPreferredSize(new Dimension(5 * SLOT + SLOT / 2, 22));
-        }
-
-        /** Replaces the displayed pieces (EDT only). */
-        void show(List<Piece> captured) {
-            this.captured = captured;
-            repaint();
-        }
-
-        @Override
-        protected void paintComponent(Graphics graphics) {
-            Graphics2D g = UiKit.nice(graphics);
-            if (captured.isEmpty()) {
-                g.setColor(Theme.MUTED);
-                g.setFont(Theme.normal(12f));
-                g.drawString("—", 2, getHeight() - 7);
-            } else {
-                for (int i = 0; i < captured.size() && i < 5; i++) {
-                    Piece piece = captured.get(i);
-                    UiKit.drawFigurine(g, SLOT / 2 + i * SLOT, getHeight() - 3,
-                            15, Theme.playerColor(piece.color()), piece.master());
-                }
+    private void refreshOpponentHand(PlayerView view, PlayerColor opponent) {
+        List<String> ids = CardDraws.moves(view, opponent);
+        if (!ids.equals(builtOpponentMoves) || opponentSkillPanels.size() != view.opponentSkillCount()
+                || builtOpponentColor != opponent) {
+            opponentCards.removeAll();
+            opponentMovementPanels.clear();
+            opponentSkillPanels.clear();
+            builtOpponentMoves = List.copyOf(ids);
+            builtOpponentColor = opponent;
+            for (String id : ids) {
+                CardPanel card = new CardPanel(CardDeck.cardById(id), opponent, false, null);
+                card.setCardScale(OPPONENT_CARD_SCALE);
+                inspectOnHover(card);
+                opponentMovementPanels.add(card);
+                opponentCards.add(card);
             }
-            g.dispose();
-        }
-    }
-
-    /** Five 8px pips: filled = the piece is alive, hollow grey = captured. */
-    private static final class PieceCountRow extends JComponent {
-        private static final int PIP = 8;
-        private static final int GAP = 4;
-        private final Color color;
-        private int alive = 5;
-
-        PieceCountRow(Color color) {
-            this.color = color;
-            setOpaque(false);
-            setPreferredSize(new Dimension(5 * (PIP + GAP) + GAP, PIP + 2));
-        }
-
-        void setAlive(int alive) {
-            this.alive = Math.max(0, Math.min(5, alive));
-            repaint();
-        }
-
-        @Override
-        protected void paintComponent(Graphics graphics) {
-            Graphics2D g = UiKit.nice(graphics);
-            for (int i = 0; i < 5; i++) {
-                int x = GAP + i * (PIP + GAP);
-                if (i < alive) {
-                    g.setColor(color);
-                    g.fillOval(x, 1, PIP, PIP);
-                    g.setColor(Theme.INK);
-                    g.drawOval(x, 1, PIP, PIP);
-                } else {
-                    g.setColor(Theme.DISABLED);
-                    g.setStroke(new java.awt.BasicStroke(1.5f));
-                    g.drawOval(x, 1, PIP, PIP);
-                }
+            opponentCards.add(Box.createHorizontalStrut(16));
+            for (int i = 0; i < view.opponentSkillCount(); i++) {
+                CardBackPanel back = new CardBackPanel();
+                opponentSkillPanels.add(back);
+                opponentCards.add(back);
             }
-            g.dispose();
         }
+        for (CardPanel card : opponentMovementPanels) card.setReducedMotion(model.reducedMotion());
     }
 
-
-
-    // ------------------------------------------------------------------
-    // Right-column parts
-    // ------------------------------------------------------------------
-
-    /** The player profile panel: avatar, name, ELO/record, online dot (§16). */
-    private JPanel buildPlayerBadge() {
-        JPanel badge = new JPanel(new BorderLayout(8, 2));
-        badge.setBackground(Theme.SURFACE);
-        badge.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createLineBorder(Theme.OUTLINE, 2),
-                BorderFactory.createEmptyBorder(6, 8, 6, 8)));
-        badge.add(avatar, BorderLayout.WEST);
-        JPanel text = new JPanel(new GridLayout(2, 1, 0, 0));
-        text.setOpaque(false);
-        text.add(nameLabel);
-        text.add(statsLabel);
-        badge.add(text, BorderLayout.CENTER);
-        JPanel dotWrap = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
-        dotWrap.setOpaque(false);
-        dotWrap.add(onlineDot);
-        badge.add(dotWrap, BorderLayout.EAST);
-        return badge;
+    private void refreshBadges(PlayerView view) {
+        PlayerColor own = view.viewer();
+        boolean paused = model.currentSync().paused();
+        int mine = own == PlayerColor.BLUE ? view.blueMana() : view.redMana();
+        int theirs = own == PlayerColor.BLUE ? view.redMana() : view.blueMana();
+        int ownPieces = (int) view.pieces().stream().filter(p -> p.piece().color() == own).count();
+        String name = model.me() == null ? "YOU" : model.me().username();
+        ownBadge.update(name, own, mine, view.rules().manaCap(), view.reservedMana(), ownPieces,
+                view.outcome() == null && view.turn() == own, paused, model.reducedMotion());
+        opponentBadge.update(model.opponentName(), own.opponent(), theirs, view.rules().manaCap(), 0,
+                view.pieces().size() - ownPieces, view.outcome() == null && view.turn() != own,
+                paused, model.reducedMotion());
+        movementDeck.setCount(view.movementDeckCount());
+        skillDeck.setCount(view.skillDeckCount());
     }
 
-    // ------------------------------------------------------------------
-    // Refresh (every model change)
-    // ------------------------------------------------------------------
-
-    /** Redraws everything from the model (called on every match change). */
     private void refresh() {
-        GameState state = model.state();
-        if (state == null) {
+        if (model.screen() != Screen.GAME) {
+            cancelPresentation();
             return;
         }
-        var myColor = model.myColor();
-        var opponent = myColor.opponent();
+        PlayerView view = model.view();
+        if (view == null) {
+            closeForesightDialog();
+            return;
+        }
+        PlayerColor myColor = model.myColor();
+        PlayerColor opponent = myColor.opponent();
 
         opponentLabel.setText("VS  " + model.opponentName().toUpperCase());
-        // Dark player shade for text on the light parchment (contrast §16).
         opponentLabel.setForeground(Theme.playerTextColor(opponent));
-        UiKit.badgeText(opponentBadge, opponent.name() + " · OPPONENT");
-        UiKit.badgeText(myBadge, myColor.name() + " · YOU");
 
-        nameLabel.setText(model.me() == null ? "" : model.me().username().toUpperCase());
-        nameLabel.setForeground(Theme.playerTextColor(myColor));
-        if (model.me() != null) {
-            statsLabel.setText("ELO " + model.me().elo() + "   ·   "
-                    + model.me().wins() + "W · " + model.me().losses() + "L");
+        refreshBadges(view);
+        refreshOpponentHand(view, opponent);
+        drawOverlay.setReducedMotion(model.reducedMotion());
+        if (model.currentSync().paused()) cancelPresentation();
+
+        boardPanel.setReducedMotion(model.reducedMotion());
+        hand.setReducedMotion(model.reducedMotion());
+
+        // My movement cards
+        List<String> myCardIds = myColor == PlayerColor.BLUE
+                ? view.blueMovementHand()
+                : view.redMovementHand();
+        if (!myCardIds.equals(builtMovementCardIds) || !view.ownSkillHand().equals(builtSkills)
+                || !view.rules().equals(handRules) || view.viewer() != handColor) {
+            rebuildHand(view, myCardIds);
         }
-        avatar.repaint();
-
-        // Opponent cards: their color variant, dimmed, my perspective,
-        // fixed side-by-side scale so the top band keeps a stable height.
-        opponentCards.removeAll();
-        state.hand(opponent).forEach(card -> {
-            CardPanel panel = new CardPanel(card, opponent, true, null);
-            panel.setCardScale(OPPONENT_CARD_SCALE);
-            opponentCards.add(panel);
-        });
-
-        // My cards: rebuilt only when the hand actually changed (cards swap
-        // after a half-move); otherwise the existing panels are updated in
-        // place, so rapid clicking never races a full re-layout that could
-        // swallow clicks between press and release.
-        List<String> handIds = state.hand(myColor).stream()
-                .map(onitama.core.Card::id).toList();
-        if (!handIds.equals(builtHandIds)) {
-            rebuildMyHand(state.hand(myColor));
-        }
+        for (CardPanel card : myCardPanels) card.setReducedMotion(model.reducedMotion());
+        for (SkillCardPanel card : mySkillPanels) card.setReducedMotion(model.reducedMotion());
+        if (model.reducedMotion()) cancelPresentation();
         for (int i = 0; i < myCardPanels.size(); i++) {
             myCardPanels.get(i).setSelected(
-                    state.hand(myColor).get(i).id().equals(model.selectedCardId()));
+                    myCardIds.get(i).equals(model.selectedCardId()));
         }
 
-        // NEXT CARD panel: the transit card, headed for the current player.
-        transitHolder.removeAll();
-        CardPanel transit = new CardPanel(state.transit(), state.turn(), true, null);
-        transit.setCardScale(TRANSIT_CARD_SCALE);
-        transitHolder.add(transit);
-        UiKit.badgeText(goesBadge, "GOES TO " + state.turn().name());
+        int myMana = myColor == PlayerColor.BLUE ? view.blueMana() : view.redMana();
+        for (SkillCardPanel panel : mySkillPanels) {
+            panel.updateState(myMana, view.phase(), model.myTurn(),
+                    panel.instance().instanceId().equals(model.selectedSkillInstanceId()));
+        }
+        hand.updateLayers();
 
-        turnLabel.setText(bannerText(state, myColor));
-        turnLabel.setAccent(Theme.playerColor(state.turn()));
-        boolean waiting = state.isOngoing() && !model.isMatchOver()
-                && state.turn() != myColor;
+        // Action buttons
+        skipMovementButton.setEnabled(model.canSkipMovement());
+        endTurnButton.setEnabled(model.canEndTurn());
+        castSkillButton.setVisible(model.selectedSkillInstanceId() != null);
+        castSkillButton.setEnabled(model.canCastSkill() && !model.currentSync().paused());
+
+        boolean showDirs = model.skillOptions() != null
+                && !model.skillOptions().selectableDirections().isEmpty();
+        directionPanel.setVisible(showDirs);
+        if (showDirs) {
+            updateDirectionButton(dirForward, RelativeDirection.FORWARD);
+            updateDirectionButton(dirBackward, RelativeDirection.BACKWARD);
+            updateDirectionButton(dirLeft, RelativeDirection.LEFT);
+            updateDirectionButton(dirRight, RelativeDirection.RIGHT);
+        }
+
+        updateTargetingAndInstructions(view);
+        refreshInspector();
+
+        // Turn & Phase Banner
+        String banner = bannerText(view, myColor);
+        turnLabel.setText(banner);
+        turnLabel.setAccent(Theme.playerColor(view.turn()));
+
+        boolean waiting = !model.isMatchOver() && view.turn() != myColor
+                && model.screen() == Screen.GAME && !model.reducedMotion() && !model.currentSync().paused();
         waitPulseDot.setVisible(waiting);
         if (waiting && !pulseTimer.isRunning()) {
             pulseTimer.start();
         } else if (!waiting && pulseTimer.isRunning()) {
             pulseTimer.stop();
         }
-        turnCountLabel.setText(String.format("%02d", state.moveNumber()));
-        int redCount = 0;
-        int blueCount = 0;
-        for (int y = 0; y < Board.SIZE; y++) {
-            for (int x = 0; x < Board.SIZE; x++) {
-                Piece piece = state.board().pieceAt(x, y);
-                if (piece != null) {
-                    if (piece.color() == onitama.core.PlayerColor.BLUE) {
-                        blueCount++;
-                    } else {
-                        redCount++;
-                    }
-                }
-            }
-        }
-        redPips.setAlive(redCount);
-        bluePips.setAlive(blueCount);
 
-        List<ClientModel.MoveInfo> moves = model.historyMoves();
-        historyList.setListData(moves.toArray(new ClientModel.MoveInfo[0]));
-        showHistory(!moves.isEmpty());
-        myCaptureTray.show(model.myCaptures());
-        enemyCaptureTray.show(model.enemyCaptures());
-        if (moves.isEmpty()) {
-            lastMoveLabel.setText("Last move: —");
+        turnCountLabel.setText("TURN " + view.startedTurns() + "  /  " + view.completedTurns() + " COMPLETED");
+
+        // Board view & highlights
+        boardPanel.setView(view);
+        if (model.selectedSkillInstanceId() != null && model.skillOptions() != null) {
+            SelectionOptions opt = model.skillOptions();
+            SelectionDraft draft = model.skillDraft();
+            java.util.Set<Integer> selectablePieces = new java.util.HashSet<>(opt.selectablePieceIds());
+            List<Integer> selectedPieces = draft != null ? draft.pieceIds() : List.of();
+            java.util.Set<Square> selectableSquares = new java.util.HashSet<>(opt.selectableSquares());
+            List<Square> selectedDests = draft != null ? draft.destinations() : List.of();
+            boardPanel.setTargetingFeedback(selectablePieces, selectedPieces, selectableSquares, selectedDests);
+            boardPanel.setSelection(null, List.of());
         } else {
-            ClientModel.MoveInfo last = moves.get(moves.size() - 1);
-            lastMoveLabel.setText(last.pass()
-                    ? "Last: PASS"
-                    : "Last: " + last.cardName().toUpperCase() + " "
-                            + last.fromSquare() + " → " + last.toSquare()
-                            + (last.capture() ? " ✕" : ""));
+            boardPanel.clearTargetingFeedback();
+            boardPanel.setSelection(model.selectedSquare(), model.highlightedTargets());
+        }
+        if (model.lastMoveFrom() != null && model.lastMoveTo() != null) {
+            boardPanel.setLastMove(model.lastMoveFrom(), model.lastMoveTo());
         }
 
-        boardPanel.setView(state, myColor);
-        boardPanel.setSelection(model.selectedSquare(), model.highlightedTargets());
-        boardPanel.setLastMove(state.lastMove());
-        if (state.moveNumber() != lastEffectMove) {
-            lastEffectMove = state.moveNumber();
-            if (model.lastCaptureSquare() != null) {
-                boardPanel.playCaptureEffect(model.lastCaptureSquare(),
-                        state.turn().opponent());
-            }
-            if (state.lastMove() != null) {
-                Piece moved = state.board().pieceAt(state.lastMove().to());
-                if (moved != null) {
-                    boardPanel.animateMove(state.lastMove(), moved.color(), moved.master());
-                }
-            }
-        }
+        // Resign button
+        resignButton.setEnabled(!model.isMatchOver() && model.inFlightRequest() == null);
 
-        // Resign button: live while the game runs. A pending request re-arms
-        // when GameOver lands (match over / not ongoing) or a fresh match
-        // deals an empty history (rematch / new game).
-        if (!state.isOngoing() || model.isMatchOver()
-                || model.historyMoves().isEmpty()) {
-            resignPending = false;
-        }
-        resignButton.setEnabled(state.isOngoing() && !model.isMatchOver()
-                && !resignPending);
+        // Screen observers may run before CardLayout has made this panel visible.
+        SwingUtilities.invokeLater(() -> {
+            PlayerView current = model.view();
+            if (current == null) closeForesightDialog();
+            else refreshForesightDialog(current);
+        });
 
         revalidate();
         repaint();
     }
 
-    /** Short banner text: the game state in two words. */
-    private String bannerText(GameState state, onitama.core.PlayerColor myColor) {
-        // model.isMatchOver(): a forfeit ends the match via GameOver only —
-        // the last state on the wire still claims to be ongoing.
-        if (!state.isOngoing() || model.isMatchOver()) {
-            return "GAME OVER";
-        }
-        if (state.turn() == myColor) {
-            return "YOUR TURN";
-        }
-        return "WAITING…";
+    private void inspectOnHover(JComponent card) {
+        card.addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override public void mouseEntered(java.awt.event.MouseEvent event) {
+                hoveredCard = card;
+                refreshInspector();
+            }
+        });
     }
 
-    /**
-     * Asks for confirmation on the themed dialog, then resigns. While the
-     * confirmation is given and {@link GameOver} has not arrived yet the
-     * button stays disabled, so a double click cannot send the request twice.
-     */
+    private void refreshInspector() {
+        PlayerView view = model.view();
+        if (view == null || model.screen() != Screen.GAME) {
+            hoveredCard = null;
+            inspector.clear();
+            return;
+        }
+        String selection = model.selectedSkillInstanceId() == null ? "move:" + model.selectedCardId()
+                : "skill:" + model.selectedSkillInstanceId();
+        if (!java.util.Objects.equals(inspectorSelection, selection)) {
+            hoveredCard = null;
+            inspectorSelection = selection;
+        }
+        // Keep the last reference on exit so the pointer can reach its scrollbar.
+        boolean ownMove = myCardPanels.contains(hoveredCard);
+        boolean enemyMove = opponentMovementPanels.contains(hoveredCard);
+        if (inspector.browsingSpent()) {
+            inspector.showSpent(view);
+        } else if (hoveredCard instanceof CardPanel card && (ownMove || enemyMove)) {
+            String id = card.card().id();
+            PlayerColor owner = ownMove ? view.viewer() : view.viewer().opponent();
+            if (CardDraws.moves(view, owner).contains(id)) inspector.showMovement(card.card(), owner);
+            else { hoveredCard = null; showSelectedReference(view); }
+        } else if (hoveredCard instanceof SkillCardPanel card && mySkillPanels.contains(card)
+                && view.ownSkillHand().contains(card.instance())) {
+            inspector.showSkill(card.instance(), view);
+        } else {
+            hoveredCard = null;
+            showSelectedReference(view);
+        }
+        SelectionDraft draft = model.skillDraft();
+        String progress = draft == null ? "" : "Selected: " + draft.pieceIds().size() + " piece(s), "
+                + draft.destinations().size() + " destination(s)"
+                + (draft.direction() == null ? "" : ", direction set")
+                + (model.canCastSkill() && !model.currentSync().paused() ? " - ready to cast" : "");
+        inspector.updateTurn(view, currentInstruction, progress, model.currentSync().paused(), model.isMatchOver());
+    }
+
+    private void showSelectedReference(PlayerView view) {
+        var skill = view.ownSkillHand().stream()
+                .filter(c -> c.instanceId().equals(model.selectedSkillInstanceId())).findFirst();
+        if (skill.isPresent()) {
+            inspector.showSkill(skill.get(), view);
+        } else if (model.selectedCardId() != null
+                && CardDraws.moves(view, view.viewer()).contains(model.selectedCardId())) {
+            view.rules().movementCards().stream().filter(c -> c.id().equals(model.selectedCardId()))
+                    .findFirst().ifPresent(c -> inspector.showMovement(c, view.viewer()));
+        } else inspector.idle();
+    }
+
+    private void updateDirectionButton(UiKit.PillButton button, RelativeDirection rel) {
+        Direction cDir = relativeToCanonical(rel, myColor());
+        boolean selectable = model.skillOptions() != null
+                && model.skillOptions().selectableDirections().contains(cDir);
+        button.setEnabled(selectable);
+        boolean isSelected = model.skillDraft() != null && model.skillDraft().direction() == cDir;
+        button.setVariant(isSelected ? UiKit.Pill.GOLD : UiKit.Pill.CREAM_OUTLINE);
+    }
+
+    private void updateTargetingAndInstructions(PlayerView view) {
+        if (model.isMatchOver()) {
+            showInstruction("Match finished.");
+        } else if (model.inFlightRequest() != null) {
+            showInstruction("Waiting for the server to confirm your action...");
+        } else if (model.currentSync().paused()) {
+            showInstruction("Match paused - waiting for your opponent to reconnect.");
+        } else if (!model.myTurn()) {
+            showInstruction("Waiting for opponent...");
+        } else if (model.selectedSkillInstanceId() != null) {
+            SkillDefinition def = view.ownSkillHand().stream()
+                    .filter(c -> c.instanceId().equals(model.selectedSkillInstanceId()))
+                    .map(c -> view.rules().skill(c.definitionId())).findFirst().orElse(null);
+            String name = def == null ? "Skill" : def.name();
+            int mana = view.viewer() == PlayerColor.BLUE ? view.blueMana() : view.redMana();
+            SelectionOptions options = model.skillOptions();
+            SelectionDraft draft = model.skillDraft();
+            if (def != null && mana < def.manaCost()) {
+                showInstruction(name + ": needs " + def.manaCost() + " mana (you have " + mana + ").");
+            } else if (model.canCastSkill()) {
+                // Selectable IDs can remain after a complete choice to allow optional targets.
+                boolean optional = options.selectablePieceIds().stream()
+                        .anyMatch(id -> draft == null || !draft.pieceIds().contains(id));
+                showInstruction("Ready to cast " + name + " - click Cast Skill."
+                        + (optional ? " More targets are optional." : ""));
+            } else if (options != null && !options.selectableSquares().isEmpty()) {
+                showInstruction(name + ": choose a highlighted destination square.");
+            } else if (options != null && !options.selectableDirections().isEmpty()
+                    && (draft == null || draft.direction() == null)) {
+                showInstruction(name + ": choose a direction.");
+            } else if (options != null && !options.selectablePieceIds().isEmpty()) {
+                boolean started = draft != null && !draft.pieceIds().isEmpty();
+                showInstruction(name + (started ? ": choose another highlighted piece." : ": choose a highlighted piece."));
+            } else if (view.phase() != TurnPhase.SKILL) {
+                showInstruction("Finish or skip movement before casting " + name + ".");
+            } else {
+                showInstruction(name + ": no valid targets. Press Escape to choose again.");
+            }
+        } else if (view.phase() == TurnPhase.MOVEMENT) {
+            showInstruction(model.selectedCardId() == null ? "Choose a movement card, then a piece."
+                    : model.selectedPieceId() == null ? "Select a piece to move." : "Select a highlighted destination.");
+        } else if (view.phase() == TurnPhase.SKILL) {
+            showInstruction("Select a skill card, or End Turn.");
+        } else if (view.phase() == TurnPhase.END) {
+            showInstruction("Click End Turn to finish.");
+        } else {
+            showInstruction("");
+        }
+    }
+
+    private void showInstruction(String text) {
+        currentInstruction = text;
+        instructionLabel.setText(text);
+        instructionLabel.setToolTipText(text);
+        castSkillButton.setToolTipText(model.selectedSkillInstanceId() == null ? null : text);
+    }
+
+    private void cancelActionAnimations(boolean preserveReflow) {
+        cancelDraws();
+        boardPanel.cancelAnimations();
+        if (preserveReflow) hand.cancelDeparture();
+        else hand.cancelAnimations();
+        for (CardPanel card : myCardPanels) card.cancelAnimations();
+        for (SkillCardPanel card : mySkillPanels) card.cancelAnimations();
+    }
+
+    private void cancelPresentation() {
+        cancelActionAnimations(false);
+        hoveredCard = null;
+        inspector.clear();
+        ownBadge.cancelAnimation();
+        opponentBadge.cancelAnimation();
+        pulseTimer.stop();
+    }
+
+    @Override public void removeNotify() {
+        cancelPresentation();
+        super.removeNotify();
+    }
+
+    private void refreshForesightDialog(PlayerView view) {
+        if (model.screen() != Screen.GAME || model.isMatchOver()
+                || view.phase() != TurnPhase.CHOICE || view.ownChoice() == null) {
+            closeForesightDialog();
+            return;
+        }
+        String matchId = model.currentSync().matchId();
+        long choiceId = view.ownChoice().choiceId();
+        if (foresightDialog != null && (!matchId.equals(foresightMatchId) || choiceId != foresightChoiceId)) {
+            closeForesightDialog();
+        }
+        Window owner = SwingUtilities.getWindowAncestor(this);
+        if (owner == null || !isShowing()) return;
+        if (foresightDialog == null) {
+            foresightMatchId = matchId;
+            foresightChoiceId = choiceId;
+            foresightDialog = new ForesightDialog(owner, view.ownChoice().preview(), view.rules(),
+                    view.viewer(), model::resolveForesight, this::confirmResign);
+        }
+        boolean ready = model.inFlightRequest() == null;
+        foresightDialog.setActionsEnabled(ready && !model.currentSync().paused(), ready);
+        foresightDialog.setVisible(true);
+    }
+
+    private void closeForesightDialog() {
+        if (foresightDialog != null) {
+            foresightDialog.dispose();
+            foresightDialog = null;
+            foresightMatchId = null;
+        }
+    }
+
+    private String bannerText(PlayerView view, PlayerColor myColor) {
+        if (model.currentSync().paused()) return "MATCH PAUSED";
+        if (model.isMatchOver()) {
+            return "GAME OVER";
+        }
+        if (view.turn() == myColor) {
+            return switch (view.phase()) {
+                case MOVEMENT -> "YOUR TURN — MOVE";
+                case SKILL -> "YOUR TURN — SKILL";
+                case CHOICE -> "RESOLVING FORESIGHT";
+                case END -> "YOUR TURN — END";
+                case FINISHED -> "GAME OVER";
+            };
+        }
+        return switch (view.phase()) {
+            case CHOICE -> "OPPONENT FORESIGHT";
+            default -> "OPPONENT'S TURN";
+        };
+    }
+
     private void confirmResign() {
-        if (resignPending) {
+        if (model.isMatchOver() || model.inFlightRequest() != null) {
             return;
         }
         boolean confirmed = UiKit.confirmDialog(this, "Resign",
                 "Resign this match?", "Yes", UiKit.Pill.DANGER);
-        if (confirmed) {
-            if (!model.isPracticeMode()) {
-                // Practice resigns by leaving immediately; online waits for
-                // the server's GameOver before the button comes back.
-                resignPending = true;
-                resignButton.setEnabled(false);
-            }
+        // A server update may arrive while the confirmation dialog is open.
+        if (confirmed && !model.isMatchOver() && model.inFlightRequest() == null) {
             model.resign();
         }
     }
@@ -768,7 +1048,7 @@ public final class GamePanel extends JPanel {
         }
         model.markGameOverAnnounced();
         refresh();
-        java.awt.Window owner = SwingUtilities.getWindowAncestor(this);
+        Window owner = SwingUtilities.getWindowAncestor(this);
         if (owner == null) {
             return;
         }
@@ -778,12 +1058,11 @@ public final class GamePanel extends JPanel {
         Color titleColor = draw ? Theme.INK
                 : Theme.playerTextColor(won ? myColor() : opponentColor());
         String wayText = switch (over.way()) {
-            case STONE -> "Way of the Stone";
-            case STREAM -> "Way of the Stream";
-            case DRAW -> "Way of the Draw — the move limit was reached";
-            default -> "By forfeit";
+            case ELIMINATION -> "By elimination";
+            case FORFEIT -> "By forfeit";
+            case DRAW -> "Draw — 60-turn limit reached";
         };
-        int moveNumber = model.state() == null ? 0 : model.state().moveNumber();
+        int turnNumber = model.view() == null ? 0 : model.view().startedTurns();
 
         UiKit.DialogSurface surface = new UiKit.DialogSurface(Theme.CREAM, 18);
         surface.setLayout(new GridBagLayout());
@@ -800,8 +1079,7 @@ public final class GamePanel extends JPanel {
 
         constraints.gridy = 1;
         constraints.insets = new Insets(8, 0, 0, 0);
-        JLabel subtitleLabel = new JLabel(wayText + " — move " + moveNumber,
-                SwingConstants.CENTER);
+        JLabel subtitleLabel = new JLabel(wayText + " — turn " + turnNumber, SwingConstants.CENTER);
         subtitleLabel.setFont(Theme.normal(12f));
         subtitleLabel.setForeground(Theme.INK);
         surface.add(subtitleLabel, constraints);
@@ -838,22 +1116,19 @@ public final class GamePanel extends JPanel {
         surface.add(buttons, constraints);
 
         UiKit.playAppearTween(surface);
-        dialog.setVisible(true); // modal; Swing timers keep animating on the EDT
+        dialog.setVisible(true);
     }
 
-    /** The Elo-delta line (online) or the practice farewell. */
     private String detailText(GameOver over) {
         if (model.isPracticeMode()) {
-            return "The dojo bot thanks you for the practice.";
+            return "Practice match concluded.";
         }
         if (model.me() == null) {
-            return "New ELO — you: " + myEloAfter(over) + ", opponent: "
-                    + opponentEloAfter(over);
+            return "New ELO — you: " + myEloAfter(over) + ", opponent: " + opponentEloAfter(over);
         }
-        // Elo is zero-sum: the opponent's delta is exactly the negative.
         int delta = myEloAfter(over) - model.me().elo();
-        String green = String.format("#%06X", Theme.GREEN.getRGB() & 0xFFFFFF);
-        String red = String.format("#%06X", Theme.CORAL.getRGB() & 0xFFFFFF);
+        String green = String.format("#%06X", Theme.GREEN.darker().getRGB() & 0xFFFFFF);
+        String red = String.format("#%06X", Theme.VERMILION.getRGB() & 0xFFFFFF);
         String mine = (delta >= 0 ? "+" : "") + delta;
         String theirs = (-delta >= 0 ? "+" : "") + -delta;
         return "<html><div style='text-align:center'>New ELO — you: <b>" + myEloAfter(over)
@@ -863,55 +1138,11 @@ public final class GamePanel extends JPanel {
     }
 
     private int myEloAfter(GameOver over) {
-        return model.myColor() == onitama.core.PlayerColor.BLUE
-                ? over.blueEloAfter() : over.redEloAfter();
+        return model.myColor() == PlayerColor.BLUE ? over.blueEloAfter() : over.redEloAfter();
     }
 
     private int opponentEloAfter(GameOver over) {
-        return model.myColor() == onitama.core.PlayerColor.BLUE
-                ? over.redEloAfter() : over.blueEloAfter();
+        return model.myColor() == PlayerColor.BLUE ? over.redEloAfter() : over.blueEloAfter();
     }
 
-    /**
-     * Compact move rows (§17): "01 TIGER C3 → D4", the latest move
-     * highlighted, and a friendly illustrated empty state.
-     */
-    private final class MoveRowRenderer extends DefaultListCellRenderer {
-        @Override
-        public Component getListCellRendererComponent(JList<?> list, Object value,
-                int index, boolean selected, boolean focused) {
-            ClientModel.MoveInfo row = (ClientModel.MoveInfo) value;
-            JLabel label = (JLabel) super.getListCellRendererComponent(list,
-                    row.cardName(), index, selected, focused);
-            setFont(Theme.normal(12f));
-            setBorder(BorderFactory.createEmptyBorder(2, 6, 2, 6));
-            if (row.pass() && row.number() == 0) {
-                setText(row.cardName());
-                setForeground(Theme.MUTED);
-                setBackground(Theme.SURFACE);
-                setIcon(placeholderIcon());
-                setHorizontalTextPosition(javax.swing.SwingConstants.RIGHT);
-                return this;
-            }
-            String text = String.format("%02d  %s  %s → %s%s",
-                    row.number(), row.cardName().toUpperCase(),
-                    row.fromSquare(), row.toSquare(),
-                    row.capture() ? "  ✕" : "");
-            boolean latest = index == list.getModel().getSize() - 1;
-            setText(text);
-            setForeground(latest ? Theme.INK : Theme.CREAM);
-            setBackground(latest ? Theme.AMBER : Theme.SURFACE);
-            setOpaque(true);
-            setIcon(null);
-            return this;
-        }
-
-        private javax.swing.Icon placeholderIcon() {
-            var image = new java.awt.image.BufferedImage(22, 22,
-                    java.awt.image.BufferedImage.TYPE_INT_ARGB);
-            AnimalIcon.paint((Graphics2D) image.getGraphics(), "frog", 0, 0, 22,
-                    Theme.MUTED, Theme.INK, Theme.CREAM);
-            return new javax.swing.ImageIcon(image);
-        }
-    }
 }

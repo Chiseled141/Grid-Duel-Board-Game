@@ -114,7 +114,7 @@ public final class LoginPanel extends JPanel {
         constraints.gridx = 0;
         constraints.gridy = 4;
         constraints.gridwidth = 2;
-        errorLabel.setForeground(Theme.CORAL);
+        errorLabel.setForeground(Theme.VERMILION);
         errorLabel.setFont(Theme.bold(11f));
         errorLabel.setHorizontalAlignment(JLabel.CENTER);
         card.add(errorLabel, constraints);
@@ -124,7 +124,7 @@ public final class LoginPanel extends JPanel {
         JLabel serverHint = new JLabel("SERVER  "
                 + settings.host() + ":" + settings.port());
         serverHint.setFont(Theme.normal(10f));
-        serverHint.setForeground(Theme.MUTED);
+        serverHint.setForeground(Theme.MUTED_INK);
         serverHint.setHorizontalAlignment(JLabel.CENTER);
         card.add(serverHint, constraints);
 
@@ -171,13 +171,13 @@ public final class LoginPanel extends JPanel {
                 var g = UiKit.nice(graphics);
                 int cx = getWidth() / 2;
                 int cy = getHeight() / 2;
-                g.setColor(Theme.MUTED);
+                g.setColor(Theme.MUTED_INK);
                 g.setStroke(new BasicStroke(1.8f));
                 g.drawOval(cx - 8, cy - 5, 16, 10);
                 g.fillOval(cx - 3, cy - 3, 6, 6);
                 if (!isSelected()) {
                     // slash = password hidden (echo on)
-                    g.setColor(Theme.MUTED);
+                    g.setColor(Theme.MUTED_INK);
                     g.drawLine(cx - 9, cy + 7, cx + 9, cy - 7);
                 }
                 g.dispose();

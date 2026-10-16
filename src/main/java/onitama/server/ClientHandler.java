@@ -2,6 +2,7 @@ package onitama.server;
 
 import onitama.core.PlayerColor;
 import onitama.db.AuthenticationException;
+import onitama.net.ActionRequest;
 import onitama.net.CreateMatchRequest;
 import onitama.net.ErrorMessage;
 import onitama.net.JoinMatchRequest;
@@ -13,15 +14,13 @@ import onitama.net.LoginRequest;
 import onitama.net.LoginResponse;
 import onitama.net.MatchCreated;
 import onitama.net.Message;
-import onitama.net.MoveRequest;
-import onitama.net.MoveRejected;
-import onitama.net.PassTurn;
 import onitama.net.Ping;
 import onitama.net.Pong;
+import onitama.net.ProtocolHello;
+import onitama.net.ProtocolReady;
 import onitama.net.ReconnectRequest;
 import onitama.net.RegisterRequest;
 import onitama.net.RematchRequest;
-import onitama.net.ResignRequest;
 import onitama.net.UserProfile;
 
 import java.io.EOFException;
@@ -30,6 +29,7 @@ import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.net.Socket;
 import java.net.SocketException;
+import java.net.SocketTimeoutException;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
@@ -68,9 +68,7 @@ public final class ClientHandler implements Runnable {
             Map.entry(CreateMatchRequest.class, m -> handleCreateMatch((CreateMatchRequest) m)),
             Map.entry(JoinMatchRequest.class, m -> handleJoinMatch((JoinMatchRequest) m)),
             Map.entry(ListMatchesRequest.class, m -> handleListMatches((ListMatchesRequest) m)),
-            Map.entry(MoveRequest.class, m -> handleMove((MoveRequest) m)),
-            Map.entry(PassTurn.class, m -> handlePass((PassTurn) m)),
-            Map.entry(ResignRequest.class, m -> handleResign((ResignRequest) m)),
+            Map.entry(ActionRequest.class, m -> handleAction((ActionRequest) m)),
             Map.entry(RematchRequest.class, m -> handleRematch((RematchRequest) m)),
             Map.entry(ReconnectRequest.class, m -> handleReconnect((ReconnectRequest) m)),
             Map.entry(LeaderboardRequest.class, m -> handleLeaderboard((LeaderboardRequest) m)),
@@ -84,17 +82,38 @@ public final class ClientHandler implements Runnable {
     @Override
     public void run() {
         try (socket) {
-            // Clients must show liveness (any message, including heartbeats)
-            // at least this often; a silent socket is dropped by the OS read
-            // timeout. Authenticated clients ping every 30 s, well inside it.
-            socket.setSoTimeout(server.config().silenceSeconds() * 1000);
+            // Handshake deadline is 5 seconds.
+            socket.setSoTimeout(5000);
             out = new ObjectOutputStream(socket.getOutputStream());
             out.flush();
             in = new ObjectInputStream(socket.getInputStream());
-            // Reject any serialized class outside the protocol allowlist
-            // before readObject can instantiate it (deserialization gadget
-            // defense).
             in.setObjectInputFilter(Message.WIRE_FILTER);
+
+            // Step 3 §8: Server sends greeting first
+            send(new ErrorMessage("GRID_DUEL_PROTOCOL:2"));
+            Object firstRaw;
+            try {
+                firstRaw = in.readObject();
+            } catch (SocketTimeoutException e) {
+                LOG.info(() -> describe() + " timed out during protocol handshake");
+                send(new ErrorMessage("handshake timeout: GRID_DUEL_PROTOCOL:2 required"));
+                return;
+            }
+            if (!(firstRaw instanceof ProtocolHello hello)) {
+                LOG.warning(() -> describe() + " sent pre-handshake message: "
+                        + (firstRaw == null ? "null" : firstRaw.getClass().getSimpleName()));
+                send(new ErrorMessage("protocol handshake required: GRID_DUEL_PROTOCOL:2"));
+                return;
+            }
+            if (hello.version() != 2) {
+                LOG.warning(() -> describe() + " unsupported protocol version: " + hello.version());
+                send(new ErrorMessage("incompatible protocol version: expected 2, got " + hello.version()));
+                return;
+            }
+            send(new ProtocolReady(2));
+
+            // Restore standard silence limit after handshake
+            socket.setSoTimeout(server.config().silenceSeconds() * 1000);
             while (true) {
                 Object raw = in.readObject();
                 if (!(raw instanceof Message message)) {
@@ -194,29 +213,13 @@ public final class ClientHandler implements Runnable {
         send(new ListMatchesResponse(server.lobby().openMatches()));
     }
 
-    private void handleMove(MoveRequest request) {
+    private void handleAction(ActionRequest request) {
         MatchSession session = match;
         if (session == null) {
-            send(new MoveRejected("you are not in a match"));
+            send(new ErrorMessage("you are not in a match"));
             return;
         }
-        session.submitMove(this, request);
-    }
-
-    private void handlePass(PassTurn request) {
-        MatchSession session = match;
-        if (session == null) {
-            send(new MoveRejected("you are not in a match"));
-            return;
-        }
-        session.submitPass(this, request.cardIdToDiscard());
-    }
-
-    private void handleResign(ResignRequest request) {
-        MatchSession session = match;
-        if (session != null) {
-            session.submitResign(this);
-        }
+        session.submitAction(this, request);
     }
 
     private void handleRematch(RematchRequest request) {
@@ -271,7 +274,7 @@ public final class ClientHandler implements Runnable {
      * Sends one message; the only place that writes to the socket.
      * {@code out.reset()} clears the stream's object-handle table so every
      * message is serialized as a full snapshot — without it, a mutable object
-     * sent twice (e.g. the live GameState in MatchStart and MoveApplied) would
+     * sent twice (e.g. a shared rules snapshot in successive MatchSync views) would
      * be written as a back-reference and the receiver would keep the stale
      * first copy forever.
      */

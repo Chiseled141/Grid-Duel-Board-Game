@@ -40,12 +40,13 @@ public final class CardPanel extends JComponent {
     private boolean hovered;
     private float hover; // 0..1 tween for lift/tilt
     private double cardScale = 1.0;
-    private float popScale = 1f; // one-shot deal pop multiplier
     private Timer tween;
-    private Timer pop;
 
-    /** Scales the whole card (used to fit two cards in the side column). */
+    private boolean reducedMotion = false;
+
+    /** Scales the whole face to fit the hand or the public opponent row. */
     public void setCardScale(double cardScale) {
+        if (this.cardScale == cardScale) return;
         this.cardScale = cardScale;
         setPreferredSize(new Dimension((int) ((W + 12) * cardScale),
                 (int) ((H + 14) * cardScale)));
@@ -100,36 +101,47 @@ public final class CardPanel extends JComponent {
         }
     }
 
+    public Card card() {
+        return card;
+    }
+
+    public boolean isSelected() {
+        return selected;
+    }
+
+    /** Applies the preference to this existing card immediately. */
+    public void setReducedMotion(boolean reducedMotion) {
+        if (this.reducedMotion == reducedMotion) return;
+        this.reducedMotion = reducedMotion;
+        if (reducedMotion) cancelAnimations();
+    }
+
+    /** Stops hover animation when this presentation is discarded. */
+    public void cancelAnimations() {
+        if (tween != null) { tween.stop(); tween = null; }
+        hover = 0f;
+        repaint();
+    }
+
+    @Override public void removeNotify() {
+        cancelAnimations();
+        super.removeNotify();
+    }
+
+
     /** Marks this card as the currently selected one. */
     public void setSelected(boolean selected) {
         this.selected = selected;
         repaint();
     }
 
-    /**
-     * One-shot 180ms scale pop (1 → 1.12 → 1) played when the card enters
-     * the hand after a swap — a quick, input-safe flourish via Swing timer.
-     */
-    public void playDealPop() {
-        if (pop != null) {
-            pop.stop();
-        }
-        long start = System.currentTimeMillis();
-        pop = new Timer(16, event -> {
-            float progress = Math.min(1f,
-                    (System.currentTimeMillis() - start) / 180f);
-            popScale = 1f + 0.12f * (float) Math.sin(Math.PI * progress);
-            repaint();
-            if (progress >= 1f) {
-                popScale = 1f;
-                ((Timer) event.getSource()).stop();
-            }
-        });
-        pop.start();
-    }
-
     /** Tweens the hover lift/tilt toward the target (1 = lifted). */
     private void startTween(float target) {
+        if (reducedMotion) {
+            hover = target;
+            repaint();
+            return;
+        }
         if (tween != null) {
             tween.stop();
         }
@@ -148,17 +160,16 @@ public final class CardPanel extends JComponent {
 
     @Override
     protected void paintComponent(Graphics graphics) {
+        if (DeckDrawOverlay.isMasked(this)) return;
         Graphics2D g = (Graphics2D) graphics.create();
         g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-        g.setColor(Theme.BG);
-        g.fillRect(0, 0, getWidth(), getHeight());
 
         boolean interactive = !dimmed;
         // A selected card jumps out: higher lift, bigger scale, straight (no
         // tilt). Unselected cards keep the gentle 4px hover lift.
         double lift = interactive ? (selected ? 8 : 4 * hover) : 0;
         double tilt = Math.toRadians(-1.5 * hover * (interactive && !selected ? 1 : 0));
-        double scale = (selected ? 1.07 : 1.0 + 0.02 * hover) * cardScale * popScale;
+        double scale = (selected ? 1.07 : 1.0 + 0.02 * hover) * cardScale;
         g.translate(getWidth() / 2.0, getHeight() / 2.0);
         g.rotate(tilt);
         g.scale(scale, scale);

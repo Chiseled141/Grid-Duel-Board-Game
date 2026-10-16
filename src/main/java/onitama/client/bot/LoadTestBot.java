@@ -1,21 +1,25 @@
 package onitama.client.bot;
 
-import onitama.core.GameState;
-import onitama.core.Move;
 import onitama.core.PlayerColor;
-import onitama.core.RulesEngine;
+import onitama.core.duel.CardInstance;
+import onitama.core.duel.GameAction;
+import onitama.core.duel.PlayerView;
+import onitama.core.duel.Targeting;
+import onitama.core.duel.TurnPhase;
+import onitama.net.ActionReply;
+import onitama.net.ActionRequest;
 import onitama.net.CreateMatchRequest;
 import onitama.net.ErrorMessage;
 import onitama.net.GameOver;
+import onitama.net.GameUpdate;
 import onitama.net.JoinMatchRequest;
 import onitama.net.LoginRequest;
 import onitama.net.LoginResponse;
 import onitama.net.MatchCreated;
-import onitama.net.MatchStart;
+import onitama.net.MatchSync;
 import onitama.net.Message;
-import onitama.net.MoveApplied;
-import onitama.net.MoveRejected;
-import onitama.net.MoveRequest;
+import onitama.net.ProtocolHello;
+import onitama.net.ProtocolReady;
 import onitama.net.RegisterRequest;
 import onitama.net.RematchRequest;
 
@@ -33,8 +37,8 @@ import java.util.concurrent.TimeUnit;
 /**
  * One headless load-test client: registers a generated account, pairs up
  * through the lobby, and plays random legal games as fast as the server
- * allows. Measures the per-move round-trip (send MoveRequest → receive the
- * matching MoveApplied). Runs on its own thread; all failures are captured
+ * allows. Measures the per-move round-trip (send ActionRequest → receive the
+ * matching ActionReply/GameUpdate). Runs on its own thread; all failures are captured
  * in {@link #failure} for the harness to report.
  */
 public final class LoadTestBot implements Runnable {
@@ -117,40 +121,82 @@ public final class LoadTestBot implements Runnable {
             send(new JoinMatchRequest(roomCodesFromCreators.take()));
         }
 
-        MatchStart start = expect(MatchStart.class);
+        MatchSync sync = expect(MatchSync.class);
         for (int game = 1; game <= games; game++) {
             if (game > 1) {
                 send(new RematchRequest());
-                start = expect(MatchStart.class);
+                sync = expect(MatchSync.class);
             }
-            playOneGame(start);
+            playOneGame(sync);
             gamesCompleted++;
         }
     }
 
-    /** Plays one game to completion with random legal half-moves. */
-    private void playOneGame(MatchStart start) throws Exception {
-        GameState state = start.initialState();
-        PlayerColor me = start.yourColor();
-        while (state.isOngoing()) {
-            if (state.turn() == me) {
-                List<Move> legal = RulesEngine.legalMoves(state);
-                if (legal.isEmpty()) {
-                    send(new onitama.net.PassTurn(state.hand(me).get(0).id()));
-                    state = expect(MoveApplied.class).state();
-                } else {
-                    Move move = legal.get(random.nextInt(legal.size()));
-                    long sentAt = System.nanoTime();
-                    send(new MoveRequest(move.cardId(), move.from(), move.to()));
-                    MoveApplied applied = expect(MoveApplied.class);
-                    moveRttMillis.add((System.nanoTime() - sentAt) / 1_000_000.0);
-                    state = applied.state();
+    /** Plays one game to completion with random legal actions. */
+    private void playOneGame(MatchSync initialSync) throws Exception {
+        MatchSync currentSync = initialSync;
+        PlayerColor me = currentSync.view().viewer();
+        String matchId = currentSync.matchId();
+        long nextSeq = currentSync.nextSequence();
+
+        while (currentSync != null && currentSync.view().outcome() == null
+                && currentSync.view().phase() != TurnPhase.FINISHED) {
+            PlayerView view = currentSync.view();
+            if (view.turn() == me) {
+                GameAction action = onitama.core.PracticeBot.chooseAction(view, random);
+                if (action == null) {
+                    break;
                 }
+                long sentAt = System.nanoTime();
+                send(new ActionRequest(matchId, nextSeq++, view.revision(), action));
+                currentSync = awaitMyAction();
+                moveRttMillis.add((System.nanoTime() - sentAt) / 1_000_000.0);
             } else {
-                state = expect(MoveApplied.class).state();
+                currentSync = awaitUpdate();
             }
         }
         expect(GameOver.class);
+    }
+
+    private MatchSync awaitMyAction() throws Exception {
+        MatchSync latest = null;
+        boolean gotReply = false;
+        boolean gotUpdate = false;
+        while (!gotReply || !gotUpdate) {
+            Message msg = inbox.poll(EXPECT_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            if (msg == null) {
+                throw new IOException("timeout waiting for action response");
+            }
+            if (msg instanceof ActionReply reply) {
+                gotReply = true;
+                latest = reply.current();
+                if (!reply.receipt().accepted()) {
+                    break;
+                }
+            } else if (msg instanceof GameUpdate update) {
+                gotUpdate = true;
+                latest = update.current();
+            } else if (msg instanceof GameOver) {
+                inbox.offer(msg);
+                break;
+            }
+        }
+        return latest;
+    }
+
+    private MatchSync awaitUpdate() throws Exception {
+        while (true) {
+            Message msg = inbox.poll(EXPECT_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            if (msg == null) {
+                throw new IOException("timeout waiting for game update");
+            }
+            if (msg instanceof GameUpdate update) {
+                return update.current();
+            } else if (msg instanceof GameOver) {
+                inbox.offer(msg);
+                return null;
+            }
+        }
     }
 
     /** Registers a fresh account, falling back to login if the name is taken. */
@@ -179,11 +225,22 @@ public final class LoadTestBot implements Runnable {
             out = new ObjectOutputStream(socket.getOutputStream());
             out.flush();
             in = new ObjectInputStream(socket.getInputStream());
-            // Same allowlist as the real client (deserialization gadget defense).
             in.setObjectInputFilter(Message.WIRE_FILTER);
-        } catch (IOException e) {
+
+            ErrorMessage greeting = (ErrorMessage) in.readObject();
+            if (!"GRID_DUEL_PROTOCOL:2".equals(greeting.text())) {
+                throw new IOException("unexpected greeting: " + greeting.text());
+            }
+            out.reset();
+            out.writeObject(new ProtocolHello(2));
+            out.flush();
+            ProtocolReady ready = (ProtocolReady) in.readObject();
+            if (ready.version() != 2) {
+                throw new IOException("unexpected ready version: " + ready.version());
+            }
+        } catch (Exception e) {
             closeQuietly();
-            throw e;
+            throw (e instanceof IOException ioe) ? ioe : new IOException(e);
         }
         Thread reader = new Thread(() -> {
             try {
@@ -202,49 +259,37 @@ public final class LoadTestBot implements Runnable {
     }
 
     private void send(Message message) throws IOException {
-        // Full snapshot per message, same reason as everywhere else.
         out.reset();
         out.writeObject(message);
         out.flush();
     }
 
-    /**
-     * Takes the next matching message, skipping heartbeats; a rejection or
-     * server error is a bot failure (bots only send legal moves).
-     */
     private <T extends Message> T expect(Class<T> type) throws Exception {
         long deadline = System.currentTimeMillis() + EXPECT_TIMEOUT_SECONDS * 1000L;
         while (true) {
             long remaining = deadline - System.currentTimeMillis();
             if (remaining <= 0) {
-                throw new IOException("bot " + id + " timed out waiting for "
-                        + type.getSimpleName());
+                throw new IOException("bot " + id + " timed out waiting for " + type.getSimpleName());
             }
             Message message = inbox.poll(remaining, TimeUnit.MILLISECONDS);
             if (message == null) {
-                throw new IOException("bot " + id + " timed out waiting for "
-                        + type.getSimpleName());
+                throw new IOException("bot " + id + " timed out waiting for " + type.getSimpleName());
             }
             if (type.isInstance(message)) {
                 return type.cast(message);
             }
-            if (message instanceof MoveRejected rejected) {
-                throw new IOException("bot " + id + " move rejected: " + rejected.reason());
-            }
             if (message instanceof ErrorMessage error) {
                 throw new IOException("bot " + id + " server error: " + error.text());
             }
-            // Pong and similar housekeeping messages are skipped.
         }
     }
 
     private void closeQuietly() {
-        try {
-            if (socket != null) {
+        if (socket != null) {
+            try {
                 socket.close();
+            } catch (IOException ignored) {
             }
-        } catch (IOException ignored) {
-            // closing a bot socket is best-effort
         }
     }
 }

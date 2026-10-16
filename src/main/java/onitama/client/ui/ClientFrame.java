@@ -1,6 +1,7 @@
 package onitama.client.ui;
 
 import onitama.client.ClientSettings;
+import onitama.client.MenuMusic;
 import onitama.client.OnitamaClient;
 import onitama.client.state.ClientModel;
 import onitama.client.state.ClientModelListener;
@@ -35,6 +36,8 @@ public final class ClientFrame extends JFrame {
     private final OnitamaClient client;
     private final ClientModel model;
     private final ClientSettings settings;
+    private final MenuMusic menuMusic = new MenuMusic();
+    private Screen visibleScreen = Screen.LOGIN;
     private final CardLayout screens = new CardLayout();
     private final JPanel content = new JPanel(screens);
     private javax.swing.JToggleButton soundToggle;
@@ -58,6 +61,7 @@ public final class ClientFrame extends JFrame {
                 message -> onIncomingMessage(message),
                 reason -> SwingUtilities.invokeLater(this::onConnectionLost));
         this.model = new ClientModel(client);
+        this.model.setReducedMotion(settings.reducedMotion());
         BoardPanel.setDefaultPieceStyle(settings.pieceStyle());
 
         LoginPanel loginPanel = new LoginPanel(model, settings);
@@ -106,7 +110,7 @@ public final class ClientFrame extends JFrame {
 
     /**
      * The app header: ONITAMA ONLINE wordmark on the left, the Game/Help
-     * menus with comfortable 8-12px padding, and a visual sound toggle on the
+     * menus with comfortable 8-12px padding, and a menu-music toggle on the
      * right. The wordmark guarantees the product name is visible on every
      * platform (macOS may render the frame title subtly).
      */
@@ -132,8 +136,18 @@ public final class ClientFrame extends JFrame {
         lobby.addActionListener(event -> model.leaveToLobby());
         javax.swing.JMenuItem exit = new javax.swing.JMenuItem("Exit");
         exit.addActionListener(event -> closeAndSave());
+        javax.swing.JCheckBoxMenuItem reducedMotion = new javax.swing.JCheckBoxMenuItem(
+                "Reduced motion", settings.reducedMotion());
+        reducedMotion.addActionListener(event -> {
+            boolean rm = reducedMotion.isSelected();
+            settings.setReducedMotion(rm);
+            model.setReducedMotion(rm);
+            settings.save();
+        });
         game.add(resign);
         game.add(lobby);
+        game.addSeparator();
+        game.add(reducedMotion);
         game.addSeparator();
         game.add(exit);
         menuBar.add(game);
@@ -151,11 +165,11 @@ public final class ClientFrame extends JFrame {
         soundToggle = UiKit.soundToggle();
         soundToggle.setSelected(settings.soundEnabled());
         updateSoundTooltip();
-        // Persist the choice immediately; the toggle is visual-only for now
-        // (no audio engine yet), but the preference is remembered.
+        // Apply the existing saved preference to the menu track.
         soundToggle.addItemListener(event -> {
             boolean on = event.getStateChange() == java.awt.event.ItemEvent.SELECTED;
             settings.setSoundEnabled(on);
+            updateMenuMusic();
             settings.save();
             updateSoundTooltip();
         });
@@ -165,7 +179,7 @@ public final class ClientFrame extends JFrame {
     }
 
     private void updateSoundTooltip() {
-        soundToggle.setToolTipText("Sound: " + (soundToggle.isSelected() ? "On" : "Off"));
+        soundToggle.setToolTipText("Menu music: " + (soundToggle.isSelected() ? "On" : "Off"));
     }
 
     /**
@@ -174,17 +188,17 @@ public final class ClientFrame extends JFrame {
      * there is nothing to resign.
      */
     private void confirmMenuResign() {
-        boolean inPractice = model.isPracticeMode();
-        boolean inOnlineMatch = model.state() != null && model.state().isOngoing()
-                && !model.isMatchOver();
-        if (!inPractice && !inOnlineMatch) {
-            return;
-        }
+        if (!canMenuResign(model)) return;
         boolean confirmed = UiKit.confirmDialog(this, "Resign",
                 "Resign this match?", "Yes", UiKit.Pill.DANGER);
-        if (confirmed) {
+        if (confirmed && canMenuResign(model)) {
             model.resign();
         }
+    }
+
+    /** Menu actions use the same live recipient view as the game panel. */
+    static boolean canMenuResign(ClientModel model) {
+        return model.view() != null && !model.isMatchOver() && model.inFlightRequest() == null;
     }
 
     /**
@@ -222,7 +236,7 @@ public final class ClientFrame extends JFrame {
             });
             tabButtons.add(tab);
             tabs.add(tab);
-            pages.add(helpPage(helpTabText(name)), name);
+            pages.add(helpPage(helpTabText(name, model.rules())), name);
         }
         tabButtons.get(0).setVariant(UiKit.Pill.GOLD);
 
@@ -264,8 +278,8 @@ public final class ClientFrame extends JFrame {
         surface.add(header, BorderLayout.NORTH);
 
         JLabel body = new JLabel("<html><div style='width:350px'>"
-                + "Onitama Online — a networked implementation of the board game "
-                + "Onitama by Shimpei Sato (Arcane Wonders, 2014)."
+                + "Grid Duel — a 7x7 strategy game with movement and skill cards. "
+                + "Movement inspired by Onitama by Shimpei Sato."
                 + "<br><br>Java Software Development final project.</div></html>");
         body.setFont(Theme.normal(12f));
         body.setForeground(Theme.INK);
@@ -277,30 +291,32 @@ public final class ClientFrame extends JFrame {
     }
 
     /** The three help tabs' copy (§Help overlay). */
-    private String helpTabText(String tab) {
+    static String helpTabText(String tab, onitama.core.duel.RulesConfig rules) {
+        int limit = rules == null ? 60 : rules.turnLimit();
+        int cap = rules == null ? 5 : rules.manaCap();
+        int gain = rules == null ? 1 : rules.manaPerTurn();
+        int initial = rules == null ? 2 : rules.initialMana();
+        int skills = rules == null ? 3 : rules.skillHandSize();
         return switch (tab) {
-            case "Cards" -> "<b>THE CARDS</b><br><br>See the hand cards — the mini "
-                    + "5×5 grid shows the moves a piece can make from any square. "
-                    + "The seal in the corner shows which player's deck side the card "
-                    + "belongs to; red-owned cards are printed upside down on purpose."
-                    + "<br><br>The used card swaps with the transit card, so your "
-                    + "opponent will get it two half-moves later — hover any card for "
-                    + "its full move list and flavor.";
-            case "Controls" -> "<b>CONTROLS</b><br><br>Click a card and a piece "
-                    + "(either order) → gold dots mark the legal destinations → click "
-                    + "a destination to move."
-                    + "<br><br>ESC clears the selection. Enter submits the JOIN code. "
-                    + "The NEXT CARD panel shows where the transit card goes: to the "
-                    + "player whose turn is next.";
-            default -> "<b>ONITAMA</b><br><br>Move one of your pieces with one of "
-                    + "your two hand cards. The used card swaps with the transit "
-                    + "card, so your opponent will get it two half-moves later — "
-                    + "always check what you hand over."
-                    + "<br><br><b>WIN CONDITIONS</b><br>• <b>Way of the Stone</b> — "
-                    + "capture the enemy Master."
-                    + "<br>• <b>Way of the Stream</b> — move your Master onto the "
-                    + "enemy Temple Arch."
-                    + "<br>• 300 half-moves without a decision end in a draw.";
+            case "Cards" -> "<b>THE CARDS</b><br><br>Start with two movement cards and "
+                    + skills + " skill cards. Both players share a 16-card movement deck and a "
+                    + "24-card skill deck. Movement hands are public; opponent skills stay hidden."
+                    + "<br><br>A used movement card returns to the deck, which is shuffled before "
+                    + "drawing its replacement. The same card may return immediately."
+                    + "<br><br>A successfully cast skill is spent permanently. Draw a replacement "
+                    + "if the skill deck has cards. Skipping does not draw a card.";
+            case "Controls" -> "<b>CONTROLS</b><br><br>Select a movement card, a friendly piece, "
+                    + "then a highlighted destination. Use Skip Movement to go straight to skills."
+                    + "<br><br>Select a skill and follow its targeting instructions. Resolve any "
+                    + "Foresight choice before continuing. Hover cards for their full descriptions."
+                    + "<br><br>Use End Turn when ready. ESC clears the current selection.";
+            default -> "<b>GRID DUEL</b><br><br>Each player has six identical pieces on a 7x7 board. "
+                    + "Eliminate every opposing piece to win. Otherwise, " + limit
+                    + " completed player turns end in a draw. Elimination takes priority."
+                    + "<br><br>Turn order: optional movement, optional one skill, then End Turn. "
+                    + "Movement jumps; landing on an enemy eliminates it. Friendly landing is illegal."
+                    + "<br><br>Start with " + initial + " mana. Gain " + gain
+                    + " at each own-turn start, including the first, up to " + cap + ".";
         };
     }
 
@@ -327,9 +343,22 @@ public final class ClientFrame extends JFrame {
     }
 
     private void showScreen(Screen screen) {
+        visibleScreen = screen;
+        updateMenuMusic();
         screens.show(content, screen.name());
         setTitle(WINDOW_TITLE + (model.roomCode() != null
                 ? " - match " + model.roomCode() : ""));
+    }
+
+    private void updateMenuMusic() {
+        menuMusic.setPlaying(settings.soundEnabled() && visibleScreen != Screen.GAME);
+    }
+
+    /** Releases the menu audio even when the frame is disposed without using Exit. */
+    @Override
+    public void dispose() {
+        menuMusic.close();
+        super.dispose();
     }
 
     private void openLeaderboard() {

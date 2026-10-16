@@ -8,67 +8,78 @@ import java.util.logging.Logger;
 
 import onitama.core.PlayerColor;
 
-/**
- * Shared look-and-feel constants, extracted from fireship.dev's own CSS
- * (coal background, beige text, gold pills with charcoal hard shadows).
- * One place for every color and font so the panels stay consistent.
- */
+/** Shared jade, ivory, coral and gold palette for the painted mountain setting. */
 public final class Theme {
 
     private static final Logger LOG = Logger.getLogger(Theme.class.getName());
 
-    // --- palette (values taken from fireship.dev's :root custom properties) ---
-    /** App background ("coal"). */
-    public static final Color BG = new Color(0x0F0D0E);
-    /** Panels and list rows ("charcoal muted"). */
-    public static final Color SURFACE = new Color(0x1B1918);
-    /** Primary text and card faces ("beige"). */
-    public static final Color CREAM = new Color(0xF9F4DA);
-    /** Outlines and text on light fills ("charcoal"). */
-    public static final Color INK = new Color(0x231F20);
+    // --- mountain landscape palette ---
+    /** Deep jade app background. */
+    public static final Color BG = new Color(0x103B40);
+    /** Jade panel and list-row surfaces. */
+    public static final Color SURFACE = new Color(0x184A48);
+    /** Warm ivory text and light surfaces. */
+    public static final Color CREAM = new Color(0xFFF2D7);
+    /** Deep teal text on light surfaces. */
+    public static final Color INK = new Color(0x193F40);
     /** Highlight: primary buttons, selection, turn banner ("gold"). */
-    public static final Color AMBER = new Color(0xFCBA28);
+    public static final Color AMBER = new Color(0xF4BF60);
     /** Blue player pieces and labels ("brand blue"). */
-    public static final Color SKY = new Color(0x12B5E5);
+    public static final Color SKY = new Color(0x69D6DE);
     /** Red player pieces, errors, danger ("brand red"). */
-    public static final Color CORAL = new Color(0xED203D);
+    public static final Color CORAL = new Color(0xFFAA91);
     /** Board light square. */
-    public static final Color BOARD_LIGHT = new Color(0xF3EAD3);
-    /** Warm wooden board frame band. */
-    public static final Color BOARD_FRAME = new Color(0xE5D3A8);
+    public static final Color BOARD_LIGHT = new Color(0xF8EDCF);
+    /** Jade ceramic squares, paired with warm ivory. */
+    public static final Color BOARD_JADE = new Color(0x528D7C);
+    /** Deep lacquered jade frame. */
+    public static final Color BOARD_FRAME = new Color(0x20594F);
+    /** Brass inlay on the board frame. */
+    public static final Color BOARD_GOLD = new Color(0xDBB77B);
     /** Tile outlines. */
-    public static final Color OUTLINE = new Color(0x231F20);
+    public static final Color OUTLINE = new Color(0x193F40);
     /** Hard offset shadow fill (never blurred). */
-    public static final Color SHADOW = new Color(0x231F20);
+    public static final Color SHADOW = new Color(0x193F40);
     /** Muted text on dark surfaces. */
-    public static final Color MUTED = new Color(0x8A8580);
+    public static final Color MUTED = new Color(0xA4BCAE);
 
-    // --- extended accents (fireship.dev brand colors) ---
+    /** Muted text on ivory, celadon and light input surfaces. */
+    public static final Color MUTED_INK = new Color(0x526F63);
+    /** Dark honey text on light caption plates. */
+    public static final Color GOLD_INK = new Color(0x87551A);
+    /** Pine-jade secondary buttons. */
+    public static final Color JADE = new Color(0x1F5C53);
+    /** Soft celadon inspector surface. */
+    public static final Color MIST = new Color(0xE6EEDB);
+    /** Warm red destructive buttons, with ivory text. */
+    public static final Color VERMILION = new Color(0xAA4438);
+
+    // --- extended accents ---
     /** Success, victory, connection-ready ("brand green"). */
     public static final Color GREEN = new Color(0x0BA95B);
-    /** Disabled controls (flat grey, no contrast pull). */
-    public static final Color DISABLED = new Color(0xBDBDBD);
+    /** Muted sage disabled controls. */
+    public static final Color DISABLED = new Color(0xAEC4B6);
     /** Pale gold wash behind the last-played squares. */
     public static final Color LAST_MOVE = new Color(0xFFF8E1);
     /** Leaderboard medal tints: gold reuses AMBER, silver and bronze below. */
     public static final Color MEDAL_SILVER = new Color(0xC9C2B8);
     public static final Color MEDAL_BRONZE = new Color(0xB0793C);
     /** Table grid lines on the dark surface. */
-    public static final Color GRID_LINE = new Color(0x3A3634);
+    public static final Color GRID_LINE = new Color(0x356962);
 
     // --- player identities: blue system vs coral system ---
     /** Player 1 (Blue) primary. */
     public static final Color P1 = SKY;
     /** Player 1 darker shade (two-tone pawns, pressed states). */
-    public static final Color P1_DARK = new Color(0x0E7FA8);
+    public static final Color P1_DARK = new Color(0x187B8A);
     /** Player 1 light tint (selection tints, watermarks). */
-    public static final Color P1_LIGHT = new Color(0xBDEBF7);
+    public static final Color P1_LIGHT = new Color(0xCEF0EB);
     /** Player 2 (Red) primary. */
     public static final Color P2 = CORAL;
     /** Player 2 darker shade (two-tone pawns, pressed states). */
-    public static final Color P2_DARK = new Color(0xA81830);
+    public static final Color P2_DARK = new Color(0xA83F35);
     /** Player 2 light tint (selection tints, watermarks). */
-    public static final Color P2_LIGHT = new Color(0xFBD5DA);
+    public static final Color P2_LIGHT = new Color(0xFFE0CF);
 
     /** Returns the player color family for a side. */
     public static Color playerColor(PlayerColor color) {

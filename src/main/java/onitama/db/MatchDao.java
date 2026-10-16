@@ -28,6 +28,7 @@ public interface MatchDao {
     /** One row of the matches table joined with the players' names. */
     record MatchRecord(long id, String blueUsername, String redUsername,
                        String winnerUsername, String endReason, int moveCount,
-                       int eloBlueAfter, int eloRedAfter, String playedAt) {
+                       int eloBlueAfter, int eloRedAfter, String playedAt,
+                       String rulesVersion, Integer startedTurns, Integer completedTurns) {
     }
 }

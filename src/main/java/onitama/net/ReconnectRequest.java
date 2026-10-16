@@ -5,7 +5,7 @@ import java.io.Serial;
 /**
  * C→S. Re-attaches a fresh connection to a previously authenticated session
  * using the secret reconnect token issued at login. On success the server
- * resumes the match and sends the current {@link MoveApplied}-style state.
+ * resumes the match and sends the current {@link MatchSync} recipient view.
  */
 public record ReconnectRequest(String reconnectToken) implements Message {
 

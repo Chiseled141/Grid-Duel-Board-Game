@@ -26,9 +26,8 @@ import java.awt.Window;
 import java.awt.geom.RoundRectangle2D;
 
 /**
- * The retro-pop component kit shared by every screen: pill buttons with hard
- * charcoal shadows (the fireship.dev recipe), sticker panels, heading
- * banners and small drawn motifs. Everything is plain Swing painted with
+ * Component kit shared by every screen: jade and gold pill buttons, sticker
+ * panels, heading banners and small drawn motifs. Everything is plain Swing painted with
  * Graphics2D — no images, no extra libraries.
  */
 public final class UiKit {
@@ -47,21 +46,22 @@ public final class UiKit {
 
     /** Lightens a color slightly for hover states. */
     public static Color lighten(Color color) {
-        return new Color(Math.min(255, color.getRed() + 38),
-                Math.min(255, color.getGreen() + 38),
-                Math.min(255, color.getBlue() + 38));
+        // A restrained tint keeps ivory labels readable on the jade hover fill.
+        return new Color(color.getRed() + (int) ((255 - color.getRed()) * .12),
+                color.getGreen() + (int) ((255 - color.getGreen()) * .12),
+                color.getBlue() + (int) ((255 - color.getBlue()) * .12));
     }
 
-    /** Pill variants matching fireship.dev's button styles. */
+    /** Coordinated action colors for the painted mountain theme. */
     public enum Pill {
         /** Gold fill, ink text — the primary action. */
         GOLD(Theme.AMBER, Theme.INK, Theme.INK, false),
-        /** Coal fill, gold border and text — secondary action on dark. */
+        /** Deep jade fill, gold border and text — secondary action on dark. */
         GOLD_OUTLINE(Theme.BG, Theme.AMBER, Theme.AMBER, true),
-        /** Coal fill, cream border and text — neutral action on dark. */
-        CREAM_OUTLINE(Theme.BG, Theme.CREAM, Theme.CREAM, true),
-        /** Coal fill, red border and text — destructive action. */
-        DANGER(Theme.BG, Theme.CORAL, Theme.CORAL, true);
+        /** Jade fill, mint border and ivory text — neutral action on dark. */
+        CREAM_OUTLINE(Theme.JADE, Theme.P1_LIGHT, Theme.CREAM, true),
+        /** Vermilion fill, coral border and ivory text — destructive action. */
+        DANGER(Theme.VERMILION, Theme.CORAL, Theme.CREAM, false);
 
         final Color fill;
         final Color border;
@@ -273,7 +273,23 @@ public final class UiKit {
     }
 
     private static JLabel styled(String text, Font font, Color color) {
-        JLabel label = new JLabel(text);
+        JLabel label = new JLabel(text) {
+            @Override public java.awt.Dimension getPreferredSize() {
+                java.awt.Dimension size = super.getPreferredSize();
+                if (getText() == null || getFont() == null || getClientProperty("html") != null) return size;
+                // Native Swing measurement and offscreen/font rasterization can round
+                // Outfit advances differently. Reserve the larger width plus ink overshoot.
+                var context = new java.awt.font.FontRenderContext(null, false, false);
+                int inkWidth = (int) Math.ceil(getFont().getStringBounds(getText(), context).getWidth());
+                var insets = getInsets();
+                return new java.awt.Dimension(Math.max(size.width, inkWidth + insets.left + insets.right) + 6,
+                        size.height + 4);
+            }
+
+            @Override public java.awt.Dimension getMaximumSize() {
+                return isMaximumSizeSet() ? super.getMaximumSize() : getPreferredSize();
+            }
+        };
         label.setFont(font);
         label.setForeground(color);
         return label;
@@ -281,10 +297,7 @@ public final class UiKit {
 
     /** Tiny uppercase caption (stat labels, helper text). */
     public static JLabel caption(String text, Color color) {
-        JLabel label = new JLabel(text.toUpperCase());
-        label.setFont(Theme.normal(9f));
-        label.setForeground(color);
-        return label;
+        return styled(text.toUpperCase(), Theme.normal(9f), color);
     }
 
     /** A round status dot with an ink outline; the color is read on each paint. */
@@ -338,9 +351,8 @@ public final class UiKit {
     }
 
     /**
-     * Visual-only sound toggle for the header: a drawn speaker with sound
-     * waves (on) or a slash through it (off). No audio backend — the caller
-     * sets the tooltip and persists the choice.
+     * Sound toggle for the header: a drawn speaker with sound waves (on) or
+     * a slash through it (off). The caller controls playback and persists the choice.
      */
     public static JToggleButton soundToggle() {
         JToggleButton toggle = new JToggleButton() {
@@ -681,7 +693,7 @@ public final class UiKit {
             @Override
             public void paintIcon(Component c, Graphics g, int x, int y) {
                 Graphics2D g2 = nice(g);
-                g2.setColor(Theme.MUTED);
+                g2.setColor(Theme.MUTED_INK);
                 g2.setStroke(new java.awt.BasicStroke(2f));
                 g2.drawLine(x + 4, y + 4, x + 14, y + 14);
                 g2.drawLine(x + 14, y + 4, x + 4, y + 14);

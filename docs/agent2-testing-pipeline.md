@@ -19,7 +19,7 @@ Note every changed file. Flag any unrelated change (rename, formatting, scope cr
 
 ### 3. Inspect actual code
 Open each changed file. Check:
-- Correctness vs requirements and `GRID-DUEL-BOARD-GAME_SPEC.md` (renamed from `ONITAMA_AGENT_BRIEF.md`) invariants (rotation, card cycle, win priority, Stone>Stream, 300-draw, pass legality, Elo zero-sum, serialization `reset()`/`flush()`, EDT `invokeLater`, per-match executor confinement, `PreparedStatement`, single Connection monitor).
+- Correctness vs requirements and `GRID-DUEL-BOARD-GAME_SPEC.md` (renamed from `ONITAMA_AGENT_BRIEF.md`) invariants (7×7 boundaries, rotation, movement recycling, permanent skill disposal, atomic casts, elimination-before-60-turn-draw, optional skip/end, phase and mana limits, private views and pending choices, Elo zero-sum, serialization `reset()`/`flush()`, EDT `invokeLater`, per-match executor confinement, `PreparedStatement`, single Connection monitor).
 - Bugs: null/empty, off-by-one, sign error, boundary values, stale state, swallowed exceptions, resource leaks.
 
 ### 4. Run relevant tests
@@ -30,8 +30,8 @@ mvn test                              # full suite — required
 Record pass/fail and counts. If Agent 1 ran only a subset, the full run is your responsibility.
 
 ### 5. Hunt edge cases (adapt to the change)
-- Empty/invalid input, boundary values, off-board moves, friendly capture, student-on-arch, simultaneous Stone+Stream, 300-move boundary, duplicate usernames, wrong passwords, unknown card IDs, malformed/foreign serialized objects, disconnect mid-turn, reconnect with bad/expired token, concurrent room-code creation, concurrent match finishes.
-- Regression: could this break existing `UT01-09 / IT01-02 / LT01 / PracticeBotTest`?
+- Empty/invalid input, boundary values, off-board moves, friendly capture, multi-target overlaps, invalid Foresight permutations, empty skill deck, mana cap, elimination on turn 60, duplicate action requests, private-data leaks, duplicate usernames, wrong passwords, unknown card IDs, malformed/foreign serialized objects, disconnect mid-turn, reconnect with bad/expired token, concurrent room-code creation, concurrent match finishes.
+- Regression: check spec §8 migration inventory. Preserve unrelated technical coverage; replace obsolete gameplay assertions with meaningful new-rule tests only in the relevant migration. Do not demand legacy Master/transit behavior from the redesigned engine or claim new rules exist because legacy tests pass.
 - Security where relevant: plaintext passwords, SQL injection, deserialization gadget, token handling.
 
 ### 6. Classify findings

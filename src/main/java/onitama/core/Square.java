@@ -4,8 +4,8 @@ import java.io.Serial;
 import java.io.Serializable;
 
 /**
- * Immutable coordinate on the 5x5 board. {@code x} is the column 0-4
- * (left to right), {@code y} is the row 0-4 (y = 0 is Blue's home row).
+ * Immutable canonical board coordinate. Each engine validates its own bounds;
+ * Grid Duel uses x/y = 0..6, with y = 0 as Blue's home row.
  */
 public record Square(int x, int y) implements Serializable {
 

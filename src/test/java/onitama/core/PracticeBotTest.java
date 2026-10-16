@@ -1,211 +1,205 @@
 package onitama.core;
 
+import onitama.config.RulesConfigLoader;
+import onitama.core.duel.ActionResult;
+import onitama.core.duel.CardInstance;
+import onitama.core.duel.ForesightView;
+import onitama.core.duel.GameAction;
+import onitama.core.duel.GameState;
+import onitama.core.duel.PlayerView;
+import onitama.core.duel.RulesConfig;
+import onitama.core.duel.RulesEngine;
+import onitama.core.duel.Targeting;
+import onitama.core.duel.TurnPhase;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.util.HashSet;
 import java.util.List;
 import java.util.Random;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * The practice-mode bot at all three difficulty levels. Rookie keeps its
- * deliberate beginner mercy (the "usually" tests run over many seeds);
- * Senior and Legend search, so their tactical promises hold deterministically.
- * Legend must also beat the Rookie consistently.
+ * Unit and simulation tests for {@link PracticeBot} in Grid Duel 7x7.
  */
 class PracticeBotTest {
 
-    @Test
-    void allLevelsCaptureTheEnemyMasterImmediately() {
-        for (Difficulty level : Difficulty.values()) {
-            GameState state = TestPositions.position(PlayerColor.BLUE, "tiger", "ox",
-                    "horse", "crane", "goose");
-            state.board().set(new Square(2, 2), new Piece(PlayerColor.BLUE, false));
-            state.board().set(new Square(2, 4), new Piece(PlayerColor.RED, true));
+    private RulesConfig rules;
 
-            Move move = PracticeBot.chooseMove(state, PlayerColor.BLUE, level, new Random(1));
-
-            assertEquals(new Move(new Square(2, 2), new Square(2, 4), "tiger"), move,
-                    level + " must never miss Way of the Stone");
-        }
+    @BeforeEach
+    void setUp() {
+        rules = RulesConfigLoader.load(null);
     }
 
     @Test
-    void allLevelsTakeTheStreamWhenPossible() {
-        for (Difficulty level : Difficulty.values()) {
-            GameState state = TestPositions.position(PlayerColor.BLUE, "eel", "horse",
-                    "dragon", "frog", "boar");
-            state.board().set(new Square(2, 3), new Piece(PlayerColor.BLUE, true));
+    void returnsNullWhenNotMyTurnOrGameOver() {
+        GameState state = RulesEngine.newGame(rules, 42L);
+        PlayerColor turn = state.turn();
+        PlayerColor opponent = turn == PlayerColor.BLUE ? PlayerColor.RED : PlayerColor.BLUE;
+        PlayerView opponentView = RulesEngine.viewFor(state, opponent);
 
-            Move move = PracticeBot.chooseMove(state, PlayerColor.BLUE, level, new Random(2));
+        // Not opponent's turn
+        assertNull(PracticeBot.chooseAction(opponentView, new Random(1)));
+    }
 
-            assertNotNull(move, level.name());
-            assertEquals(new Square(2, 4), move.to(),
-                    level + " must step onto the enemy Temple Arch");
-            assertTrue(state.board().pieceAt(move.from()).master(),
-                    level + " must use the master for the stream");
+    @Test
+    void resolvesForesightWithValidPermutation() {
+        List<CardInstance> preview = List.of(
+                new CardInstance("strike#1", "strike"),
+                new CardInstance("dash#1", "dash"),
+                new CardInstance("vault#1", "vault")
+        );
+        ForesightView choice = new ForesightView(15L, "foresight#1", 2, preview);
+        PlayerView view = new PlayerView(
+                PlayerColor.BLUE, rules, 1L, List.of(), PlayerColor.BLUE, TurnPhase.CHOICE,
+                1, 1, List.of(), List.of(), List.of(),
+                3, 2, 2, 2, 10, 15, List.of(),
+                choice, null
+        );
+
+        GameAction action = PracticeBot.chooseAction(view, new Random(42));
+        assertNotNull(action);
+        assertTrue(action instanceof GameAction.ResolveForesight);
+        GameAction.ResolveForesight resolve = (GameAction.ResolveForesight) action;
+        assertEquals(15L, resolve.choiceId());
+        assertEquals(3, resolve.orderedInstanceIds().size());
+        assertEquals(Set.of("strike#1", "dash#1", "vault#1"), new HashSet<>(resolve.orderedInstanceIds()));
+    }
+
+    @Test
+    void endsTurnInEndPhase() {
+        PlayerView view = new PlayerView(
+                PlayerColor.BLUE, rules, 1L, List.of(), PlayerColor.BLUE, TurnPhase.END,
+                1, 1, List.of(), List.of(), List.of(),
+                3, 2, 2, 0, 10, 15, List.of(),
+                null, null
+        );
+        GameAction action = PracticeBot.chooseAction(view, new Random(1));
+        assertNotNull(action);
+        assertTrue(action instanceof GameAction.EndTurn);
+    }
+
+    @Test
+    void seniorAndLegendAlwaysTakeCaptures() {
+        int foundCaptures = 0;
+        for (long seed = 1; seed <= 20 && foundCaptures < 10; seed++) {
+            GameState s = RulesEngine.newGame(rules, seed);
+            int steps = 0;
+            while (s.outcome() == null && steps++ < 200) {
+                PlayerView pv = RulesEngine.viewFor(s, s.turn());
+                if (pv.phase() == TurnPhase.MOVEMENT) {
+                    boolean captureAvailable = false;
+                    for (GameAction.MovePiece m : Targeting.legalMoves(pv)) {
+                        boolean isEnemy = pv.pieces().stream().anyMatch(
+                                pp -> pp.square().equals(m.to()) && pp.piece().color() != pv.viewer());
+                        if (isEnemy) {
+                            captureAvailable = true;
+                            break;
+                        }
+                    }
+                    if (captureAvailable) {
+                        GameAction seniorAction = PracticeBot.chooseAction(pv, Difficulty.SENIOR, new Random(seed));
+                        assertTrue(seniorAction instanceof GameAction.MovePiece);
+                        GameAction.MovePiece seniorMove = (GameAction.MovePiece) seniorAction;
+                        boolean targetIsEnemy = pv.pieces().stream().anyMatch(
+                                pp -> pp.square().equals(seniorMove.to()) && pp.piece().color() != pv.viewer());
+                        assertTrue(targetIsEnemy, "Senior must choose a capture when available");
+
+                        GameAction legendAction = PracticeBot.chooseAction(pv, Difficulty.LEGEND, new Random(seed));
+                        assertTrue(legendAction instanceof GameAction.MovePiece);
+                        GameAction.MovePiece legendMove = (GameAction.MovePiece) legendAction;
+                        boolean legendTargetIsEnemy = pv.pieces().stream().anyMatch(
+                                pp -> pp.square().equals(legendMove.to()) && pp.piece().color() != pv.viewer());
+                        assertTrue(legendTargetIsEnemy, "Legend must choose a capture when available");
+                        foundCaptures++;
+                    }
+                }
+                GameAction act = PracticeBot.chooseAction(pv, new Random(seed + steps));
+                if (act == null) break;
+                ActionResult res = RulesEngine.apply(s, s.turn(), act);
+                if (res instanceof ActionResult.Accepted acc) {
+                    s = acc.nextState();
+                } else {
+                    break;
+                }
+            }
         }
+        assertTrue(foundCaptures >= 5, "Should have tested at least 5 capture situations: " + foundCaptures);
     }
 
     @Test
     void rookieUsuallyTakesFreeCaptures() {
-        int captures = 0;
-        for (int seed = 0; seed < 100; seed++) {
-            GameState state = TestPositions.position(PlayerColor.BLUE, "ox", "mantis",
-                    "tiger", "frog", "goose");
-            state.board().set(new Square(1, 1), new Piece(PlayerColor.BLUE, false));
-            state.board().set(new Square(1, 2), new Piece(PlayerColor.RED, false));
-
-            Move move = PracticeBot.chooseMove(state, PlayerColor.BLUE,
-                    Difficulty.ROOKIE, new Random(seed));
-
-            assertTrue(RulesEngine.legalMoves(state).contains(move),
-                    "seed " + seed + " must stay legal");
-            if (move.cardId().equals("ox") && move.to().equals(new Square(1, 2))) {
-                captures++;
-            }
-        }
-        // The 15% beginner-mercy roll may skip the capture; it must stay rare.
-        assertTrue(captures >= 70, "rookie ignored a free capture too often: "
-                + captures + "/100");
-    }
-
-    @Test
-    void rookieUsuallyAvoidsWalkingIntoACapture() {
-        assertTrue(blundersIntoCapture(Difficulty.ROOKIE) <= 15,
-                "rookie walked into the obvious capture too often");
-    }
-
-    @Test
-    void seniorNeverWalksIntoACapture() {
-        assertEquals(0, blundersIntoCapture(Difficulty.SENIOR),
-                "senior's 2-ply search must see the simple capture");
-    }
-
-    /** Counts how often the level steps onto the square red's tiger covers. */
-    private static int blundersIntoCapture(Difficulty level) {
-        int blunders = 0;
-        for (int seed = 0; seed < 100; seed++) {
-            GameState state = TestPositions.position(PlayerColor.BLUE, "tiger", "ox",
-                    "tiger", "monkey", "goose");
-            state.board().set(new Square(2, 2), new Piece(PlayerColor.BLUE, false));
-            state.board().set(new Square(2, 0), new Piece(PlayerColor.RED, false));
-
-            Move move = PracticeBot.chooseMove(state, PlayerColor.BLUE, level, new Random(seed));
-
-            assertNotNull(move);
-            // Red's tiger reaches (2,1) from (2,0), so stepping there hangs the piece.
-            if (move.to().equals(new Square(2, 1))) {
-                blunders++;
-            }
-        }
-        return blunders;
-    }
-
-    @Test
-    void seniorNeverHangsTheMaster() {
-        int captures = 0;
-        for (int seed = 0; seed < 100; seed++) {
-            GameState state = TestPositions.position(PlayerColor.BLUE, "ox", "eel",
-                    "tiger", "monkey", "goose");
-            state.board().set(new Square(2, 2), new Piece(PlayerColor.BLUE, true));
-            state.board().set(new Square(2, 3), new Piece(PlayerColor.RED, false));
-
-            Move move = PracticeBot.chooseMove(state, PlayerColor.BLUE,
-                    Difficulty.SENIOR, new Random(seed));
-
-            // (2,1) and (3,2) are covered by red's tiger from (2,3): hanging the
-            // master there loses the game. Taking the student at (2,3) is safe.
-            assertEquals(new Square(2, 3), move.to(), "seed " + seed);
-            if (move.to().equals(new Square(2, 3))) {
-                captures++;
-            }
-        }
-        assertEquals(100, captures, "senior must always take the safe capture");
-    }
-
-    @Test
-    void legendFindsTheForcedWin() {
-        // Blue master (2,2); red master (2,4). Blue plays to (2,3) — red has no
-        // capture there — and wins on the next turn with the transit boar
-        // (stone if red stayed, stream if red stepped aside). A 3-ply forced win.
-        GameState state = TestPositions.position(PlayerColor.BLUE, "horse", "ox",
-                "monkey", "cobra", "boar");
-        state.board().set(new Square(2, 2), new Piece(PlayerColor.BLUE, true));
-        state.board().set(new Square(2, 4), new Piece(PlayerColor.RED, true));
-
-        Move move = PracticeBot.chooseMove(state, PlayerColor.BLUE,
-                Difficulty.LEGEND, new Random(4));
-
-        assertEquals(new Square(2, 3), move.to(),
-                "legend must play the forced mate-in-three, not drift");
-    }
-
-    @Test
-    void legendBeatsTheRookie() {
-        int legendWins = 0;
-        for (int game = 0; game < 6; game++) {
-            PlayerColor legendColor = game % 2 == 0 ? PlayerColor.BLUE : PlayerColor.RED;
-            GameState state = GameState.newGame(CardDeck.deal(new Random(1000 + game)));
-            Random random = new Random(game * 77 + 5);
-            while (state.isOngoing()) {
-                PlayerColor mover = state.turn();
-                Difficulty level = mover == legendColor ? Difficulty.LEGEND : Difficulty.ROOKIE;
-                Move move = PracticeBot.chooseMove(state, mover, level, random);
-                if (move == null) {
-                    RulesEngine.pass(state, state.hand(mover).get(0).id());
+        int captureOpportunities = 0;
+        int rookieCaptures = 0;
+        for (long seed = 1; seed <= 20 && captureOpportunities < 30; seed++) {
+            GameState s = RulesEngine.newGame(rules, seed);
+            int steps = 0;
+            while (s.outcome() == null && steps++ < 200) {
+                PlayerView pv = RulesEngine.viewFor(s, s.turn());
+                if (pv.phase() == TurnPhase.MOVEMENT) {
+                    boolean captureAvailable = false;
+                    for (GameAction.MovePiece m : Targeting.legalMoves(pv)) {
+                        boolean isEnemy = pv.pieces().stream().anyMatch(
+                                pp -> pp.square().equals(m.to()) && pp.piece().color() != pv.viewer());
+                        if (isEnemy) {
+                            captureAvailable = true;
+                            break;
+                        }
+                    }
+                    if (captureAvailable) {
+                        captureOpportunities++;
+                        GameAction act = PracticeBot.chooseAction(pv, Difficulty.ROOKIE, new Random(seed + steps));
+                        if (act instanceof GameAction.MovePiece mp) {
+                            boolean isEnemy = pv.pieces().stream().anyMatch(
+                                    pp -> pp.square().equals(mp.to()) && pp.piece().color() != pv.viewer());
+                            if (isEnemy) {
+                                rookieCaptures++;
+                            }
+                        }
+                    }
+                }
+                GameAction act = PracticeBot.chooseAction(pv, new Random(seed + steps));
+                if (act == null) break;
+                ActionResult res = RulesEngine.apply(s, s.turn(), act);
+                if (res instanceof ActionResult.Accepted acc) {
+                    s = acc.nextState();
                 } else {
-                    RulesEngine.apply(state, move);
+                    break;
                 }
             }
-            if (state.winner() == legendColor) {
-                legendWins++;
-            }
         }
-        assertTrue(legendWins >= 5, "legend only won " + legendWins + "/6 vs the rookie");
+        assertTrue(captureOpportunities >= 10, "Should encounter capture opportunities: " + captureOpportunities);
+        double captureRate = (double) rookieCaptures / captureOpportunities;
+        assertTrue(captureRate >= 0.60, "Rookie should take captures at high rate (>=60%), got " + captureRate);
     }
 
     @Test
     void botGamesAreLegalAndAlwaysFinish() {
-        Difficulty[] levels = Difficulty.values();
-        for (long seed = 0; seed < 12; seed++) {
-            Difficulty level = levels[(int) (seed % levels.length)];
-            GameState state = TestPositions.standardGame(seed);
-            Random random = new Random(seed * 7919 + 13);
-            while (state.isOngoing()) {
-                PlayerColor mover = state.turn();
-                Move move = PracticeBot.chooseMove(state, mover, level, random);
-                if (move == null) {
-                    assertTrue(RulesEngine.mustPass(state),
-                            "pass offered although legal moves exist (seed " + seed + ")");
-                    RulesEngine.pass(state, state.hand(mover).get(0).id());
-                } else {
-                    assertTrue(RulesEngine.legalMoves(state).contains(move),
-                            "illegal " + level + " move (seed " + seed + "): " + move);
-                    RulesEngine.apply(state, move);
-                }
+        for (long seed = 1; seed <= 8; seed++) {
+            GameState state = RulesEngine.newGame(rules, seed);
+            Random random = new Random(seed * 31 + 7);
+            Difficulty difficulty = (seed % 2 == 0) ? Difficulty.SENIOR : Difficulty.ROOKIE;
+
+            int safetyLimit = 300;
+            while (state.outcome() == null && safetyLimit-- > 0) {
+                PlayerView view = RulesEngine.viewFor(state, state.turn());
+                GameAction action = PracticeBot.chooseAction(view, difficulty, random);
+                assertNotNull(action, "Bot must return an action on its turn (seed " + seed + ")");
+
+                ActionResult result = RulesEngine.apply(state, state.turn(), action);
+                assertTrue(result instanceof ActionResult.Accepted, "Bot action rejected on seed " + seed + ": "
+                        + (result instanceof ActionResult.Rejected rej ? rej.error().name() : ""));
+                state = ((ActionResult.Accepted) result).nextState();
             }
-            assertTrue(state.moveNumber() <= RulesEngine.MOVE_LIMIT,
-                    "game ran past the move cap (seed " + seed + ")");
-        }
-    }
 
-    @Test
-    void chooseMoveNeverMutatesTheGivenState() {
-        for (Difficulty level : Difficulty.values()) {
-            GameState state = TestPositions.standardGame(123);
-            String boardBefore = state.board().toString();
-            List<Card> blueBefore = List.copyOf(state.hand(PlayerColor.BLUE));
-            List<Card> redBefore = List.copyOf(state.hand(PlayerColor.RED));
-
-            PracticeBot.chooseMove(state, state.turn(), level, new Random(9));
-
-            assertEquals(boardBefore, state.board().toString(), level + " mutated the board");
-            assertEquals(blueBefore, List.copyOf(state.hand(PlayerColor.BLUE)), level.name());
-            assertEquals(redBefore, List.copyOf(state.hand(PlayerColor.RED)), level.name());
-            assertTrue(state.isOngoing(), level.name());
+            assertTrue(safetyLimit > 0, "Game did not terminate in safety limit on seed " + seed);
+            assertNotNull(state.outcome(), "Game must reach an outcome on seed " + seed);
+            assertTrue(state.completedTurns() <= 60, "Game must finish within 60 completed turns");
         }
     }
 }

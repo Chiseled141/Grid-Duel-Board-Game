@@ -1,18 +1,32 @@
 package onitama.client.state;
 
+import onitama.config.RulesConfigLoader;
 import onitama.core.CardDeck;
 import onitama.core.Difficulty;
-import onitama.core.GameState;
-import onitama.core.IllegalMoveException;
-import onitama.core.Move;
-import onitama.core.Piece;
 import onitama.core.PlayerColor;
 import onitama.core.PracticeBot;
-import onitama.core.RulesEngine;
 import onitama.core.Square;
+import onitama.core.duel.ActionError;
+import onitama.core.duel.ActionResult;
+import onitama.core.duel.CardInstance;
+import onitama.core.duel.Direction;
+import onitama.core.duel.GameAction;
+import onitama.core.duel.GameState;
+import onitama.core.duel.PlacedPiece;
+import onitama.core.duel.PlayerView;
+import onitama.core.duel.PublicEvent;
+import onitama.core.duel.RulesConfig;
+import onitama.core.duel.RulesEngine;
+import onitama.core.duel.SelectionDraft;
+import onitama.core.duel.SelectionOptions;
+import onitama.core.duel.Targeting;
+import onitama.core.duel.TurnPhase;
+import onitama.net.ActionReply;
+import onitama.net.ActionRequest;
 import onitama.net.CreateMatchRequest;
 import onitama.net.ErrorMessage;
 import onitama.net.GameOver;
+import onitama.net.GameUpdate;
 import onitama.net.JoinMatchRequest;
 import onitama.net.LeaderboardRequest;
 import onitama.net.LeaderboardResponse;
@@ -21,19 +35,14 @@ import onitama.net.ListMatchesResponse;
 import onitama.net.LoginRequest;
 import onitama.net.LoginResponse;
 import onitama.net.MatchCreated;
-import onitama.net.MatchStart;
+import onitama.net.MatchSync;
 import onitama.net.MatchSummary;
 import onitama.net.Message;
-import onitama.net.MoveApplied;
-import onitama.net.MoveRejected;
-import onitama.net.MoveRequest;
 import onitama.net.OpponentLeft;
-import onitama.net.PassTurn;
 import onitama.net.ReconnectRequest;
 import onitama.net.RegisterRequest;
 import onitama.net.RematchAccept;
 import onitama.net.RematchRequest;
-import onitama.net.ResignRequest;
 import onitama.net.UserProfile;
 
 import java.io.IOException;
@@ -46,14 +55,12 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import javax.swing.SwingUtilities;
-import javax.swing.Timer;
 
 /**
  * The client-side model, owned by the Swing EDT: every field is only read or
  * written on the EDT. The socket reader thread hands messages in via
- * {@code SwingUtilities.invokeLater} (wired in the client frame), so no
- * synchronization is needed anywhere in this class. Panels subscribe as
- * {@link ClientModelListener}s and re-render from the model's getters.
+ * {@code SwingUtilities.invokeLater}, so no synchronization is needed anywhere
+ * in this class. Panels subscribe as {@link ClientModelListener}s.
  */
 public final class ClientModel {
 
@@ -65,7 +72,6 @@ public final class ClientModel {
     private Screen screen = Screen.LOGIN;
     private UserProfile me;
     private String reconnectToken;
-    // Last successful connection target, for automatic reconnect attempts.
     private String lastHost = "127.0.0.1";
     private int lastPort = 5555;
 
@@ -73,78 +79,69 @@ public final class ClientModel {
     private List<UserProfile> leaderboard = List.of();
     private String pendingRoomCode;
 
-    // Match state (all null/empty when not in a match).
-    private GameState state;
-    private PlayerColor myColor;
+    // Match state
+    private MatchSync currentSync;
+    private ActionRequest inFlightRequest;
     private String roomCode;
     private String opponentName;
     private final List<MoveInfo> historyMoves = new ArrayList<>();
-    private final List<Piece> myCaptures = new ArrayList<>();
-    private final List<Piece> enemyCaptures = new ArrayList<>();
     private boolean rematchOfferedByOpponent;
     private boolean gameOverAnnounced;
-    /**
-     * True once a {@link GameOver} arrived for the current match. The server
-     * communicates a forfeit only through {@code GameOver} — the last
-     * serialized {@code GameState} on the wire still says ONGOING — so the
-     * model must gate selection, parking and resigning on this flag itself.
-     */
     private boolean matchOver;
 
-    // Selection state for the game board.
+    // Selection state
     private String selectedCardId;
     private Square selectedSquare;
+    private Integer selectedPieceId;
     private List<Square> highlightedTargets = List.of();
-    /** The square where the most recent half-move captured a piece (or null). */
     private Square lastCaptureSquare;
+    private Square lastMoveFrom;
+    private Square lastMoveTo;
 
-    // A parked ongoing match: the player opened the lobby mid-game and can
-    // return without leaving the table. The state keeps live-updating via
-    // MoveApplied broadcasts, so returning is always in sync.
+    // Skill targeting draft
+    private String selectedSkillInstanceId;
+    private SelectionDraft skillDraft;
+    private SelectionOptions skillOptions;
+
+    // Parked match
     private boolean matchParked;
     private String parkedRoomCode;
 
-    // Single-player practice: a local game against the built-in bot, played
-    // entirely on the EDT — no server involvement, no Elo. The
-    // Rookie heuristic answers instantly; Senior/Legend search on a worker
-    // thread, so the generation counter guards against stale results.
-    private static final int BOT_THINK_MILLIS = 900;
-    /** Parked-practice room label shown in the lobby's return pill. */
-    private static final String PRACTICE_ROOM_CODE = "PRACTICE";
+    // Practice mode
     private boolean practiceMode;
     private Difficulty practiceDifficulty = Difficulty.ROOKIE;
-    private final Random practiceRandom = new Random();
-    private Timer botTimer;
-    private int practiceGeneration;
+    private GameState practiceState;
+    private Random practiceRandom;
+    private final javax.swing.Timer botTimer = new javax.swing.Timer(300, e -> stepBot());
 
-    /** One compact move-history row (§17 of the design spec). */
+    // Presentation and animation state
+    private boolean reducedMotion;
+    private String presentationMatchId;
+    private long lastPresentedRevision = -1;
+    private PlayerView priorViewForPresentation;
+
+    /** One compact move-history row. */
     public record MoveInfo(int number, String cardName, String fromSquare,
                            String toSquare, boolean capture, boolean pass) {
     }
 
-    /** Creates the model; outgoing messages go through the connection. */
     public ClientModel(ServerConnection connection) {
         this.connection = connection;
+        this.botTimer.setRepeats(false);
     }
 
-    /** Subscribes a listener; listeners fire on the EDT. */
     public void addListener(ClientModelListener listener) {
         listeners.add(listener);
     }
 
     // ------------------------------------------------------------------
-    // Actions called by the UI (EDT)
+    // Actions called by UI
     // ------------------------------------------------------------------
 
-    /**
-     * Connects (in a background thread) and sends a login request.
-     * The answer arrives as a {@link LoginResponse} on the EDT.
-     */
     public void login(String host, int port, String username, String password) {
         connectThenSend(host, port, new LoginRequest(username, password));
     }
 
-    /** Connects (in a background thread) and sends a registration request. */
     public void register(String host, int port, String username, String password) {
         connectThenSend(host, port, new RegisterRequest(username, password));
     }
@@ -156,7 +153,6 @@ public final class ClientModel {
             connection.send(request);
             return;
         }
-        // Connecting can block for seconds — never on the EDT.
         new Thread(() -> {
             try {
                 connection.ensureConnected(host, port);
@@ -168,119 +164,48 @@ public final class ClientModel {
         }, "onitama-connect").start();
     }
 
-    /** Asks the server to open a lobby. */
     public void createMatch() {
         connection.send(new CreateMatchRequest());
     }
 
-    /** Asks to join the match with the given room code. */
     public void joinMatch(String roomCode) {
-        if (practiceMode && state != null && state.isOngoing()) {
-            // Joining online while a practice match is parked would silently
-            // discard it — the player must settle the practice game first.
-            fire(listener -> listener.onError(
-                    "You have a practice match in progress — resign it "
-                            + "before joining online."));
-            return;
-        }
         connection.send(new JoinMatchRequest(roomCode));
     }
 
-    /** Refreshes the open-match list. */
     public void refreshMatches() {
         connection.send(new ListMatchesRequest());
     }
 
-    /** Requests the leaderboard. */
     public void requestLeaderboard() {
         connection.send(new LeaderboardRequest());
     }
 
-    /**
-     * Starts a local practice match against the built-in bot at the given
-     * difficulty. The game is dealt and played entirely in the client: no
-     * server, no Elo change. The human always sits on the Blue side.
-     */
-    public void startPracticeMatch(Difficulty difficulty) {
-        if (hasParkedMatch()) {
-            fire(listener -> listener.onError(
-                    "You have an ongoing match — return to it first."));
-            return;
-        }
-        stopBotTimer();
-        practiceMode = true;
-        practiceDifficulty = difficulty;
-        practiceGeneration++;
-        state = GameState.newGame(CardDeck.deal());
-        myColor = PlayerColor.BLUE;
-        roomCode = null;
-        opponentName = difficulty.botName();
-        historyMoves.clear();
-        myCaptures.clear();
-        enemyCaptures.clear();
-        rematchOfferedByOpponent = false;
-        gameOverAnnounced = false;
-        matchOver = false;
-        matchParked = false;
-        parkedRoomCode = null;
-        pendingRoomCode = null;
-        lastCaptureSquare = null;
-        clearSelection();
-        setScreen(Screen.GAME);
-        autoPassIfNeeded();
-        scheduleBotTurn();
-        fire(ClientModelListener::onMatchChanged);
-    }
-
-    /** True while the client is in a local practice match against the bot. */
-    public boolean isPracticeMode() {
-        return practiceMode;
-    }
-
-    /** The difficulty of the current (or last) practice match. */
-    public Difficulty practiceDifficulty() {
-        return practiceDifficulty;
-    }
-
-    /** Resigns the current match. */
     public void resign() {
         if (practiceMode) {
-            // A practice game has nothing at stake; resigning abandons it
-            // outright — it must not park like a paused match.
-            stopBotTimer();
             clearMatchState();
-            matchParked = false;
-            parkedRoomCode = null;
             setScreen(Screen.LOBBY);
             refreshMatches();
             return;
         }
-        // Only a running online match can be resigned; with no match, one
-        // already finished, or a forfeit pending on the wire, the request
-        // would be a silent no-op on the wire.
-        if (state != null && state.isOngoing() && !matchOver) {
-            connection.send(new ResignRequest());
+        if (currentSync != null && !matchOver) {
+            sendAction(new GameAction.Resign());
         }
     }
 
-    /** Offers a rematch after the game ended. */
     public void requestRematch() {
+        if (practiceMode) {
+            startPracticeMatch(practiceDifficulty);
+            return;
+        }
         connection.send(new RematchRequest());
     }
 
-    /**
-     * Opens the lobby. An ongoing match is parked (kept live in the
-     * background) so the player can return to it — practice matches park
-     * exactly like online ones, shown as "PRACTICE" in the lobby pill; a
-     * finished one is cleared.
-     */
     public void leaveToLobby() {
         if (practiceMode) {
             stopBotTimer();
-            if (state != null && state.isOngoing()) {
+            if (practiceState != null && practiceState.outcome() == null) {
                 matchParked = true;
-                parkedRoomCode = PRACTICE_ROOM_CODE;
-                pendingRoomCode = null;
+                parkedRoomCode = "PRACTICE";
                 clearSelection();
                 setScreen(Screen.LOBBY);
                 refreshMatches();
@@ -293,9 +218,7 @@ public final class ClientModel {
             refreshMatches();
             return;
         }
-        // Park only a match that can still continue; a GameOver has already
-        // arrived for a finished one (its wire state still says ONGOING).
-        if (state != null && state.isOngoing() && !matchOver) {
+        if (currentSync != null && !matchOver) {
             matchParked = true;
             parkedRoomCode = roomCode;
             clearSelection();
@@ -310,7 +233,6 @@ public final class ClientModel {
         refreshMatches();
     }
 
-    /** True while an ongoing match is parked in the background. */
     public boolean hasParkedMatch() {
         return matchParked && parkedRoomCode != null;
     }
@@ -319,7 +241,6 @@ public final class ClientModel {
         return parkedRoomCode;
     }
 
-    /** Returns to the parked match screen. */
     public void returnToParkedMatch() {
         if (!hasParkedMatch()) {
             return;
@@ -327,65 +248,228 @@ public final class ClientModel {
         matchParked = false;
         setScreen(Screen.GAME);
         if (practiceMode) {
-            // The bot timer was stopped for the pause: re-arm the forced
-            // pass check and the bot's move so the game continues seamlessly
-            // from the exact parked position.
-            autoPassIfNeeded();
             scheduleBotTurn();
         }
         fire(ClientModelListener::onMatchChanged);
     }
 
-    /** Called when the user clicks a board square. */
-    public void boardClicked(Square clicked) {
-        if (state == null) {
-            return;
-        }
-        if (highlightedTargets.contains(clicked)) {
-            if (practiceMode) {
-                applyPracticeMove(new Move(selectedSquare, clicked, selectedCardId));
-            } else {
-                connection.send(new MoveRequest(selectedCardId, selectedSquare, clicked));
+    /** Sends an authoritative game action adhering to single in-flight request discipline. */
+    public boolean sendAction(GameAction action) {
+        if (practiceMode) {
+            if (practiceState == null || matchOver) {
+                return false;
             }
+            if (practiceState.turn() != PlayerColor.BLUE) {
+                return false;
+            }
+            PlayerView before = currentSync != null ? currentSync.view() : null;
+            ActionResult result = RulesEngine.apply(practiceState, PlayerColor.BLUE, action);
+            if (result instanceof ActionResult.Rejected rejected) {
+                fire(listener -> listener.onError("Action rejected: " + rejected.error().name()));
+                return false;
+            }
+            ActionResult.Accepted accepted = (ActionResult.Accepted) result;
+            this.practiceState = accepted.nextState();
+            if (accepted.events() != null) {
+                for (PublicEvent event : accepted.events()) {
+                    recordPublicEvent(event);
+                }
+            }
+            long nextSeq = (currentSync != null ? currentSync.nextSequence() : 1L) + 1;
+            PlayerView after = RulesEngine.viewFor(practiceState, PlayerColor.BLUE);
+            this.currentSync = new MatchSync("practice", "PRACTICE", after, false, nextSeq);
+            this.lastPresentedRevision = after.revision();
+            this.priorViewForPresentation = after;
             clearSelection();
             fire(ClientModelListener::onMatchChanged);
-            return;
+            List<PublicEvent> events = accepted.events() != null ? accepted.events() : List.of();
+            fire(listener -> listener.onAcceptedPresentation(before, after, events));
+            if (practiceState.outcome() != null) {
+                announcePracticeGameOver();
+            } else if (practiceState.turn() == PlayerColor.RED) {
+                scheduleBotTurn();
+            }
+            return true;
         }
-        if (!myTurn()) {
-            return;
+
+        if (currentSync == null || matchOver || inFlightRequest != null) {
+            return false;
         }
-        Piece piece = state.board().pieceAt(clicked);
-        if (piece != null && piece.color() == myColor) {
-            selectedSquare = clicked;
-        } else {
-            clearSelection();
-        }
-        recomputeTargets();
+        long seq = currentSync.nextSequence();
+        long rev = currentSync.view().revision();
+        ActionRequest req = new ActionRequest(currentSync.matchId(), seq, rev, action);
+        this.inFlightRequest = req;
+        connection.send(req);
         fire(ClientModelListener::onMatchChanged);
+        return true;
     }
 
-    /** Called when the user clicks one of their hand cards. */
+    public void skipMovement() {
+        if (canSkipMovement()) {
+            sendAction(new GameAction.SkipMovement());
+            clearSelection();
+        }
+    }
+
+    public void endTurn() {
+        if (canEndTurn()) {
+            sendAction(new GameAction.EndTurn());
+            clearSelection();
+        }
+    }
+
+    public void castSkill() {
+        if (canCastSkill()) {
+            sendAction(new GameAction.CastSkill(selectedSkillInstanceId, skillOptions.completeTargets()));
+            clearSelection();
+        }
+    }
+
+    public void resolveForesight(List<String> order) {
+        if (currentSync != null && currentSync.view().phase() == TurnPhase.CHOICE
+                && currentSync.view().ownChoice() != null) {
+            sendAction(new GameAction.ResolveForesight(currentSync.view().ownChoice().choiceId(), order));
+        }
+    }
+
+    public void selectDirection(Direction dir) {
+        if (selectedSkillInstanceId != null && skillDraft != null) {
+            skillDraft = new SelectionDraft(skillDraft.pieceIds(), skillDraft.destinations(), dir);
+            skillOptions = Targeting.skillOptions(currentSync.view(), selectedSkillInstanceId, skillDraft);
+            fire(ClientModelListener::onMatchChanged);
+        }
+    }
+
+    public void boardClicked(Square clicked) {
+        if (currentSync == null || !myTurn() || inFlightRequest != null) {
+            return;
+        }
+        PlayerView view = currentSync.view();
+        if (view.phase() == TurnPhase.MOVEMENT) {
+            if (highlightedTargets.contains(clicked)) {
+                List<GameAction.MovePiece> legal = Targeting.legalMoves(view);
+                for (GameAction.MovePiece m : legal) {
+                    if (m.movementCardId().equals(selectedCardId)
+                            && (selectedPieceId == null || m.pieceId() == selectedPieceId)
+                            && m.to().equals(clicked)) {
+                        sendAction(m);
+                        clearSelection();
+                        return;
+                    }
+                }
+            }
+            // Friendly piece selection
+            PlacedPiece friendly = null;
+            for (PlacedPiece pp : view.pieces()) {
+                if (pp.square().equals(clicked) && pp.piece().color() == view.viewer()) {
+                    friendly = pp;
+                    break;
+                }
+            }
+            if (friendly != null) {
+                selectedSquare = clicked;
+                selectedPieceId = friendly.piece().id();
+            } else {
+                selectedSquare = null;
+                selectedPieceId = null;
+            }
+            recomputeMovementTargets();
+            fire(ClientModelListener::onMatchChanged);
+        } else if (view.phase() == TurnPhase.SKILL && selectedSkillInstanceId != null) {
+            if (skillOptions != null) {
+                PlacedPiece ppAtClicked = null;
+                for (PlacedPiece pp : view.pieces()) {
+                    if (pp.square().equals(clicked)) {
+                        ppAtClicked = pp;
+                        break;
+                    }
+                }
+                if (ppAtClicked != null && skillOptions.selectablePieceIds().contains(ppAtClicked.piece().id())) {
+                    List<Integer> newPieces = new ArrayList<>(skillDraft.pieceIds());
+                    newPieces.add(ppAtClicked.piece().id());
+                    skillDraft = new SelectionDraft(newPieces, skillDraft.destinations(), skillDraft.direction());
+                    skillOptions = Targeting.skillOptions(view, selectedSkillInstanceId, skillDraft);
+                    fire(ClientModelListener::onMatchChanged);
+                    return;
+                }
+                if (skillOptions.selectableSquares().contains(clicked)) {
+                    List<Square> newSquares = new ArrayList<>(skillDraft.destinations());
+                    newSquares.add(clicked);
+                    skillDraft = new SelectionDraft(skillDraft.pieceIds(), newSquares, skillDraft.direction());
+                    skillOptions = Targeting.skillOptions(view, selectedSkillInstanceId, skillDraft);
+                    fire(ClientModelListener::onMatchChanged);
+                    return;
+                }
+            }
+        }
+    }
+
     public void cardClicked(String cardId) {
-        if (!myTurn()) {
+        if (!myTurn() || currentSync.view().phase() != TurnPhase.MOVEMENT) {
             return;
         }
         selectedCardId = Objects.equals(selectedCardId, cardId) ? null : cardId;
-        recomputeTargets();
+        selectedSkillInstanceId = null;
+        skillDraft = null;
+        skillOptions = null;
+        recomputeMovementTargets();
         fire(ClientModelListener::onMatchChanged);
     }
 
-    /** Clears the card/piece selection (ESC or state change). */
+    public void skillClicked(String instanceId) {
+        if (!myTurn() || currentSync.view().phase() != TurnPhase.SKILL) {
+            return;
+        }
+        if (Objects.equals(selectedSkillInstanceId, instanceId)) {
+            clearSelection();
+        } else {
+            selectedCardId = null;
+            selectedSquare = null;
+            selectedPieceId = null;
+            highlightedTargets = List.of();
+            selectedSkillInstanceId = instanceId;
+            skillDraft = SelectionDraft.empty();
+            skillOptions = Targeting.skillOptions(currentSync.view(), selectedSkillInstanceId, skillDraft);
+        }
+        fire(ClientModelListener::onMatchChanged);
+    }
+
     public void clearSelection() {
         selectedCardId = null;
         selectedSquare = null;
+        selectedPieceId = null;
         highlightedTargets = List.of();
+        selectedSkillInstanceId = null;
+        skillDraft = null;
+        skillOptions = null;
+    }
+
+    private void recomputeMovementTargets() {
+        if (currentSync == null || !myTurn() || currentSync.view().phase() != TurnPhase.MOVEMENT) {
+            highlightedTargets = List.of();
+            return;
+        }
+        PlayerView view = currentSync.view();
+        List<GameAction.MovePiece> legal = Targeting.legalMoves(view);
+        List<Square> dests = new ArrayList<>();
+        for (GameAction.MovePiece m : legal) {
+            if (selectedCardId != null && !m.movementCardId().equals(selectedCardId)) {
+                continue;
+            }
+            if (selectedPieceId != null && m.pieceId() != selectedPieceId) {
+                continue;
+            }
+            if (!dests.contains(m.to())) {
+                dests.add(m.to());
+            }
+        }
+        highlightedTargets = List.copyOf(dests);
     }
 
     // ------------------------------------------------------------------
-    // Message handling (EDT, fed by the socket reader via invokeLater)
+    // Message handling
     // ------------------------------------------------------------------
 
-    /** Handles one message from the server. Must run on the EDT. */
     public void handleMessage(Message message) {
         if (message instanceof LoginResponse response) {
             handleLoginResponse(response);
@@ -398,18 +482,13 @@ public final class ClientModel {
         } else if (message instanceof LeaderboardResponse response) {
             leaderboard = response.topPlayers();
             fire(ClientModelListener::onLeaderboardChanged);
-        } else if (message instanceof MatchStart start) {
-            handleMatchStart(start);
-        } else if (message instanceof MoveApplied applied) {
-            handleMoveApplied(applied);
-        } else if (message instanceof MoveRejected rejected) {
-            fire(listener -> listener.onError("Move rejected: " + rejected.reason()));
+        } else if (message instanceof MatchSync sync) {
+            handleMatchSync(sync);
+        } else if (message instanceof ActionReply reply) {
+            handleActionReply(reply);
+        } else if (message instanceof GameUpdate update) {
+            handleGameUpdate(update);
         } else if (message instanceof GameOver over) {
-            // The match is over: freeze local play (selection, parking,
-            // resign) — the forfeited GameState on the wire still says
-            // ONGOING — and drop any parked session so the lobby stops
-            // offering "return to match" for a game that cannot continue.
-            // The state itself is kept for the game-over dialog (Elo, moves).
             matchOver = true;
             matchParked = false;
             parkedRoomCode = null;
@@ -422,19 +501,127 @@ public final class ClientModel {
             fire(ClientModelListener::onRematchOffered);
         } else if (message instanceof ErrorMessage error) {
             fire(listener -> listener.onError(error.text()));
-        } else if (message instanceof onitama.net.Pong) {
-            // Heartbeat round-trips are used in milestone M6.
-        } else {
-            LOG.warning("unhandled message type: " + message.getClass().getSimpleName());
         }
     }
 
-    /** Called when the connection dropped; resets the UI to the login screen. */
+    public void handleMatchSync(MatchSync sync) {
+        boolean sameMatch = currentSync != null && currentSync.matchId().equals(sync.matchId());
+        if (sameMatch && sync.view().revision() < currentSync.view().revision()) {
+            return;
+        }
+        ActionRequest pending = sameMatch ? inFlightRequest : null;
+        if (!sameMatch) {
+            clearMatchState();
+        }
+        practiceMode = false;
+        this.currentSync = sync;
+        this.inFlightRequest = pending;
+        this.roomCode = sync.roomCode();
+        this.matchOver = sync.view().outcome() != null;
+        this.matchParked = false;
+        this.parkedRoomCode = null;
+        this.pendingRoomCode = null;
+        this.rematchOfferedByOpponent = false;
+        if (!sameMatch) {
+            this.gameOverAnnounced = false;
+        }
+        // Baseline reset on initial sync or reconnect: historical moves are not replayed
+        if (!sameMatch || presentationMatchId == null || !presentationMatchId.equals(sync.matchId())) {
+            this.presentationMatchId = sync.matchId();
+            this.lastPresentedRevision = sync.view().revision();
+            this.priorViewForPresentation = sync.view();
+        } else if (sync.view().revision() > lastPresentedRevision) {
+            this.lastPresentedRevision = sync.view().revision();
+            this.priorViewForPresentation = sync.view();
+        }
+        fire(ClientModelListener::onPresentationReset);
+        clearSelection();
+        // Even an already-committed request must recover its receipt using the
+        // original payload; assigning a new sequence could apply it twice.
+        if (pending != null) {
+            connection.send(pending);
+        }
+        setScreen(Screen.GAME);
+        fire(ClientModelListener::onMatchChanged);
+    }
+
+    public void handleActionReply(ActionReply reply) {
+        if (currentSync != null && reply.matchId().equals(currentSync.matchId())) {
+            if (inFlightRequest != null && reply.sequence() == inFlightRequest.sequence()) {
+                inFlightRequest = null;
+            }
+            if (!reply.receipt().accepted()) {
+                fire(listener -> listener.onError("Action rejected: " + reply.receipt().error()));
+            }
+            if (reply.current() != null) {
+                MatchSync sync = reply.current();
+                long rev = sync.view().revision();
+                if (presentationMatchId == null || !presentationMatchId.equals(sync.matchId())) {
+                    presentationMatchId = sync.matchId();
+                    lastPresentedRevision = rev;
+                    priorViewForPresentation = sync.view();
+                } else if (rev > lastPresentedRevision && priorViewForPresentation == null) {
+                    priorViewForPresentation = currentSync != null ? currentSync.view() : null;
+                }
+                adoptSync(sync);
+            }
+        }
+    }
+
+    public void handleGameUpdate(GameUpdate update) {
+        MatchSync sync = update.current();
+        if (currentSync == null || !currentSync.matchId().equals(sync.matchId())
+                || !sync.matchId().equals(presentationMatchId)
+                || sync.view().revision() < currentSync.view().revision()
+                || sync.view().revision() <= lastPresentedRevision) return;
+        // An action reply can adopt this same revision before its event-bearing update.
+        PlayerView before = priorViewForPresentation;
+        lastPresentedRevision = sync.view().revision();
+        priorViewForPresentation = sync.view();
+        for (PublicEvent event : update.events()) recordPublicEvent(event);
+        adoptSync(sync);
+        fire(listener -> listener.onAcceptedPresentation(before, sync.view(), update.events()));
+    }
+
+    public void adoptSync(MatchSync sync) {
+        if (sync == null) return;
+        if (currentSync != null && (!currentSync.matchId().equals(sync.matchId())
+                || sync.view().revision() < currentSync.view().revision())) {
+            return;
+        }
+        boolean revChanged = currentSync == null || sync.view().revision() != currentSync.view().revision();
+        this.currentSync = sync;
+        if (sync.view().outcome() != null) {
+            this.matchOver = true;
+        }
+        if (revChanged) {
+            clearSelection();
+        }
+        fire(ClientModelListener::onMatchChanged);
+    }
+
+    private void recordPublicEvent(PublicEvent event) {
+        if (event instanceof PublicEvent.PieceMoved move) {
+            String fromStr = squareName(move.from());
+            String toStr = squareName(move.to());
+            historyMoves.add(new MoveInfo(historyMoves.size() + 1,
+                    "Move", fromStr, toStr, false, false));
+            lastMoveFrom = move.from();
+            lastMoveTo = move.to();
+        } else if (event instanceof PublicEvent.PieceEliminated elim) {
+            lastCaptureSquare = elim.at();
+        } else if (event instanceof PublicEvent.MovementPlayed played) {
+            historyMoves.add(new MoveInfo(historyMoves.size() + 1,
+                    played.cardId(), "", "", false, false));
+        } else if (event instanceof PublicEvent.SkillCommitted committed) {
+            historyMoves.add(new MoveInfo(historyMoves.size() + 1,
+                    committed.skill().instanceId(), "", "", false, false));
+        }
+    }
+
     public void handleConnectionLost() {
         String token = reconnectToken;
         if (token != null) {
-            // Keep the profile and match context: the reconnect re-attaches to
-            // the same session and the server sends the authoritative state.
             fire(ClientModelListener::onConnectionLost);
             attemptReconnect(token, 3);
         } else {
@@ -445,12 +632,6 @@ public final class ClientModel {
         }
     }
 
-    /**
-     * Tries to re-attach to the interrupted session with the reconnect token
-     * in a background thread (the server answers with the current match
-     * state or, if the match is gone, a fresh login response). Falls back to
-     * the login screen after the given number of attempts.
-     */
     private void attemptReconnect(String token, int attemptsLeft) {
         new Thread(() -> {
             try {
@@ -478,7 +659,7 @@ public final class ClientModel {
 
     private void handleLoginResponse(LoginResponse response) {
         if (response.ok()) {
-            clearMatchState(); // e.g. a reconnect whose match is already gone
+            clearMatchState();
             me = response.profile();
             reconnectToken = response.reconnectToken();
             setScreen(Screen.LOBBY);
@@ -488,282 +669,126 @@ public final class ClientModel {
         }
     }
 
-    private void handleMatchStart(MatchStart start) {
+    public void startPracticeMatch(Difficulty difficulty) {
+        startPracticeMatch(difficulty, new Random().nextLong());
+    }
+
+    // Seeded entry point keeps practice startup reproducible in regression tests.
+    void startPracticeMatch(Difficulty difficulty, long seed) {
+        if (hasParkedMatch()) {
+            fire(listener -> listener.onError(
+                    "You have an ongoing match — return to it first."));
+            return;
+        }
         stopBotTimer();
-        practiceMode = false;
-        state = start.initialState();
-        myColor = start.yourColor();
-        roomCode = start.roomCode();
-        opponentName = start.opponentUsername();
-        historyMoves.clear();
-        myCaptures.clear();
-        enemyCaptures.clear();
-        rematchOfferedByOpponent = false;
-        gameOverAnnounced = false;
-        matchOver = false;
-        matchParked = false;
-        parkedRoomCode = null;
-        clearSelection();
+        clearMatchState();
+        this.practiceMode = true;
+        this.practiceDifficulty = difficulty != null ? difficulty : Difficulty.ROOKIE;
+        this.practiceRandom = new Random(seed);
+        RulesConfig rules = RulesConfigLoader.load(null);
+        this.practiceState = RulesEngine.newGame(rules, seed);
+        this.currentSync = new MatchSync("practice", "PRACTICE",
+                RulesEngine.viewFor(practiceState, PlayerColor.BLUE), false, 1L);
+        this.presentationMatchId = "practice";
+        this.lastPresentedRevision = 0;
+        this.priorViewForPresentation = currentSync.view();
+        this.inFlightRequest = null;
+        this.roomCode = "PRACTICE";
+        this.opponentName = "Practice Bot (" + practiceDifficulty + ")";
         setScreen(Screen.GAME);
-        autoPassIfNeeded();
         fire(ClientModelListener::onMatchChanged);
+        scheduleBotTurn();
     }
 
-    private void handleMoveApplied(MoveApplied applied) {
-        GameState previous = state;
-        state = applied.state();
-        Move lastMove = applied.lastMove();
-        if (lastMove == null) {
-            lastCaptureSquare = null;
-            historyMoves.add(new MoveInfo(state.moveNumber(),
-                    state.transit().name(), "", "", false, true));
-        } else {
-            Piece captured = previous == null ? null : recordCapture(previous, lastMove);
-            lastCaptureSquare = captured == null ? null : lastMove.to();
-            historyMoves.add(new MoveInfo(state.moveNumber(),
-                    cardName(lastMove.cardId()),
-                    squareName(lastMove.from()), squareName(lastMove.to()),
-                    captured != null, false));
-        }
-        clearSelection();
-        autoPassIfNeeded();
-        fire(ClientModelListener::onMatchChanged);
-    }
-
-
-    /**
-     * Card display name for the move history. A card id from the wire that is
-     * no longer in the deck must not kill the EDT listener chain, so it falls
-     * back to a placeholder instead of throwing.
-     */
-    private static String cardName(String cardId) {
-        try {
-            return CardDeck.cardById(cardId).name();
-        } catch (IllegalArgumentException e) {
-            LOG.warning("unknown card id in move: " + cardId);
-            return "Unknown Card";
+    private void scheduleBotTurn() {
+        if (practiceMode && practiceState != null && practiceState.turn() == PlayerColor.RED
+                && practiceState.outcome() == null) {
+            botTimer.restart();
         }
     }
 
-    /** Records a captured piece by comparing the previous and current boards. */
-    private Piece recordCapture(GameState previous, Move lastMove) {
-        Piece victim = previous.board().pieceAt(lastMove.to());
-        Piece occupant = state.board().pieceAt(lastMove.to());
-        if (victim == null || occupant == null || victim.color() == occupant.color()) {
-            return null;
-        }
-        if (victim.color() == myColor) {
-            enemyCaptures.add(victim);
-        } else {
-            myCaptures.add(victim);
-        }
-        return victim;
+    private void stopBotTimer() {
+        botTimer.stop();
     }
 
-    /**
-     * Passing is mandatory when the player to move has no legal move; the
-     * client performs it automatically with its first hand card — locally in
-     * practice mode, via the server in an online match.
-     */
-    private void autoPassIfNeeded() {
-        if (myTurn() && RulesEngine.mustPass(state)) {
-            if (practiceMode) {
-                applyPracticePass();
-            } else {
-                connection.send(new PassTurn(state.hand(myColor).get(0).id()));
+    void stepBot() {
+        if (!practiceMode || practiceState == null || practiceState.turn() != PlayerColor.RED
+                || practiceState.outcome() != null) {
+            return;
+        }
+        PlayerView botView = RulesEngine.viewFor(practiceState, PlayerColor.RED);
+        GameAction botAction = PracticeBot.chooseAction(botView, practiceDifficulty, practiceRandom);
+        if (botAction == null) {
+            return;
+        }
+        PlayerView before = currentSync != null ? currentSync.view() : null;
+        ActionResult result = RulesEngine.apply(practiceState, PlayerColor.RED, botAction);
+        if (result instanceof ActionResult.Accepted accepted) {
+            this.practiceState = accepted.nextState();
+            if (accepted.events() != null) {
+                for (PublicEvent event : accepted.events()) {
+                    recordPublicEvent(event);
+                }
+            }
+            long nextSeq = (currentSync != null ? currentSync.nextSequence() : 1L) + 1;
+            PlayerView after = RulesEngine.viewFor(practiceState, PlayerColor.BLUE);
+            this.currentSync = new MatchSync("practice", "PRACTICE", after, false, nextSeq);
+            this.lastPresentedRevision = after.revision();
+            this.priorViewForPresentation = after;
+            clearSelection();
+            fire(ClientModelListener::onMatchChanged);
+            List<PublicEvent> events = accepted.events() != null ? accepted.events() : List.of();
+            fire(listener -> listener.onAcceptedPresentation(before, after, events));
+            if (practiceState.outcome() != null) {
+                announcePracticeGameOver();
+            } else if (practiceState.turn() == PlayerColor.RED) {
+                scheduleBotTurn();
             }
         }
     }
 
-    // ------------------------------------------------------------------
-    // Practice mode: local turns against the built-in bot (EDT only)
-    // ------------------------------------------------------------------
-
-    private PlayerColor botColor() {
-        return myColor == null ? null : myColor.opponent();
-    }
-
-    /**
-     * Applies the human's half-move to the local game and hands the turn to
-     * the bot. {@code IllegalMoveException} cannot occur for moves reached
-     * through the legal-targets highlighting; the catch is a safety net so a
-     * bug can never kill the EDT.
-     */
-    private void applyPracticeMove(Move move) {
-        try {
-            Piece victim = state.board().pieceAt(move.to());
-            RulesEngine.apply(state, move);
-            recordPracticeMove(move, victim, myCaptures);
-            advancePractice();
-        } catch (IllegalMoveException e) {
-            fire(listener -> listener.onError("Move rejected: " + e.getMessage()));
-        }
-    }
-
-    /** Applies the human's mandatory pass with the first hand card. */
-    private void applyPracticePass() {
-        RulesEngine.pass(state, state.hand(myColor).get(0).id());
-        historyMoves.add(new MoveInfo(state.moveNumber(),
-                state.transit().name(), "", "", false, true));
-        advancePractice();
-    }
-
-    /**
-     * One-shot timer: lets the bot reply after a short, visible pause. The
-     * Rookie then answers on the EDT; Senior and Legend search on a daemon
-     * worker thread so the UI never freezes under them.
-     */
-    private void scheduleBotTurn() {
-        stopBotTimer();
-        if (!practiceMode || state == null || !state.isOngoing()
-                || state.turn() != botColor()) {
-            return;
-        }
-        botTimer = new Timer(BOT_THINK_MILLIS, event -> botTurnStarted());
-        botTimer.setRepeats(false);
-        botTimer.start();
-    }
-
-    private void stopBotTimer() {
-        if (botTimer != null) {
-            botTimer.stop();
-            botTimer = null;
-        }
-    }
-
-    /** The thinking pause is over: compute (or start computing) the bot move. */
-    private void botTurnStarted() {
-        botTimer = null;
-        if (!practiceMode || state == null || !state.isOngoing()
-                || state.turn() != botColor()) {
-            return;
-        }
-        PlayerColor bot = botColor();
-        if (practiceDifficulty == Difficulty.ROOKIE) {
-            Move move = PracticeBot.chooseMove(state, bot, practiceDifficulty, practiceRandom);
-            playBotMove(move);
-            return;
-        }
-        // Stronger levels search a snapshot away from the EDT; the result is
-        // only applied if this practice match is still the current one.
-        GameState snapshot = new GameState(state);
-        int generation = practiceGeneration;
-        Thread searcher = new Thread(() -> {
-            Move move = PracticeBot.chooseMove(snapshot, bot, practiceDifficulty, new Random());
-            SwingUtilities.invokeLater(() -> applyBotMoveIfCurrent(generation, move));
-        }, "onitama-practice-bot");
-        searcher.setDaemon(true);
-        searcher.start();
-    }
-
-    /** Discards a late search result if the practice match has changed. */
-    private void applyBotMoveIfCurrent(int generation, Move move) {
-        if (generation != practiceGeneration || !practiceMode || state == null
-                || !state.isOngoing() || state.turn() != botColor()) {
-            return;
-        }
-        playBotMove(move);
-    }
-
-    /** Applies the bot's chosen move on the EDT (null = mandatory pass). */
-    private void playBotMove(Move move) {
-        if (!practiceMode || state == null || !state.isOngoing()
-                || state.turn() != botColor()) {
-            return;
-        }
-        PlayerColor bot = botColor();
-        if (move == null) {
-            RulesEngine.pass(state, state.hand(bot).get(0).id());
-            lastCaptureSquare = null;
-            historyMoves.add(new MoveInfo(state.moveNumber(),
-                    state.transit().name(), "", "", false, true));
-        } else {
-            Piece victim = state.board().pieceAt(move.to());
-            RulesEngine.apply(state, move);
-            recordPracticeMove(move, victim, enemyCaptures);
-        }
-        // The bot's half-move swaps the hands just like a human's; a selection
-        // pointing at the pre-move hand must not survive it.
-        clearSelection();
-        advancePractice();
-        fire(ClientModelListener::onMatchChanged);
-    }
-
-    /** Adds the half-move to the history and the captor's tray. */
-    private void recordPracticeMove(Move move, Piece victim, List<Piece> captorTray) {
-        lastCaptureSquare = victim == null ? null : move.to();
-        if (victim != null) {
-            captorTray.add(victim);
-        }
-        historyMoves.add(new MoveInfo(state.moveNumber(),
-                CardDeck.cardById(move.cardId()).name(),
-                squareName(move.from()), squareName(move.to()),
-                victim != null, false));
-    }
-
-    /** After a practice half-move: hand over the turn or announce the end. */
-    private void advancePractice() {
-        if (!state.isOngoing()) {
-            announcePracticeGameOver();
-            return;
-        }
-        // The human may now be forced to pass (a pass can even end the game
-        // on the move limit); the bot's own pass is part of playBotTurn.
-        autoPassIfNeeded();
-        if (!state.isOngoing()) {
-            announcePracticeGameOver();
-            return;
-        }
-        scheduleBotTurn();
-    }
-
-    /** Ends a finished practice game: stops the bot and shows the result. */
     private void announcePracticeGameOver() {
         stopBotTimer();
         matchOver = true;
         fire(listener -> listener.onGameOver(
-                new GameOver(state.winner(), state.way(), 0, 0)));
+                new GameOver(practiceState.outcome().winner(), practiceState.outcome().reason(), 0, 0)));
     }
 
-    private boolean myTurn() {
-        return state != null && state.isOngoing() && !matchOver
-                && state.turn() == myColor;
+    public boolean isPracticeMode() {
+        return practiceMode;
     }
 
-    /** True once a GameOver arrived for the match currently in the model. */
-    public boolean isMatchOver() {
-        return matchOver;
+    public Difficulty practiceDifficulty() {
+        return practiceDifficulty;
     }
 
-    private void recomputeTargets() {
-        boolean cardInHand = selectedCardId != null
-                && state.hand(myColor).stream()
-                        .anyMatch(card -> card.id().equals(selectedCardId));
-        Piece piece = selectedSquare == null ? null : state.board().pieceAt(selectedSquare);
-        boolean pieceThere = piece != null && piece.color() == myColor;
-        if (cardInHand && pieceThere) {
-            highlightedTargets = RulesEngine.legalDestinations(state.board(),
-                    selectedSquare, CardDeck.cardById(selectedCardId), myColor);
-        } else {
-            highlightedTargets = List.of();
-        }
+    public boolean reducedMotion() {
+        return reducedMotion;
+    }
+
+    public void setReducedMotion(boolean reducedMotion) {
+        this.reducedMotion = reducedMotion;
+        fire(ClientModelListener::onMatchChanged);
     }
 
     private void clearMatchState() {
+        fire(ClientModelListener::onPresentationReset);
         stopBotTimer();
         practiceMode = false;
-        practiceGeneration++;
-        state = null;
-        myColor = null;
+        practiceState = null;
+        practiceRandom = null;
+        currentSync = null;
+        inFlightRequest = null;
         roomCode = null;
         opponentName = null;
         pendingRoomCode = null;
         historyMoves.clear();
-        myCaptures.clear();
-        enemyCaptures.clear();
         rematchOfferedByOpponent = false;
         gameOverAnnounced = false;
         matchOver = false;
+        presentationMatchId = null;
+        lastPresentedRevision = -1;
+        priorViewForPresentation = null;
         clearSelection();
     }
 
@@ -772,12 +797,6 @@ public final class ClientModel {
         fire(listener -> listener.onScreenChanged(newScreen));
     }
 
-    /**
-     * Fires one event to every listener. Always runs on the Swing EDT:
-     * calls from background threads (connect/reconnect failures) are
-     * marshalled there, because listeners touch Swing components. Each
-     * listener is isolated — a failing panel can never starve the others.
-     */
     private void fire(Consumer<ClientModelListener> event) {
         if (!SwingUtilities.isEventDispatchThread()) {
             SwingUtilities.invokeLater(() -> fire(event));
@@ -793,7 +812,7 @@ public final class ClientModel {
     }
 
     // ------------------------------------------------------------------
-    // Getters (EDT only)
+    // Getters
     // ------------------------------------------------------------------
 
     public Screen screen() {
@@ -816,17 +835,32 @@ public final class ClientModel {
         return leaderboard;
     }
 
-    /** The room code of a lobby this client created and still waits on. */
     public String pendingRoomCode() {
         return pendingRoomCode;
     }
 
-    public GameState state() {
-        return state;
+    public MatchSync currentSync() {
+        return currentSync;
+    }
+
+    public PlayerView view() {
+        return currentSync != null ? currentSync.view() : null;
     }
 
     public PlayerColor myColor() {
-        return myColor;
+        return view() != null ? view().viewer() : null;
+    }
+
+    public PlayerColor turn() {
+        return view() != null ? view().turn() : null;
+    }
+
+    public TurnPhase phase() {
+        return view() != null ? view().phase() : null;
+    }
+
+    public RulesConfig rules() {
+        return view() != null ? view().rules() : null;
     }
 
     public String roomCode() {
@@ -834,24 +868,16 @@ public final class ClientModel {
     }
 
     public String opponentName() {
-        return opponentName;
+        return opponentName == null ? "OPPONENT" : opponentName;
     }
 
     public List<MoveInfo> historyMoves() {
         return List.copyOf(historyMoves);
     }
 
-    /** Board coordinates in the compact A1..E5 form used by the history. */
     private static String squareName(Square square) {
+        if (square == null) return "";
         return "" + (char) ('A' + square.x()) + (square.y() + 1);
-    }
-
-    public List<Piece> myCaptures() {
-        return List.copyOf(myCaptures);
-    }
-
-    public List<Piece> enemyCaptures() {
-        return List.copyOf(enemyCaptures);
     }
 
     public boolean rematchOfferedByOpponent() {
@@ -866,6 +892,28 @@ public final class ClientModel {
         gameOverAnnounced = true;
     }
 
+    public boolean isMatchOver() {
+        return matchOver;
+    }
+
+    public boolean myTurn() {
+        return view() != null && view().viewer() == view().turn()
+                && view().outcome() == null && !matchOver;
+    }
+
+    public boolean canSkipMovement() {
+        return myTurn() && view().phase() == TurnPhase.MOVEMENT && inFlightRequest == null;
+    }
+
+    public boolean canEndTurn() {
+        return myTurn() && (view().phase() == TurnPhase.SKILL || view().phase() == TurnPhase.END)
+                && inFlightRequest == null;
+    }
+
+    public boolean canCastSkill() {
+        return skillOptions != null && skillOptions.canSubmit() && inFlightRequest == null;
+    }
+
     public String selectedCardId() {
         return selectedCardId;
     }
@@ -874,12 +922,39 @@ public final class ClientModel {
         return selectedSquare;
     }
 
+    public Integer selectedPieceId() {
+        return selectedPieceId;
+    }
+
     public List<Square> highlightedTargets() {
         return highlightedTargets;
     }
 
-    /** The square where the latest half-move captured a piece, or null. */
+    public String selectedSkillInstanceId() {
+        return selectedSkillInstanceId;
+    }
+
+    public SelectionDraft skillDraft() {
+        return skillDraft;
+    }
+
+    public SelectionOptions skillOptions() {
+        return skillOptions;
+    }
+
     public Square lastCaptureSquare() {
         return lastCaptureSquare;
+    }
+
+    public Square lastMoveFrom() {
+        return lastMoveFrom;
+    }
+
+    public Square lastMoveTo() {
+        return lastMoveTo;
+    }
+
+    public ActionRequest inFlightRequest() {
+        return inFlightRequest;
     }
 }

@@ -1,18 +1,18 @@
 package onitama.server;
 
 import onitama.core.PlayerColor;
-import onitama.core.WinCondition;
+import onitama.core.duel.EndReason;
 
 /**
- * Everything known about a finished match: players, result, ratings and the
- * half-move count. Consumed by the persistence hook (match row + both
+ * Everything known about a finished match: players, result, ratings, rules version,
+ * and turn counters. Consumed by the persistence hook (match row + both
  * players' Elo/wins/losses, one transaction).
  */
 public record MatchResult(String roomCode,
                           String blueUsername, String redUsername,
-                          PlayerColor winnerColor, WinCondition way,
+                          PlayerColor winnerColor, EndReason way,
                           int blueEloAfter, int redEloAfter,
-                          int moveCount) {
+                          String rulesVersion, int startedTurns, int completedTurns) {
 
     /** Returns the winner's username, or null on a draw. */
     public String winnerUsername() {

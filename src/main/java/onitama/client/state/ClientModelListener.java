@@ -17,6 +17,19 @@ public interface ClientModelListener {
     default void onMatchChanged() {
     }
 
+    /**
+     * An accepted action/event batch occurred in the match.
+     * Carries immutable permitted before and after views and the public event batch.
+     */
+    default void onAcceptedPresentation(onitama.core.duel.PlayerView priorView,
+                                        onitama.core.duel.PlayerView currentView,
+                                        java.util.List<onitama.core.duel.PublicEvent> events) {
+    }
+
+    /** Abandons transient effects when a match or reconnect establishes a new baseline. */
+    default void onPresentationReset() {
+    }
+
     /** Lobby data changed (open matches, profile). */
     default void onLobbyChanged() {
     }

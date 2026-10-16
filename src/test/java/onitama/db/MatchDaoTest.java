@@ -1,7 +1,7 @@
 package onitama.db;
 
 import onitama.core.PlayerColor;
-import onitama.core.WinCondition;
+import onitama.core.duel.EndReason;
 import onitama.net.UserProfile;
 import onitama.server.MatchResult;
 import org.junit.jupiter.api.BeforeEach;
@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
+import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.util.List;
 
@@ -20,7 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
  * UT08 — match persistence: a finished match is recorded in one transaction
  * together with both players' stat updates; a failing transaction rolls back
  * completely (no partial rows, no stat changes); the recent-matches query is
- * ordered newest first. Uses a temporary database file.
+ * ordered newest first. Verifies schema migration and sentinel move_count handling.
  */
 class MatchDaoTest {
 
@@ -42,7 +43,7 @@ class MatchDaoTest {
 
     @Test
     void recordedMatchPersistsWithStatsInOneTransaction() throws SQLException {
-        MatchResult result = sampleResult("ROOM1", PlayerColor.BLUE, WinCondition.STONE);
+        MatchResult result = sampleResult("ROOM1", PlayerColor.BLUE, EndReason.ELIMINATION);
         database.inTransaction(connection -> matchDao.recordMatch(connection, result));
 
         List<MatchDao.MatchRecord> records = matchDao.recentMatches(10);
@@ -51,8 +52,11 @@ class MatchDaoTest {
         assertEquals("alice", record.blueUsername());
         assertEquals("bob", record.redUsername());
         assertEquals("alice", record.winnerUsername());
-        assertEquals("STONE", record.endReason());
-        assertEquals(2, record.moveCount());
+        assertEquals("ELIMINATION", record.endReason());
+        assertEquals(0, record.moveCount(), "sentinel move_count must be 0 for grid-duel matches");
+        assertEquals("grid-duel-v1", record.rulesVersion());
+        assertEquals(4, record.startedTurns());
+        assertEquals(3, record.completedTurns());
         assertEquals(1016, record.eloBlueAfter());
         assertEquals(984, record.eloRedAfter());
 
@@ -72,9 +76,9 @@ class MatchDaoTest {
         // A real result first, so the draw below proves it leaves an existing
         // W/L record untouched rather than merely an empty one.
         database.inTransaction(connection -> matchDao.recordMatch(
-                connection, sampleResult("ROOM1", PlayerColor.BLUE, WinCondition.STONE)));
+                connection, sampleResult("ROOM1", PlayerColor.BLUE, EndReason.ELIMINATION)));
 
-        MatchResult result = sampleResult("ROOM2", null, WinCondition.DRAW);
+        MatchResult result = sampleResult("ROOM2", null, EndReason.DRAW);
         database.inTransaction(connection -> matchDao.recordMatch(connection, result));
         assertNull(matchDao.recentMatches(1).get(0).winnerUsername());
 
@@ -89,14 +93,14 @@ class MatchDaoTest {
 
     @Test
     void failingTransactionRollsBackEverything() throws SQLException {
-        MatchResult good = sampleResult("ROOM1", PlayerColor.BLUE, WinCondition.STONE);
+        MatchResult good = sampleResult("ROOM1", PlayerColor.BLUE, EndReason.ELIMINATION);
         database.inTransaction(connection -> matchDao.recordMatch(connection, good));
         UserProfile blueBefore = userDao.profileOf("alice");
 
         // A match referencing an unknown user fails the transaction mid-way:
         // the match insert alone would succeed, so this proves the rollback.
         MatchResult bad = new MatchResult("ROOM9", "ghost", "bob",
-                PlayerColor.RED, WinCondition.FORFEIT, 1000, 1000, 0);
+                PlayerColor.RED, EndReason.FORFEIT, 1000, 1000, "grid-duel-v1", 2, 2);
         assertThrows(SQLException.class, () ->
                 database.inTransaction(connection -> matchDao.recordMatch(connection, bad)));
 
@@ -110,11 +114,11 @@ class MatchDaoTest {
     void recentMatchesAreOrderedNewestFirst() throws SQLException {
         // Each sample match has a distinct end reason, which doubles as its marker.
         database.inTransaction(connection -> matchDao.recordMatch(
-                connection, sampleResult("ROOM1", PlayerColor.BLUE, WinCondition.STONE)));
+                connection, sampleResult("ROOM1", PlayerColor.BLUE, EndReason.ELIMINATION)));
         database.inTransaction(connection -> matchDao.recordMatch(
-                connection, sampleResult("ROOM2", PlayerColor.RED, WinCondition.FORFEIT)));
+                connection, sampleResult("ROOM2", PlayerColor.RED, EndReason.FORFEIT)));
         database.inTransaction(connection -> matchDao.recordMatch(
-                connection, sampleResult("ROOM3", null, WinCondition.DRAW)));
+                connection, sampleResult("ROOM3", null, EndReason.DRAW)));
 
         List<MatchDao.MatchRecord> records = matchDao.recentMatches(2);
         assertEquals(2, records.size(), "limit is applied");
@@ -122,10 +126,36 @@ class MatchDaoTest {
         assertEquals("FORFEIT", records.get(1).endReason());
     }
 
-    private MatchResult sampleResult(String roomCode, PlayerColor winner, WinCondition way) {
+    @Test
+    void legacyRowsRetainOriginalMoveCountAndNullTurns() throws SQLException {
+        // Insert a simulated legacy row before new columns existed or with defaults
+        database.inTransaction(connection -> {
+            try (PreparedStatement insert = connection.prepareStatement("""
+                    INSERT INTO matches (blue_user_id, red_user_id, winner_user_id, end_reason,
+                                         move_count, elo_blue_after, elo_red_after, played_at,
+                                         rules_version, started_turns, completed_turns)
+                    VALUES (1, 2, 1, 'STONE', 17, 1016, 984, '2026-09-01T12:00:00',
+                            'legacy-onitama-v1', NULL, NULL)
+                    """)) {
+                insert.executeUpdate();
+            }
+            return null;
+        });
+
+        List<MatchDao.MatchRecord> records = matchDao.recentMatches(1);
+        assertEquals(1, records.size());
+        MatchDao.MatchRecord legacy = records.get(0);
+        assertEquals("legacy-onitama-v1", legacy.rulesVersion());
+        assertEquals("STONE", legacy.endReason());
+        assertEquals(17, legacy.moveCount());
+        assertNull(legacy.startedTurns());
+        assertNull(legacy.completedTurns());
+    }
+
+    private MatchResult sampleResult(String roomCode, PlayerColor winner, EndReason way) {
         return new MatchResult(roomCode, "alice", "bob", winner, way,
                 winner == PlayerColor.BLUE ? 1016 : winner == PlayerColor.RED ? 984 : 1000,
                 winner == PlayerColor.BLUE ? 984 : winner == PlayerColor.RED ? 1016 : 1000,
-                2);
+                "grid-duel-v1", 4, 3);
     }
 }
