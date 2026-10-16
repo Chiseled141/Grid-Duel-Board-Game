@@ -32,7 +32,7 @@ public final class ForesightDialog extends JDialog {
     private final Consumer<List<String>> onConfirm;
     private final JPanel cardsRow = new JPanel(new FlowLayout(FlowLayout.CENTER, 12, 12));
     private final JButton confirm = UiKit.pill("Confirm Deck Order", UiKit.Pill.GOLD);
-    private final JButton resign = UiKit.pill("Resign", UiKit.Pill.DANGER);
+    private final JButton resign = UiKit.pill("Surrender", UiKit.Pill.DANGER);
 
     public ForesightDialog(Window parent,
                            List<CardInstance> initialPreview,

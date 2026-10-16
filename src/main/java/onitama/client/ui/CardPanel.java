@@ -17,23 +17,17 @@ import java.util.List;
 import javax.swing.JComponent;
 import javax.swing.Timer;
 
-/**
- * A movement card rendered from the designed full-face artwork (one variant
- * per player color, see assets/cards/). The artwork already contains the
- * name, movement grid, kanji seal and flavor band, so this component only
- * composites the state: the player-colored selection frame, the hover
- * lift/tilt, and the dimmed veil for the opponent's cards. A drawn cream
- * card with the ink animal spirit is the fallback when a face is missing.
- */
+/** A printed medieval movement diagram with state overlays and inspect-on-demand details. */
 public final class CardPanel extends JComponent {
 
     private static final int W = 200;
-    private static final int H = 230;
+    private static final int H = 240;
     /** Hover animation length (§11: 150–250ms). */
     private static final int HOVER_MS = 180;
 
     private final Card card;
     private final PlayerColor faceColor;
+    private final PlayerColor viewer;
     private final boolean dimmed;
     private boolean selected;
 
@@ -64,17 +58,24 @@ public final class CardPanel extends JComponent {
      * @param onSelect fired when the panel is clicked (null for read-only cards)
      */
     public CardPanel(Card card, PlayerColor faceColor, boolean dimmed, Runnable onSelect) {
+        this(card, faceColor, faceColor, dimmed, onSelect);
+    }
+
+    /** Shows a public card with its destinations aligned to the viewer's board. */
+    public CardPanel(Card card, PlayerColor faceColor, PlayerColor viewer, boolean dimmed, Runnable onSelect) {
         this.card = card;
         this.faceColor = faceColor;
+        this.viewer = viewer;
         this.dimmed = dimmed;
         setPreferredSize(new Dimension((int) ((W + 12) * cardScale),
                 (int) ((H + 14) * cardScale)));
         setOpaque(false);
-        setToolTipText("<html><b>" + card.name().toUpperCase()
-                + "</b> — " + movementDescription()
+        setToolTipText("<html><body style='width:220px'><b>" + CardArt.nameFor(card).toUpperCase()
+                + "</b><br>" + movementDescription()
                 + "<br><i>" + CardArt.flavorFor(card.id())
-                + (dimmed ? "</i> (opponent's card)" : "</i>") + "</html>");
-        if (onSelect != null) {
+                + (faceColor != viewer ? "</i> (opponent's card)" : "</i>") + "</body></html>");
+        CardDetails.bind(this);
+        {
             setCursor(new java.awt.Cursor(java.awt.Cursor.HAND_CURSOR));
             addMouseListener(new MouseAdapter() {
                 @Override
@@ -82,7 +83,7 @@ public final class CardPanel extends JComponent {
                     // Press, not click: selection registers instantly and a
                     // press+release that ends outside the card still counts,
                     // so rapid card→piece tapping never loses an input.
-                    onSelect.run();
+                    if (onSelect != null) onSelect.run();
                 }
 
                 @Override
@@ -166,7 +167,8 @@ public final class CardPanel extends JComponent {
         // tilt). Unselected cards keep the gentle 4px hover lift.
         double lift = interactive ? (selected ? 8 : 4 * hover) : 0;
         double tilt = Math.toRadians(-1.5 * hover * (interactive && !selected ? 1 : 0));
-        double scale = (selected ? 1.07 : 1.0 + 0.02 * hover) * cardScale;
+        double fit = Math.min((getWidth() - 12.0) / W, (getHeight() - 16.0) / H);
+        double scale = (selected ? 1.04 : 1.0 + 0.02 * hover) * Math.max(.05, fit);
         g.translate(getWidth() / 2.0, getHeight() / 2.0);
         g.rotate(tilt);
         g.scale(scale, scale);
@@ -201,7 +203,7 @@ public final class CardPanel extends JComponent {
             g.fillRoundRect(x0 + shadow, y0 + shadow, W, H, Theme.RADIUS_MD, Theme.RADIUS_MD);
         }
 
-        Image face = AssetStore.optional(facePath());
+        Image face = CardArt.movementFace(card, faceColor, viewer);
         if (face != null) {
             var clip = new java.awt.geom.RoundRectangle2D.Double(x0, y0, W, H,
                     Theme.RADIUS_MD, Theme.RADIUS_MD);
@@ -218,8 +220,6 @@ public final class CardPanel extends JComponent {
                 g.draw(new java.awt.geom.RoundRectangle2D.Double(x0 + 4, y0 + 4,
                         W - 8, H - 8, Theme.RADIUS_MD - 4, Theme.RADIUS_MD - 4));
             }
-        } else {
-            paintFallbackCard(g, x0, y0);
         }
 
         if (dimmed) {
@@ -228,54 +228,17 @@ public final class CardPanel extends JComponent {
         }
     }
 
-    /** The designed face for this card and player color. */
-    private String facePath() {
-        return "cards/" + faceColor.name().toLowerCase() + "/"
-                + card.id() + "-" + faceColor.name().toLowerCase() + ".png";
-    }
-
-    /** Minimal drawn fallback when the designed face file is missing. */
-    private void paintFallbackCard(Graphics2D g, int x0, int y0) {
-        g.setColor(Theme.CREAM);
-        g.fillRoundRect(x0, y0, W, H, Theme.RADIUS_MD, Theme.RADIUS_MD);
-        g.setColor(Theme.INK);
-        g.setStroke(new BasicStroke(2f));
-        g.drawRoundRect(x0, y0, W - 1, H - 1, Theme.RADIUS_MD, Theme.RADIUS_MD);
-        AnimalIcon.paint(g, card.id(), x0 + (W - 90) / 2, y0 + 30, 90,
-                Theme.INK, accentFor(), Theme.CREAM);
-        g.setFont(Theme.display(15f));
-        g.drawString(card.name().toUpperCase(), x0 + 16, y0 + 150);
-        g.setFont(Theme.normal(9f));
-        g.drawString(CardArt.flavorFor(card.id()), x0 + 16, y0 + 180);
-        g.setColor(accentFor());
-        g.fillRoundRect(x0 + 16, y0 + 195, W - 32, 20, 8, 8);
-    }
-
-    private Color accentFor() {
-        return CardArt.of(card.id());
-    }
-
-    /**
-     * The card's moves in words, in the orientation the card is displayed in
-     * (red-owned cards are shown rotated 180°, matching the artwork and the
-     * engine). Feeds the hover tooltip.
-     */
+    /** Exact landing vectors expressed in the same screen orientation as the diagram. */
     private String movementDescription() {
-        boolean flipped = faceColor == onitama.core.PlayerColor.RED;
+        int direction = faceColor == viewer ? 1 : -1;
         List<String> moves = new java.util.ArrayList<>();
         for (onitama.core.Offset offset : card.offsets()) {
-            int dy = flipped ? -offset.dy() : offset.dy();
-            int dx = flipped ? -offset.dx() : offset.dx();
-            if (dy > 0) {
-                moves.add("forward " + dy);
-            } else if (dy < 0) {
-                moves.add("back " + -dy);
-            } else if (dx > 0) {
-                moves.add("right " + dx);
-            } else {
-                moves.add("left " + -dx);
-            }
+            int dx = direction * offset.dx(), dy = direction * offset.dy();
+            List<String> parts = new java.util.ArrayList<>();
+            if (dy != 0) parts.add((dy > 0 ? "up " : "down ") + Math.abs(dy));
+            if (dx != 0) parts.add((dx > 0 ? "right " : "left ") + Math.abs(dx));
+            moves.add(String.join(" + ", parts));
         }
-        return String.join(" · ", moves);
+        return String.join("; ", moves);
     }
 }

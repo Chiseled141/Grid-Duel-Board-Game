@@ -54,22 +54,39 @@ import javax.swing.SwingUtilities;
  * Displays public movement hands, private skill cards, live definitions,
  * mana, a shared visual draw pile, and floating action buttons.
  */
-public final class GamePanel extends ValleyMenuPanel {
+public final class GamePanel extends JPanel {
+
+    private static final java.util.concurrent.CompletableFuture<java.awt.image.BufferedImage> MATCH_BACKGROUND =
+            java.util.concurrent.CompletableFuture.supplyAsync(() -> {
+                try {
+                    return javax.imageio.ImageIO.read(GamePanel.class.getResource("/assets/match-room.png"));
+                } catch (java.io.IOException | IllegalArgumentException exception) {
+                    java.util.logging.Logger.getLogger(GamePanel.class.getName())
+                            .log(java.util.logging.Level.WARNING, "Cannot load match background", exception);
+                    return null;
+                }
+            });
 
     private final ClientModel model;
     private final ClientSettings settings;
 
     private final BoardPanel boardPanel = new BoardPanel();
-    private final JLabel turnLabel = MatchStyle.label("", 13f);
+    private final JLabel turnLabel = MatchStyle.label("", 12f);
     private final JLabel turnCountLabel = MatchStyle.label("TURN 01", 10f);
+    private final ChatPanel chat;
     private final PlayerBadgePanel ownBadge = new PlayerBadgePanel(true);
     private final PlayerBadgePanel opponentBadge = new PlayerBadgePanel(false);
     private final DeckStackPanel drawPile = new DeckStackPanel();
+    private final DeckStackPanel opponentDrawPile = new DeckStackPanel();
     private final DeckDrawOverlay drawOverlay;
     private final CardPlayOverlay playOverlay = new CardPlayOverlay(this::refresh);
-    private final PlayedCardArea ownPlay = new PlayedCardArea("YOU PLAYED");
-    private final PlayedCardArea enemyPlay = new PlayedCardArea("OPPONENT PLAYED");
+    private final PlayedCardArea ownPlay = new PlayedCardArea("YOUR SKILL PLAYED");
+    private final PlayedCardArea enemyPlay = new PlayedCardArea("OPPONENT SKILL PLAYED");
     private long drawGeneration;
+    private record PresentationBatch(PlayerView before, PlayerView after, List<PublicEvent> events) { }
+    private final java.util.ArrayDeque<PresentationBatch> presentationQueue = new java.util.ArrayDeque<>();
+    private PresentationBatch activePresentation;
+    private final javax.swing.Timer presentationTimer = new javax.swing.Timer(1, event -> finishPresentation());
     private final List<CardPanel> opponentMovementPanels = new ArrayList<>();
     private final List<CardBackPanel> opponentSkillPanels = new ArrayList<>();
     private List<String> builtOpponentMoves = List.of();
@@ -77,6 +94,7 @@ public final class GamePanel extends ValleyMenuPanel {
 
     private final JPanel opponentCards = new JPanel(new FlowLayout(FlowLayout.CENTER, 8, 0));
     private final CardHandPanel hand = new CardHandPanel();
+    private JPanel turnRail;
     private final List<SkillCardPanel> mySkillPanels = new ArrayList<>();
     private List<CardInstance> builtSkills = List.of();
     private onitama.core.duel.RulesConfig handRules;
@@ -136,7 +154,7 @@ public final class GamePanel extends ValleyMenuPanel {
     private JButton resignButton;
     private final List<CardPanel> myCardPanels = new ArrayList<>();
     private List<String> builtMovementCardIds = List.of();
-    private static final double OPPONENT_CARD_SCALE = 0.48;
+    private static final double OPPONENT_CARD_SCALE = 0.46;
     private static final int SIDEBAR_WIDTH = 228;
 
     private ForesightDialog foresightDialog;
@@ -153,8 +171,10 @@ public final class GamePanel extends ValleyMenuPanel {
 
     @Override protected void paintComponent(Graphics graphics) {
         super.paintComponent(graphics);
+        var background = MATCH_BACKGROUND.getNow(null);
+        if (background != null) BattlefieldMenuPanel.paintCover(graphics, background, getWidth(), getHeight(), this);
         Graphics2D g = (Graphics2D) graphics.create();
-        g.setColor(new Color(12, 18, 20, 70));
+        g.setColor(new Color(12, 18, 20, 35));
         g.fillRect(0, 0, getWidth(), getHeight());
         g.dispose();
     }
@@ -164,7 +184,7 @@ public final class GamePanel extends ValleyMenuPanel {
         this(model, new ClientSettings(), new DeckDrawOverlay());
     }
 
-    /** Uses the same scene preference as the login and lobby. */
+    /** Uses shared interaction preferences and a dedicated match-room scene. */
     public GamePanel(ClientModel model, ClientSettings settings) {
         this(model, settings, new DeckDrawOverlay());
     }
@@ -175,10 +195,14 @@ public final class GamePanel extends ValleyMenuPanel {
     }
 
     private GamePanel(ClientModel model, ClientSettings settings, DeckDrawOverlay drawOverlay) {
-        super(model, Screen.GAME, settings);
+        MATCH_BACKGROUND.thenRun(() -> SwingUtilities.invokeLater(this::repaint));
         this.model = model;
+        this.chat = new ChatPanel(model);
         this.settings = settings;
         this.drawOverlay = drawOverlay;
+        presentationTimer.setRepeats(false);
+        opponentDrawPile.setName("opponentDrawPile");
+        opponentDrawPile.setPreferredSize(new Dimension(100, 116));
         setLayout(new BorderLayout(12, 6));
         setBorder(BorderFactory.createEmptyBorder(8, 12, 8, 12));
         setBackground(Theme.BG);
@@ -203,12 +227,12 @@ public final class GamePanel extends ValleyMenuPanel {
         add(DeckDrawOverlay.wrap(DeckDrawOverlay.wrap(scene, drawOverlay), playOverlay), BorderLayout.CENTER);
         addComponentListener(new java.awt.event.ComponentAdapter() {
             @Override public void componentResized(java.awt.event.ComponentEvent event) {
-                cancelDraws(); playOverlay.cancel(); refresh();
+                cancelPresentation(); refresh();
             }
         });
 
         boardPanel.onClick(sq -> {
-            if (playOverlay.busy()) return;
+            if (presentationBusy()) return;
             cancelDraws();
             boardPanel.finishMoveAnimation();
             model.boardClicked(sq);
@@ -219,7 +243,7 @@ public final class GamePanel extends ValleyMenuPanel {
         getActionMap().put("clearSelection", new javax.swing.AbstractAction() {
             @Override
             public void actionPerformed(java.awt.event.ActionEvent event) {
-                if (playOverlay.busy()) return;
+                if (presentationBusy()) return;
                 cancelDraws();
                 playOverlay.returnSelection();
                 model.clearSelection();
@@ -283,16 +307,63 @@ public final class GamePanel extends ValleyMenuPanel {
         });
     }
 
+    private boolean presentationBusy() { return activePresentation != null || playOverlay.busy(); }
+
     private void handleAcceptedPresentation(PlayerView priorView, PlayerView currentView, List<PublicEvent> events) {
-        if (priorView == null || currentView == null || events == null) {
+        if (priorView == null || currentView == null || events == null
+                || model.screen() != Screen.GAME || model.currentSync().paused()) return;
+        if (model.reducedMotion() || currentView.outcome() != null) {
+            cancelPresentation();
+            presentAcceptedBatch(priorView, currentView, events);
             return;
         }
+        presentationQueue.add(new PresentationBatch(priorView, currentView, List.copyOf(events)));
+        if (activePresentation == null) startNextPresentation();
+    }
 
+    private void startNextPresentation() {
+        presentationTimer.stop();
+        activePresentation = presentationQueue.poll();
+        refresh();
+        if (activePresentation == null) return;
+        var batch = activePresentation;
+        presentAcceptedBatch(batch.before(), batch.after(), batch.events());
+        int duration = presentationDuration(batch);
+        if (duration == 0) finishPresentation();
+        else {
+            presentationTimer.setInitialDelay(duration + 48);
+            presentationTimer.restart();
+        }
+    }
+
+    private int presentationDuration(PresentationBatch batch) {
+        int duration = 0;
+        int draws = CardDraws.between(batch.before(), batch.after(), batch.events()).size();
+        if (draws > 0) duration = 600 + (draws - 1) * 80;
+        boolean moved = batch.events().stream().anyMatch(e -> e instanceof PublicEvent.PieceMoved);
+        boolean eliminated = batch.events().stream().anyMatch(e -> e instanceof PublicEvent.PieceEliminated);
+        if (moved) duration = Math.max(duration, 480 + (eliminated ? 380 : 0));
+        else if (eliminated) duration = Math.max(duration, 380);
+        if (batch.events().stream().anyMatch(e -> e instanceof PublicEvent.SkillCommitted)) duration = Math.max(duration, 540);
+        return duration;
+    }
+
+    private void finishPresentation() {
+        activePresentation = null;
+        startNextPresentation();
+    }
+
+    private PlayerView displayedView() { return activePresentation == null ? model.view() : activePresentation.after(); }
+
+    private void presentAcceptedBatch(PlayerView priorView, PlayerView currentView, List<PublicEvent> events) {
         cancelActionAnimations(true);
         if (model.screen() != Screen.GAME || model.currentSync().paused()) return;
+        playOverlay.cancel();
         presentPlayedCards(priorView, currentView, events);
         if (model.reducedMotion() || currentView.outcome() != null) return;
         scheduleDraws(priorView, currentView, events);
+        if (events.stream().anyMatch(event -> event instanceof PublicEvent.PieceMoved
+                || event instanceof PublicEvent.PieceEliminated)) boardPanel.cancelAnimations();
 
         // 1. Multi-piece moves
         List<BoardPanel.MovingPiece> moves = new ArrayList<>();
@@ -362,29 +433,21 @@ public final class GamePanel extends ValleyMenuPanel {
         playOverlay.setReducedMotion(model.reducedMotion() || currentView.outcome() != null);
         layoutTree(this);
         for (PublicEvent event : events) {
-            if (event instanceof PublicEvent.MovementPlayed played) {
-                boolean own = played.actor() == currentView.viewer();
-                var priorMoves = played.actor() == PlayerColor.BLUE ? priorView.blueMovementHand() : priorView.redMovementHand();
-                var card = new CardPanel(CardDeck.cardById(played.cardId()), played.actor(), false, null);
-                card.setSize(220, 280); card.setCardScale(1);
-                playOverlay.play("move:" + played.cardId(), DeckDrawOverlay.snapshot(card), null,
-                        playSource(own, true, priorMoves.indexOf(played.cardId())), own ? ownPlay : enemyPlay);
-            } else if (event instanceof PublicEvent.SkillCommitted committed) {
+            if (event instanceof PublicEvent.SkillCommitted committed) {
                 boolean own = committed.actor() == currentView.viewer();
                 var card = new SkillCardPanel(committed.skill(), priorView.rules(), committed.actor(), 5,
                         TurnPhase.SKILL, true, false, null);
                 card.setSize(220, 280);
                 int slot = own ? priorView.ownSkillHand().indexOf(committed.skill()) : 0;
                 playOverlay.play("skill:" + committed.skill().instanceId(), DeckDrawOverlay.snapshot(card),
-                        own ? null : drawPile.backImage(), playSource(own, false, slot), own ? ownPlay : enemyPlay);
+                        own ? null : drawPile.backImage(), playSource(own, slot), own ? ownPlay : enemyPlay, card.getToolTipText());
             }
         }
 
     }
 
-    private Rectangle playSource(boolean own, boolean movement, int slot) {
-        List<? extends JComponent> cards = movement ? (own ? myCardPanels : opponentMovementPanels)
-                : (own ? mySkillPanels : opponentSkillPanels);
+    private Rectangle playSource(boolean own, int slot) {
+        List<? extends JComponent> cards = own ? mySkillPanels : opponentSkillPanels;
         if (!cards.isEmpty()) {
             JComponent card = cards.get(Math.max(0, Math.min(slot, cards.size() - 1)));
             if (card.getWidth() > 0) return SwingUtilities.convertRectangle(card.getParent(), card.getBounds(), playOverlay);
@@ -395,7 +458,7 @@ public final class GamePanel extends ValleyMenuPanel {
     private JComponent buildBoardStage() {
         JPanel stage = new JPanel(null) {
             @Override public void doLayout() {
-                int slotWidth = Math.max(64, Math.min(150, getWidth() / 9));
+                int slotWidth = Math.max(96, Math.min(210, (getWidth() - 220) / 4));
                 boardPanel.setBounds(slotWidth + 12, 0, Math.max(1, getWidth() - 2 * slotWidth - 24), getHeight());
                 boardPanel.computeGeometry();
                 int rim = Math.max(3, Math.min(16, boardPanel.cell() / 4));
@@ -421,7 +484,7 @@ public final class GamePanel extends ValleyMenuPanel {
         SwingUtilities.invokeLater(() -> {
             if (generation != drawGeneration || model.screen() != Screen.GAME || model.reducedMotion()
                     || model.currentSync() == null || model.currentSync().paused()
-                    || !match.equals(model.currentSync().matchId()) || model.view().revision() != after.revision()
+                    || !match.equals(model.currentSync().matchId()) || displayedView().revision() != after.revision()
                     || model.isMatchOver()) return;
             layoutTree(this);
             var flights = new ArrayList<DeckDrawOverlay.Flight>();
@@ -433,7 +496,7 @@ public final class GamePanel extends ValleyMenuPanel {
                 if (draw.slot() < 0 || draw.slot() >= cards.size()) continue;
                 JComponent target = cards.get(draw.slot());
                 if (target.getWidth() <= 0 || target.getHeight() <= 0) continue;
-                DeckStackPanel deck = drawPile;
+                DeckStackPanel deck = own ? drawPile : opponentDrawPile;
                 String key = draw.movement() ? "move:" + draw.actor() + ":" + ((CardPanel) target).card().id()
                         : own ? "own-skill:" + ((SkillCardPanel) target).instance().instanceId()
                         : "opponent-slot:" + draw.slot();
@@ -471,6 +534,9 @@ public final class GamePanel extends ValleyMenuPanel {
             hand.setPreferredSize(new Dimension(720, handHeight));
             hand.setMinimumSize(new Dimension(280, handHeight));
         }
+        int railWidth = Math.max(196, Math.min(242, (int) ((handHeight - 72) * .86) + 20));
+        turnRail.setPreferredSize(new Dimension(railWidth, 100));
+        drawPile.setPreferredSize(new Dimension(railWidth, handHeight - 60));
         super.doLayout();
     }
 
@@ -502,7 +568,7 @@ public final class GamePanel extends ValleyMenuPanel {
                 Card card = CardDeck.cardById(id);
                 CardPanel panel = new CardPanel(card, view.viewer(), false, null);
                 playOverlay.bind(panel, "move:" + id, settings::clickToSelectCards,
-                        () -> model.canSkipMovement() && model.inFlightRequest() == null && !model.currentSync().paused(),
+                        () -> !presentationBusy() && model.canSkipMovement() && model.inFlightRequest() == null && !model.currentSync().paused(),
                         () -> { cancelDraws(); model.cardClicked(id); });
                 panel.setReducedMotion(model.reducedMotion());
                 panel.setCardScale(.76);
@@ -531,7 +597,7 @@ public final class GamePanel extends ValleyMenuPanel {
                         mana, view.phase(), model.myTurn(),
                         instance.instanceId().equals(model.selectedSkillInstanceId()), null);
                 playOverlay.bind(panel, "skill:" + instance.instanceId(), settings::clickToSelectCards,
-                        () -> model.myTurn() && model.view() != null && model.view().phase() == TurnPhase.SKILL
+                        () -> !presentationBusy() && model.myTurn() && model.view() != null && model.view().phase() == TurnPhase.SKILL
                                 && model.inFlightRequest() == null && !model.currentSync().paused(),
                         () -> { cancelDraws(); model.skillClicked(instance.instanceId()); });
                 panel.setReducedMotion(model.reducedMotion());
@@ -555,9 +621,18 @@ public final class GamePanel extends ValleyMenuPanel {
     /** Keeps turn actions in the unused left margin, freeing height for the board. */
     private JPanel buildTurnControls() {
         JPanel rail = new JPanel(new BorderLayout(0, 12));
+        turnRail = rail;
         rail.setOpaque(false);
         int width = 196;
         rail.setPreferredSize(new Dimension(width, 100));
+        JButton help = UiKit.pill("How to Play", UiKit.Pill.PARCHMENT);
+        help.setName("matchHowToPlay");
+        help.addActionListener(event -> ClientFrame.showHelpOverlay(SwingUtilities.getWindowAncestor(this), model.rules()));
+        JPanel opponentInfo = new JPanel(new BorderLayout(0, 12));
+        opponentInfo.setOpaque(false);
+        opponentInfo.add(help, BorderLayout.NORTH);
+        opponentInfo.add(opponentBadge, BorderLayout.CENTER);
+        rail.add(opponentInfo, BorderLayout.NORTH);
         JPanel actions = new JPanel();
         actions.setLayout(new BoxLayout(actions, BoxLayout.Y_AXIS));
         actions.setOpaque(false);
@@ -571,7 +646,7 @@ public final class GamePanel extends ValleyMenuPanel {
         }
 
         skipMovementButton.addActionListener(e -> {
-            if (playOverlay.busy()) return;
+            if (presentationBusy()) return;
             cancelDraws();
             boardPanel.finishMoveAnimation();
             model.skipMovement();
@@ -580,7 +655,7 @@ public final class GamePanel extends ValleyMenuPanel {
         actions.add(Box.createVerticalStrut(10));
 
         castSkillButton.addActionListener(e -> {
-            if (playOverlay.busy()) return;
+            if (presentationBusy()) return;
             cancelDraws();
             boardPanel.finishMoveAnimation();
             model.castSkill();
@@ -592,25 +667,25 @@ public final class GamePanel extends ValleyMenuPanel {
         directionPanel.setOpaque(false);
         directionPanel.setVisible(false);
         dirForward.addActionListener(e -> {
-            if (playOverlay.busy()) return;
+            if (presentationBusy()) return;
             cancelDraws();
             boardPanel.finishMoveAnimation();
             model.selectDirection(relativeToCanonical(RelativeDirection.FORWARD, myColor()));
         });
         dirBackward.addActionListener(e -> {
-            if (playOverlay.busy()) return;
+            if (presentationBusy()) return;
             cancelDraws();
             boardPanel.finishMoveAnimation();
             model.selectDirection(relativeToCanonical(RelativeDirection.BACKWARD, myColor()));
         });
         dirLeft.addActionListener(e -> {
-            if (playOverlay.busy()) return;
+            if (presentationBusy()) return;
             cancelDraws();
             boardPanel.finishMoveAnimation();
             model.selectDirection(relativeToCanonical(RelativeDirection.LEFT, myColor()));
         });
         dirRight.addActionListener(e -> {
-            if (playOverlay.busy()) return;
+            if (presentationBusy()) return;
             cancelDraws();
             boardPanel.finishMoveAnimation();
             model.selectDirection(relativeToCanonical(RelativeDirection.RIGHT, myColor()));
@@ -623,15 +698,18 @@ public final class GamePanel extends ValleyMenuPanel {
         actions.add(Box.createVerticalStrut(10));
 
         endTurnButton.addActionListener(e -> {
-            if (playOverlay.busy()) return;
+            if (presentationBusy()) return;
             cancelDraws();
             boardPanel.finishMoveAnimation();
             model.endTurn();
         });
         actions.add(endTurnButton);
 
-        rail.add(new PlayedCardsPanel(model), BorderLayout.CENTER);
-        rail.add(actions, BorderLayout.SOUTH);
+        JPanel dock = new JPanel(new BorderLayout(0, 12));
+        dock.setOpaque(false);
+        dock.add(actions, BorderLayout.NORTH);
+        dock.add(drawPile, BorderLayout.CENTER);
+        rail.add(dock, BorderLayout.SOUTH);
         return rail;
     }
 
@@ -641,47 +719,44 @@ public final class GamePanel extends ValleyMenuPanel {
         column.setPreferredSize(new Dimension(SIDEBAR_WIDTH, 84));
         JPanel top = new JPanel(new BorderLayout(0, 12));
         top.setOpaque(false);
-        JPanel banner = new JPanel(new FlowLayout(FlowLayout.CENTER, 6, 0));
+        JPanel banner = new JPanel(new BorderLayout(6, 4));
         banner.setOpaque(false);
-        banner.add(turnLabel);
-        banner.add(waitPulseDot);
+        turnLabel.setFont(Theme.cardTitle(15));
+        turnLabel.setHorizontalAlignment(SwingConstants.CENTER);
+        turnCountLabel.setHorizontalAlignment(SwingConstants.CENTER);
+        turnCountLabel.setFont(Theme.normal(11));
+        banner.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createMatteBorder(0, 0, 1, 0, new Color(163, 129, 73, 130)),
+                BorderFactory.createEmptyBorder(3, 0, 9, 0)));
+        banner.add(turnLabel, BorderLayout.CENTER);
+        banner.add(turnCountLabel, BorderLayout.SOUTH);
+        banner.add(waitPulseDot, BorderLayout.WEST);
         top.add(banner, BorderLayout.NORTH);
-        top.add(opponentBadge, BorderLayout.CENTER);
         column.add(top, BorderLayout.NORTH);
 
-        JPanel decks = new JPanel(new GridLayout(1, 1, 8, 0));
-        decks.setOpaque(false);
-        // Compact deck art leaves space for conversation at the minimum window height.
-        decks.setPreferredSize(new Dimension(SIDEBAR_WIDTH, 84));
-        decks.add(drawPile);
-        JPanel middle = new JPanel(new GridBagLayout());
-        middle.setOpaque(false);
-        var constraints = new GridBagConstraints();
-        constraints.gridx = 0;
-        constraints.gridy = 0;
-        constraints.fill = GridBagConstraints.HORIZONTAL;
-        constraints.weightx = 1;
-        middle.add(decks, constraints);
-        constraints.gridy++;
-        constraints.insets = new Insets(8, 0, 0, 0);
-        turnCountLabel.setHorizontalAlignment(SwingConstants.CENTER);
-
-        middle.add(turnCountLabel, constraints);
         JPanel conversation = new JPanel(new BorderLayout(0, 4));
         conversation.setOpaque(false);
-        conversation.add(middle, BorderLayout.NORTH);
-        conversation.add(new ChatPanel(model), BorderLayout.CENTER);
+        JPanel chatSpace = new JPanel(new BorderLayout()) {
+            @Override public void doLayout() {
+                super.doLayout();
+                chat.setBounds(0, 0, getWidth(), Math.min(model.isPracticeMode() ? 122 : 300, getHeight()));
+            }
+        };
+        chatSpace.setOpaque(false);
+        chatSpace.add(chat, BorderLayout.CENTER);
+        conversation.add(chatSpace, BorderLayout.CENTER);
         column.add(conversation, BorderLayout.CENTER);
 
         JPanel bottom = new JPanel(new BorderLayout(0, 12));
         bottom.setOpaque(false);
         bottom.add(ownBadge, BorderLayout.CENTER);
-        JPanel controls = new JPanel(new GridLayout(1, 2, 10, 0));
+        JPanel controls = new JPanel(new GridLayout(2, 1, 0, 6));
         controls.setOpaque(false);
-        JButton menu = MatchStyle.action("Menu");
+        JButton menu = UiKit.pill("Menu", UiKit.Pill.CREAM_OUTLINE);
         menu.addActionListener(event -> model.leaveToLobby());
         controls.add(menu);
-        resignButton = MatchStyle.action("Resign");
+        resignButton = UiKit.pill("Surrender", UiKit.Pill.GOLD);
+        resignButton.setEnabled(false);
         resignButton.addActionListener(event -> confirmResign());
         controls.add(resignButton);
         bottom.add(controls, BorderLayout.SOUTH);
@@ -698,18 +773,19 @@ public final class GamePanel extends ValleyMenuPanel {
             opponentSkillPanels.clear();
             builtOpponentMoves = List.copyOf(ids);
             builtOpponentColor = opponent;
-            for (String id : ids) {
-                CardPanel card = new CardPanel(CardDeck.cardById(id), opponent, false, null);
-                card.setCardScale(OPPONENT_CARD_SCALE);
-                opponentMovementPanels.add(card);
-                opponentCards.add(card);
-            }
-            opponentCards.add(Box.createHorizontalStrut(16));
             for (int i = 0; i < view.opponentSkillCount(); i++) {
                 CardBackPanel back = new CardBackPanel();
                 opponentSkillPanels.add(back);
                 opponentCards.add(back);
             }
+            opponentCards.add(Box.createHorizontalStrut(16));
+            for (String id : ids) {
+                CardPanel card = new CardPanel(CardDeck.cardById(id), opponent, view.viewer(), false, null);
+                card.setCardScale(OPPONENT_CARD_SCALE);
+                opponentMovementPanels.add(card);
+                opponentCards.add(card);
+            }
+            opponentCards.add(opponentDrawPile);
         }
         for (CardPanel card : opponentMovementPanels) card.setReducedMotion(model.reducedMotion());
     }
@@ -734,7 +810,8 @@ public final class GamePanel extends ValleyMenuPanel {
             cancelPresentation();
             return;
         }
-        PlayerView view = model.view();
+        if (model.reducedMotion() || model.currentSync() != null && model.currentSync().paused()) cancelPresentation();
+        PlayerView view = displayedView();
         if (view == null) {
             closeForesightDialog();
             return;
@@ -779,10 +856,10 @@ public final class GamePanel extends ValleyMenuPanel {
         playOverlay.syncSelection(handCards, model.inFlightRequest() != null);
 
         // Action buttons
-        skipMovementButton.setEnabled(model.canSkipMovement() && !playOverlay.busy());
-        endTurnButton.setEnabled(model.canEndTurn() && !playOverlay.busy());
+        skipMovementButton.setEnabled(model.canSkipMovement() && !presentationBusy());
+        endTurnButton.setEnabled(model.canEndTurn() && !presentationBusy());
         castSkillButton.setVisible(model.selectedSkillInstanceId() != null);
-        castSkillButton.setEnabled(model.canCastSkill() && !model.currentSync().paused() && !playOverlay.busy());
+        castSkillButton.setEnabled(model.canCastSkill() && !model.currentSync().paused() && !presentationBusy());
 
         boolean showDirs = model.skillOptions() != null
                 && !model.skillOptions().selectableDirections().isEmpty();
@@ -809,7 +886,8 @@ public final class GamePanel extends ValleyMenuPanel {
             pulseTimer.stop();
         }
 
-        turnCountLabel.setText("TURN " + view.startedTurns() + "  /  " + view.completedTurns() + " COMPLETED");
+        turnCountLabel.setText("TURN " + view.startedTurns() + "   ·   " + view.completedTurns() + " / " + view.rules().turnLimit());
+        turnCountLabel.setToolTipText(view.completedTurns() + " of " + view.rules().turnLimit() + " player turns completed");
 
         // Board view & highlights
         boardPanel.setView(view);
@@ -826,7 +904,10 @@ public final class GamePanel extends ValleyMenuPanel {
             boardPanel.clearTargetingFeedback();
             boardPanel.setSelection(model.selectedSquare(), model.highlightedTargets());
         }
-        if (model.lastMoveFrom() != null && model.lastMoveTo() != null) {
+        if (activePresentation != null) {
+            for (var event : activePresentation.events()) if (event instanceof PublicEvent.PieceMoved move)
+                boardPanel.setLastMove(move.from(), move.to());
+        } else if (model.lastMoveFrom() != null && model.lastMoveTo() != null) {
             boardPanel.setLastMove(model.lastMoveFrom(), model.lastMoveTo());
         }
 
@@ -848,7 +929,7 @@ public final class GamePanel extends ValleyMenuPanel {
         Direction cDir = relativeToCanonical(rel, myColor());
         boolean selectable = model.skillOptions() != null
                 && model.skillOptions().selectableDirections().contains(cDir);
-        button.setEnabled(selectable && !playOverlay.busy());
+        button.setEnabled(selectable && !presentationBusy());
         boolean isSelected = model.skillDraft() != null && model.skillDraft().direction() == cDir;
         button.setSelected(isSelected);
     }
@@ -910,13 +991,18 @@ public final class GamePanel extends ValleyMenuPanel {
 
     private void cancelActionAnimations(boolean preserveReflow) {
         cancelDraws();
-        boardPanel.cancelAnimations();
-        if (!preserveReflow) hand.cancelAnimations();
+        if (!preserveReflow) {
+            boardPanel.cancelAnimations();
+            hand.cancelAnimations();
+        }
         for (CardPanel card : myCardPanels) card.cancelAnimations();
         for (SkillCardPanel card : mySkillPanels) card.cancelAnimations();
     }
 
     private void cancelPresentation() {
+        presentationTimer.stop();
+        presentationQueue.clear();
+        activePresentation = null;
         cancelActionAnimations(false);
         playOverlay.cancel();
         ownBadge.cancelAnimation();
@@ -985,8 +1071,8 @@ public final class GamePanel extends ValleyMenuPanel {
         if (model.isMatchOver() || model.inFlightRequest() != null) {
             return;
         }
-        boolean confirmed = UiKit.confirmDialog(this, "Resign",
-                "Resign this match?", "Yes", UiKit.Pill.DANGER);
+        boolean confirmed = UiKit.confirmDialog(this, "Surrender",
+                "Surrender this match?", "Yes", UiKit.Pill.DANGER);
         // A server update may arrive while the confirmation dialog is open.
         if (confirmed && !model.isMatchOver() && model.inFlightRequest() == null) {
             model.resign();

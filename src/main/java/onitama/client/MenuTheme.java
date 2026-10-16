@@ -2,7 +2,6 @@ package onitama.client;
 
 /** Available local menu scenes, with stable preference keys and bundled media. */
 public enum MenuTheme {
-    VALLEY("Mountain valley", "menu-valley.gif", "cinematic-valley.png"),
     GOLDEN_FIELDS("Golden fields", "menu-battlefield.gif", "battlefield.png");
 
     private final String label;
@@ -23,7 +22,7 @@ public enum MenuTheme {
     public String still() { return still; }
 
     /** Bundled Java Sound track for this scene. */
-    public String music() { return this == GOLDEN_FIELDS ? "/audio/golden-fields.wav" : "/audio/menu-music.wav"; }
+    public String music() { return "/audio/golden-fields.wav"; }
 
     /** Missing or unknown preferences use Golden fields. */
     public static MenuTheme fromPreference(String value) {

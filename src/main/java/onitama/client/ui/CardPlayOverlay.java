@@ -17,6 +17,8 @@ final class CardPlayOverlay extends JComponent {
     private final java.util.function.LongSupplier clock;
     private final ArrayDeque<Play> plays = new ArrayDeque<>();
     private Lift lift;
+    private JComponent pointerCard;
+    private Rectangle pointerBounds;
     private long started;
     private boolean reducedMotion;
     private State state = State.IDLE;
@@ -41,10 +43,15 @@ final class CardPlayOverlay extends JComponent {
         card.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
         var listener = new MouseAdapter() {
             private Point pressed;
+            private boolean deselect;
             @Override public void mousePressed(MouseEvent event) {
                 if (!SwingUtilities.isLeftMouseButton(event) || busy() || !allowed.getAsBoolean()
-                        || selected(card) || DeckDrawOverlay.isMasked(card)) return;
-                if (lift != null && selected(lift.card) && !clickToSelect.getAsBoolean()) return;
+                        || DeckDrawOverlay.isMasked(card)) return;
+                deselect = selected(card);
+                if (deselect) {
+                    pressed = SwingUtilities.convertPoint(card, event.getPoint(), CardPlayOverlay.this);
+                    return;
+                }
                 if (lift != null) finishLift();
                 Rectangle slot = bounds(card);
                 if (slot == null) return;
@@ -55,7 +62,7 @@ final class CardPlayOverlay extends JComponent {
                 repaintScene();
             }
             @Override public void mouseDragged(MouseEvent event) {
-                if (pressed == null || lift == null || lift.card != card || state != State.DRAGGING) return;
+                if (deselect || pressed == null || lift == null || lift.card != card || state != State.DRAGGING) return;
                 Point point = SwingUtilities.convertPoint(card, event.getPoint(), CardPlayOverlay.this);
                 lift.pull = Math.max(0, pressed.y - point.y);
                 lift.position.x = Math.max(0, Math.min(getWidth() - lift.slot.width, lift.slot.x + point.x - pressed.x));
@@ -66,6 +73,17 @@ final class CardPlayOverlay extends JComponent {
             @Override public void mouseReleased(MouseEvent event) {
                 if (!SwingUtilities.isLeftMouseButton(event) || pressed == null) return;
                 Point released = SwingUtilities.convertPoint(card, event.getPoint(), CardPlayOverlay.this);
+                if (deselect) {
+                    boolean tap = pressed.distance(released) <= 6 && card.contains(event.getPoint());
+                    boolean slideDown = released.y - pressed.y >= THRESHOLD;
+                    pressed = null;
+                    deselect = false;
+                    if ((tap || slideDown) && allowed.getAsBoolean()) {
+                        select.run();
+                        if (!selected(card)) returnLift();
+                    }
+                    return;
+                }
                 boolean click = clickToSelect.getAsBoolean() && pressed.distance(released) <= 6
                         && card.contains(event.getPoint());
                 pressed = null;
@@ -126,14 +144,19 @@ final class CardPlayOverlay extends JComponent {
     void returnSelection() { returnLift(); }
 
     void play(String key, BufferedImage face, BufferedImage concealedStart, Rectangle source, PlayedCardArea area) {
+        play(key, face, concealedStart, source, area, null);
+    }
+
+    void play(String key, BufferedImage face, BufferedImage concealedStart, Rectangle source,
+              PlayedCardArea area, String details) {
         if (lift != null && key.equals(lift.key)) source = new Rectangle(lift.position);
         finishLift();
-        if (source == null || face == null) { area.showFace(face); return; }
-        if (reducedMotion) { area.showFace(face); area.arriving(false); return; }
+        if (source == null || face == null) { area.showCard(face, details); return; }
+        if (reducedMotion) { area.showCard(face, details); area.arriving(false); return; }
         if (plays.size() >= 8) { cancel(); }
-        plays.add(new Play(face, concealedStart, source, area));
+        plays.add(new Play(face, concealedStart, source, area, details));
         if (plays.size() == 1) {
-            area.showFace(face); area.arriving(true);
+            area.showCard(face, details); area.arriving(true);
             started = clock.getAsLong(); state = State.PLAYING;
         }
         timer.start(); stateChanged.run(); repaintScene();
@@ -141,14 +164,15 @@ final class CardPlayOverlay extends JComponent {
 
     void setReducedMotion(boolean value) {
         reducedMotion = value;
-        if (value && busy()) { for (Play play : plays) { play.area.showFace(play.face); play.area.arriving(false); } plays.clear(); }
+        if (value && busy()) { for (Play play : plays) { play.area.showCard(play.face, play.details); play.area.arriving(false); } plays.clear(); }
         if (value && state == State.RETURNING) finishLift();
         if (value) { timer.stop(); if (state == State.PLAYING) state = State.IDLE; }
     }
 
     void cancel() {
+        pointerCard = null; pointerBounds = null;
         timer.stop(); finishLift();
-        for (Play play : plays) { play.area.showFace(play.face); play.area.arriving(false); }
+        for (Play play : plays) { play.area.showCard(play.face, play.details); play.area.arriving(false); }
         plays.clear(); state = State.IDLE; repaintScene();
     }
 
@@ -167,10 +191,10 @@ final class CardPlayOverlay extends JComponent {
             if (p >= 1) { finishLift(); stateChanged.run(); }
         } else if (busy() && elapsed >= 540) {
             Play completed = plays.remove();
-            completed.area.showFace(completed.face); completed.area.arriving(false);
+            completed.area.showCard(completed.face, completed.details); completed.area.arriving(false);
             if (!plays.isEmpty()) {
                 Play next = plays.peek();
-                next.area.showFace(next.face); next.area.arriving(true);
+                next.area.showCard(next.face, next.details); next.area.arriving(true);
             }
             started = clock.getAsLong();
             if (plays.isEmpty()) { timer.stop(); state = State.IDLE; stateChanged.run(); }
@@ -178,7 +202,34 @@ final class CardPlayOverlay extends JComponent {
         repaintScene();
     }
 
-    @Override public boolean contains(int x, int y) { return busy(); }
+    @Override public boolean contains(int x, int y) {
+        return busy() || lift != null && state == State.CARD_SELECTED && lift.position.contains(x, y);
+    }
+
+    // Raised cards are painted copies. Forward input to the live card so its
+    // targeting callback and detail popup remain usable at the visible position.
+    @Override protected void processMouseEvent(MouseEvent event) {
+        if (busy()) return;
+        if (event.getID() == MouseEvent.MOUSE_PRESSED && lift != null
+                && state == State.CARD_SELECTED && lift.position.contains(event.getPoint())) {
+            pointerCard = lift.card;
+            pointerBounds = new Rectangle(lift.position);
+        }
+        forwardPointer(event);
+        if (event.getID() == MouseEvent.MOUSE_RELEASED) { pointerCard = null; pointerBounds = null; }
+    }
+
+    @Override protected void processMouseMotionEvent(MouseEvent event) { forwardPointer(event); }
+
+    private void forwardPointer(MouseEvent event) {
+        JComponent target = pointerCard != null ? pointerCard
+                : lift != null && state == State.CARD_SELECTED ? lift.card : null;
+        Rectangle position = pointerCard != null ? pointerBounds : lift != null ? lift.position : null;
+        if (target == null || position == null || busy()) return;
+        target.dispatchEvent(new MouseEvent(target, event.getID(), event.getWhen(), event.getModifiersEx(),
+                event.getX() - position.x, event.getY() - position.y,
+                event.getClickCount(), event.isPopupTrigger(), event.getButton()));
+    }
     @Override public void removeNotify() { cancel(); super.removeNotify(); }
 
     @Override protected void paintComponent(Graphics graphics) {
@@ -218,5 +269,5 @@ final class CardPlayOverlay extends JComponent {
             this.card = card; this.key = key; this.face = face; this.slot = slot; this.position = position;
         }
     }
-    private record Play(BufferedImage face, BufferedImage back, Rectangle source, PlayedCardArea area) { }
+    private record Play(BufferedImage face, BufferedImage back, Rectangle source, PlayedCardArea area, String details) { }
 }

@@ -10,6 +10,15 @@ final class MatchStyle {
     static final Color GOLD = new Color(255, 211, 133);
     private MatchStyle() { }
 
+    /** Quiet parchment and a thin brass keyline, shared by the match-side documents. */
+    static void parchment(Graphics2D g, int width, int height) {
+        g.setColor(new Color(16, 10, 5, 90)); g.fillRoundRect(3, 4, width - 3, height - 4, 5, 5);
+        g.setPaint(new GradientPaint(0, 0, new Color(242, 230, 199), width, height, new Color(225, 208, 167)));
+        g.fillRoundRect(0, 0, width - 3, height - 4, 5, 5);
+        g.setColor(new Color(138, 106, 58)); g.drawRoundRect(0, 0, width - 4, height - 5, 5, 5);
+        g.setColor(new Color(255, 247, 222, 160)); g.drawRect(4, 4, width - 12, height - 13);
+    }
+
     static JLabel label(String text, float size) {
         return new JLabel(text) {
             { setFont(Theme.normal(size)); setForeground(TEXT); setOpaque(false); }

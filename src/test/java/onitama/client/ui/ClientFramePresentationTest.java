@@ -12,6 +12,35 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /** Regression coverage for migrated menu actions and current-rule help. */
 class ClientFramePresentationTest {
+    private javax.swing.JButton surrender(java.awt.Container parent) {
+        for (var child : parent.getComponents()) {
+            if (child instanceof javax.swing.JButton button && button.getText().equals("SURRENDER")) return button;
+            if (child instanceof java.awt.Container container) {
+                var found = surrender(container);
+                if (found != null) return found;
+            }
+        }
+        return null;
+    }
+
+    @Test void windowHasNoMenuStripAndMusicFloatsOverTheScene() throws Exception {
+        SwingUtilities.invokeAndWait(() -> {
+            var frame = new ClientFrame(null, null);
+            try {
+                frame.setVisible(true); frame.validate();
+                assertNull(frame.getJMenuBar());
+                var scene = (javax.swing.JLayeredPane) frame.getContentPane().getComponent(0);
+                var content = scene.getComponentsInLayer(javax.swing.JLayeredPane.DEFAULT_LAYER)[0];
+                assertEquals(new java.awt.Rectangle(0, 0, scene.getWidth(), scene.getHeight()), content.getBounds());
+                var sound = (javax.swing.JToggleButton) scene.getComponentsInLayer(javax.swing.JLayeredPane.PALETTE_LAYER)[0];
+                assertEquals("menuMusicToggle", sound.getName());
+                assertFalse(sound.isOpaque()); assertFalse(sound.isContentAreaFilled());
+                assertTrue(sound.getY() >= 0 && sound.getX() + sound.getWidth() <= scene.getWidth());
+                assertTrue(sound.getToolTipText().startsWith("Menu music:"));
+            } finally { frame.dispose(); }
+        });
+    }
+
     @Test void resignUsesLiveViewAndRejectsDuplicateOrFinishedRequests() throws Exception {
         SwingUtilities.invokeAndWait(() -> {
             var model = new ClientModel(new ServerConnection() {
@@ -19,16 +48,17 @@ class ClientFramePresentationTest {
                 public boolean isConnected() { return true; }
                 public void ensureConnected(String host, int port) { }
             });
-            assertFalse(ClientFrame.canMenuResign(model));
+            var panel = new GamePanel(model);
+            assertFalse(surrender(panel).isEnabled());
             var game = RulesEngine.newGame(RulesConfigLoader.load(null), 42);
             model.handleMatchSync(new MatchSync("menu", "ROOM", RulesEngine.viewFor(game, PlayerColor.BLUE), false, 1));
-            assertTrue(ClientFrame.canMenuResign(model));
+            assertTrue(surrender(panel).isEnabled());
             model.resign();
             assertNotNull(model.inFlightRequest());
-            assertFalse(ClientFrame.canMenuResign(model));
+            assertFalse(surrender(panel).isEnabled());
             var result = (ActionResult.Accepted) RulesEngine.apply(game, PlayerColor.BLUE, new GameAction.Resign());
             model.handleMatchSync(new MatchSync("menu", "ROOM", RulesEngine.viewFor(result.nextState(), PlayerColor.BLUE), false, 2));
-            assertFalse(ClientFrame.canMenuResign(model));
+            assertFalse(surrender(panel).isEnabled());
         });
     }
 
@@ -39,11 +69,12 @@ class ClientFramePresentationTest {
                 public boolean isConnected() { return true; }
                 public void ensureConnected(String host, int port) { }
             });
+            var panel = new GamePanel(model);
             var choice = DeckPresentationFixtures.skill("foresight", PlayerColor.BLUE, 18);
             var view = choice.after(PlayerColor.BLUE);
             assertEquals(TurnPhase.CHOICE, view.phase());
             model.handleMatchSync(new MatchSync("choice", "ROOM", view, true, 1));
-            assertTrue(ClientFrame.canMenuResign(model));
+            assertTrue(surrender(panel).isEnabled());
         });
     }
 

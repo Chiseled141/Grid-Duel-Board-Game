@@ -180,10 +180,10 @@ class PracticeBotTest {
 
     @Test
     void botGamesAreLegalAndAlwaysFinish() {
-        for (long seed = 1; seed <= 8; seed++) {
+        for (long seed = 1; seed <= 12; seed++) {
             GameState state = RulesEngine.newGame(rules, seed);
             Random random = new Random(seed * 31 + 7);
-            Difficulty difficulty = (seed % 2 == 0) ? Difficulty.SENIOR : Difficulty.ROOKIE;
+            Difficulty difficulty = Difficulty.values()[(int) (seed % Difficulty.values().length)];
 
             int safetyLimit = 300;
             while (state.outcome() == null && safetyLimit-- > 0) {

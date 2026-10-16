@@ -38,13 +38,13 @@ public final class DeckDrawOverlay extends JComponent {
         /** Own skill or public movement: starts face down, reveals near the destination. */
         public static Flight reveal(String key, BufferedImage back, BufferedImage permittedFace,
                                     Supplier<Rectangle> source, Supplier<Rectangle> destination, int delayMs) {
-            return new Flight(key, back, Objects.requireNonNull(permittedFace), source, destination, delayMs, 420);
+            return new Flight(key, back, Objects.requireNonNull(permittedFace), source, destination, delayMs, 600);
         }
 
         /** Opponent skill: accepts only the shared back, never an identity or face image. */
         public static Flight concealed(String key, BufferedImage back,
                                        Supplier<Rectangle> source, Supplier<Rectangle> destination, int delayMs) {
-            return new Flight(key, back, null, source, destination, delayMs, 420);
+            return new Flight(key, back, null, source, destination, delayMs, 600);
         }
     }
 
@@ -157,7 +157,7 @@ public final class DeckDrawOverlay extends JComponent {
     }
 
     private void paintFlight(Graphics2D original, Flight flight, Rectangle from, Rectangle to, double p) {
-        double eased = 1 - Math.pow(1 - p, 3);
+        double eased = p * p * (3 - 2 * p);
         double distance = Math.hypot(to.getCenterX() - from.getCenterX(), to.getCenterY() - from.getCenterY());
         double arc = Math.min(56, distance * .12) * Math.sin(Math.PI * p);
         double x = mix(from.getCenterX(), to.getCenterX(), eased);

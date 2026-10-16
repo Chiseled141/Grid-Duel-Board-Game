@@ -374,4 +374,34 @@ class ClientModelTest {
         assertEquals(advanced, model.currentSync());
     }
 
+    @Test void practiceBotCommitsASkillAndPublishesItWithoutNetworkActions() throws Exception {
+        javax.swing.SwingUtilities.invokeAndWait(() -> {
+            long seed = 0;
+            for (; seed < 1000; seed++) {
+                var game = RulesEngine.newGame(rules, seed);
+                if (game.turn() != PlayerColor.RED) continue;
+                var view = RulesEngine.viewFor(game, PlayerColor.RED);
+                if (view.ownSkillHand().stream().anyMatch(c -> c.definitionId().equals("mana-surge"))) break;
+            }
+            assertTrue(seed < 1000);
+            var committed = new ArrayList<onitama.core.duel.PublicEvent.SkillCommitted>();
+            model.addListener(new ClientModelListener() {
+                @Override public void onAcceptedPresentation(PlayerView before, PlayerView after,
+                        List<onitama.core.duel.PublicEvent> events) {
+                    for (var event : events) if (event instanceof onitama.core.duel.PublicEvent.SkillCommitted skill)
+                        committed.add(skill);
+                }
+            });
+            model.startPracticeMatch(onitama.core.Difficulty.SENIOR, seed);
+            try {
+                for (int step = 0; step < 5 && model.view().turn() == PlayerColor.RED; step++) model.stepBot();
+                assertEquals(1, committed.size());
+                assertEquals(PlayerColor.RED, committed.get(0).actor());
+                assertTrue(model.view().spentSkills().contains(committed.get(0).skill()));
+                assertEquals(PlayerColor.BLUE, model.view().turn());
+                assertTrue(connection.sent.isEmpty());
+            } finally { model.leaveToLobby(); }
+        });
+    }
+
 }

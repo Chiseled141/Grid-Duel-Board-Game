@@ -34,7 +34,6 @@ public final class SkillCardPanel extends JComponent {
 
     private boolean selected;
     private boolean affordable;
-    private boolean phaseActive;
     private boolean hovered;
     private float hoverProgress;
     private Timer hoverTimer;
@@ -57,20 +56,20 @@ public final class SkillCardPanel extends JComponent {
 
         int cost = definition != null ? definition.manaCost() : 0;
         this.affordable = availableMana >= cost;
-        this.phaseActive = isMyTurn && currentPhase == TurnPhase.SKILL;
 
         setPreferredSize(new Dimension(W, H));
         setMinimumSize(new Dimension(W, H));
         setOpaque(false);
 
         updateTooltip();
+        CardDetails.bind(this);
 
-        if (onClick != null) {
+        {
             setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
             addMouseListener(new MouseAdapter() {
                 @Override
                 public void mousePressed(MouseEvent e) {
-                    onClick.run();
+                    if (onClick != null) onClick.run();
                 }
 
                 @Override
@@ -120,7 +119,6 @@ public final class SkillCardPanel extends JComponent {
     public void updateState(int availableMana, TurnPhase currentPhase, boolean isMyTurn, boolean selected) {
         int cost = definition != null ? definition.manaCost() : 0;
         this.affordable = availableMana >= cost;
-        this.phaseActive = isMyTurn && currentPhase == TurnPhase.SKILL;
         this.selected = selected;
         updateTooltip();
         repaint();
@@ -129,17 +127,19 @@ public final class SkillCardPanel extends JComponent {
     private void updateTooltip() {
         if (definition == null) {
             setToolTipText("Unknown Skill: " + instance.definitionId());
+            javax.swing.ToolTipManager.sharedInstance().unregisterComponent(this);
             return;
         }
         String renderedText = SkillText.render(definition);
         String category = definition.category() != null ? definition.category().name() : "SKILL";
         String html = "<html><body style='width: 220px; padding: 4px;'>"
                 + "<b>" + escapeHtml(definition.name()) + "</b> "
-                + "<span style='color: #60a5fa;'>[" + definition.manaCost() + " Mana]</span><br>"
-                + "<i style='color: #aaa;'>" + escapeHtml(category) + "</i><br><br>"
+                + "<span style='color: #76532e;'>[" + definition.manaCost() + " Mana]</span><br>"
+                + "<i style='color: #76532e;'>" + escapeHtml(category) + "</i><br><br>"
                 + escapeHtml(renderedText)
                 + "</body></html>";
         setToolTipText(html);
+        javax.swing.ToolTipManager.sharedInstance().unregisterComponent(this);
     }
 
     private static String escapeHtml(String text) {
@@ -179,75 +179,19 @@ public final class SkillCardPanel extends JComponent {
         int x = 5, y = 8 - lift, w = getWidth() - 12, h = getHeight() - 16;
         g.setColor(new Color(0, 0, 0, 80));
         g.fillRoundRect(x + 3, y + 4, w, h, 9, 9);
-        g.setColor(new Color(237, 222, 183));
-        g.fillRoundRect(x, y, w, h, 8, 8);
-        g.setColor(selected ? Theme.AMBER : hovered ? new Color(186, 141, 62) : Theme.INK);
-        g.setStroke(new BasicStroke(selected ? 3f : 2f));
-        g.drawRoundRect(x, y, w, h, 8, 8);
-        if (definition == null) { g.dispose(); return; }
-
-        // Use the illustration region only; printed draft costs/rules are never authoritative.
-        String artPath = definition.artworkPath();
-        if (artPath.startsWith("assets/")) artPath = artPath.substring(7);
-        Image face = AssetStore.optional(artPath);
-        int artH = Math.max(50, (int) (h * .34));
-        if (face != null) {
-            int iw = face.getWidth(null), ih = face.getHeight(null);
-            g.drawImage(face, x + 5, y + 5, x + w - 5, y + artH,
-                    (int) (iw * .04), (int) (ih * .20), (int) (iw * .96), (int) (ih * .50), null);
+        if (definition != null) {
+            g.drawImage(CardArt.skillFace(definition), x, y, w, h, null);
+            if (selected || hovered) {
+                g.setColor(selected ? Theme.AMBER : CardArt.categoryColor(definition.category()));
+                g.setStroke(new BasicStroke(selected ? 3f : 2f));
+                g.drawRoundRect(x, y, w, h, 8, 8);
+            }
+            if (!affordable) {
+                g.setColor(new Color(48, 34, 24, 45));
+                g.fillRoundRect(x, y, w, h, 8, 8);
+            }
         }
-        int titleY = y + artH;
-        g.setColor(new Color(42, 43, 35));
-        g.fillRect(x + 4, titleY, w - 8, 26);
-        g.setColor(Theme.CREAM);
-        float size = getWidth() >= 210 ? 15f : 12f;
-        do { g.setFont(Theme.display(size)); size -= .5f; }
-        while (g.getFontMetrics().stringWidth(definition.name().toUpperCase()) > w - 18 && size > 8);
-        g.drawString(definition.name().toUpperCase(), x + 9, titleY + 17);
-
-        // Opaque live-cost badge stays readable even out of phase.
-        g.setColor(affordable ? new Color(34, 75, 90) : new Color(125, 58, 46));
-        g.fillOval(x + 9, y + 9, 30, 30);
-        g.setColor(Theme.CREAM);
-        g.setStroke(new BasicStroke(1.5f));
-        g.drawOval(x + 9, y + 9, 30, 30);
-        g.setFont(Theme.display(16f));
-        String cost = Integer.toString(definition.manaCost());
-        g.drawString(cost, x + 24 - g.getFontMetrics().stringWidth(cost) / 2, y + 30);
-
-        g.setColor(new Color(92, 68, 39));
-        g.setFont(Theme.display(9f));
-        g.drawString(definition.category().name() + " · SKILL", x + 9, titleY + 39);
-        if (phaseActive && affordable) {
-            g.setColor(new Color(34, 75, 90));
-            g.fillOval(x + w - 15, titleY + 32, 5, 5);
-        }
-        g.setColor(Theme.INK);
-        g.setFont(Theme.normal(getWidth() >= 210 ? 13f : 11f));
-        drawWrappedText(g, SkillText.render(definition), x + 9, titleY + 53, w - 18,
-                Math.max(2, (y + h - titleY - 58) / (g.getFontMetrics().getHeight()) + 1));
         g.dispose();
     }
 
-    private void drawWrappedText(Graphics2D g, String text, int x, int y, int width, int maxLines) {
-        java.util.List<String> lines = new java.util.ArrayList<>();
-        String line = "";
-        for (String word : text.split(" ")) {
-            String next = line.isEmpty() ? word : line + " " + word;
-            if (!line.isEmpty() && g.getFontMetrics().stringWidth(next) > width) {
-                lines.add(line);
-                line = word;
-            } else line = next;
-        }
-        if (!line.isEmpty()) lines.add(line);
-        for (int i = 0; i < Math.min(maxLines, lines.size()); i++) {
-            String value = lines.get(i);
-            if (i == maxLines - 1 && lines.size() > maxLines) {
-                while (!value.isEmpty() && g.getFontMetrics().stringWidth(value + "…") > width)
-                    value = value.substring(0, value.length() - 1);
-                value += "…";
-            }
-            g.drawString(value, x, y + i * g.getFontMetrics().getHeight());
-        }
-    }
 }

@@ -189,6 +189,7 @@ public final class ClientModel {
     }
 
     public void requestLeaderboard() {
+        setScreen(Screen.LEADERBOARD);
         connection.send(new LeaderboardRequest());
     }
 

@@ -56,6 +56,8 @@ public final class UiKit {
     public enum Pill {
         /** Gold fill, ink text — the primary action. */
         GOLD(Theme.AMBER, Theme.INK, Theme.INK, false),
+        /** Warm parchment, brass border and dark lettering for help on the campaign table. */
+        PARCHMENT(new Color(237, 222, 186), new Color(143, 107, 54), Theme.INK, false),
         /** Deep jade fill, gold border and text — secondary action on dark. */
         GOLD_OUTLINE(Theme.BG, Theme.AMBER, Theme.AMBER, true),
         /** Jade fill, mint border and ivory text — neutral action on dark. */
@@ -509,81 +511,6 @@ public final class UiKit {
         g.setColor(Theme.INK);
         g.setStroke(new java.awt.BasicStroke(1.5f));
         g.drawPolygon(x, y, total);
-    }
-
-    /**
-     * Draws a stylized martial-arts figurine — Onitama's pieces are dojo
-     * pawns, so each piece is a robed figure: a flowing robe for the body,
-     * a small head, a gold sash, and for the Master a wide kasa hat with the
-     * gold starburst crest. Students are the same figure, smaller and
-     * bare-headed. Centered at {@code cx}, standing on {@code baseY}.
-     */
-    public static void drawFigurine(Graphics2D g0, int cx, int baseY, int height,
-                                    Color fill, boolean master) {
-        Graphics2D g = (Graphics2D) g0.create();
-        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-        Color shade = fill.darker();
-        int robeW = Math.max(12, (int) (height * 0.72));
-        int bodyH = Math.max(10, (int) (height * 0.62));
-        int shoulderW = Math.max(8, (int) (height * 0.34));
-        int headR = Math.max(4, (int) (height * (master ? 0.15 : 0.17)));
-        int headCy = baseY - height + headR;
-        int sashY = baseY - (int) (bodyH * 0.38);
-
-        // Robe: flares from the shoulders down to the base.
-        var robe = new java.awt.geom.Path2D.Double();
-        robe.moveTo(cx - shoulderW / 2.0, baseY - bodyH);
-        robe.quadTo(cx - robeW / 2.0, baseY - bodyH * 0.55, cx - robeW / 2.0, baseY);
-        robe.lineTo(cx + robeW / 2.0, baseY);
-        robe.quadTo(cx + robeW / 2.0, baseY - bodyH * 0.55, cx + shoulderW / 2.0, baseY - bodyH);
-        robe.closePath();
-        g.setColor(fill);
-        g.fill(robe);
-        g.setColor(Theme.INK);
-        g.setStroke(new java.awt.BasicStroke(2f));
-        g.draw(robe);
-
-        // Gold sash.
-        g.setColor(Theme.AMBER);
-        g.setStroke(new java.awt.BasicStroke(Math.max(3f, height * 0.06f)));
-        g.draw(new java.awt.geom.Line2D.Double(cx - robeW / 2.0 + 2, sashY,
-                cx + robeW / 2.0 - 2, sashY));
-
-        // Plinth under the robe (stronger for the Master).
-        int plinthW = master ? robeW + 8 : robeW + 2;
-        g.setColor(shade);
-        g.fillRoundRect(cx - plinthW / 2, baseY - 3, plinthW, 6, 4, 4);
-        g.setColor(Theme.INK);
-        g.drawRoundRect(cx - plinthW / 2, baseY - 3, plinthW, 6, 4, 4);
-
-        // Head with a simple ink headband; a small cream highlight gives the
-        // painted-lacquer feel so the piece doesn't read as a flat blob.
-        g.setColor(fill);
-        g.fillOval(cx - headR, headCy - headR, 2 * headR, 2 * headR);
-        g.setColor(Theme.INK);
-        g.drawOval(cx - headR, headCy - headR, 2 * headR, 2 * headR);
-        g.setStroke(new java.awt.BasicStroke(2f));
-        g.drawLine(cx - headR, headCy - headR / 2 + 1, cx + headR, headCy - headR / 2 + 1);
-        g.setColor(Theme.blend(fill, Theme.CREAM));
-        int hiW = headR;
-        int hiH = headR / 2;
-        g.fillOval(cx - headR / 2, headCy - headR / 2 - 1, hiW, hiH);
-
-        // The Master is taller and keeps a restrained topknot plus a thin
-        // ceremonial halo ring — authority without fantasy costume.
-        if (master) {
-            int knotR = Math.max(3, headR / 2);
-            int knotCy = headCy - headR - knotR * 3 / 4;
-            g.setColor(shade);
-            g.fillOval(cx - knotR / 2, knotCy - knotR, knotR, 2 * knotR);
-            g.setColor(Theme.INK);
-            g.drawOval(cx - knotR / 2, knotCy - knotR, knotR, 2 * knotR);
-            g.setColor(Theme.AMBER);
-            g.setStroke(new java.awt.BasicStroke(2f));
-            g.drawOval(cx - headR - 3, headCy - headR - 3,
-                    2 * headR + 6, 2 * headR + 6);
-        }
-        g.dispose();
     }
 
     // ------------------------------------------------------------------

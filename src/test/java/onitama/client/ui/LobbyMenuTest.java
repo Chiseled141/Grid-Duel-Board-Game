@@ -15,7 +15,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class LobbyMenuTest {
     private record Ui(ClientModel model, ClientSettings settings, LobbyPanel panel,
-                      List<Message> sent, AtomicInteger saved, AtomicInteger quit) { }
+                      List<Message> sent, AtomicInteger saved, AtomicInteger quit, AtomicInteger help, AtomicInteger about) { }
 
     private Ui ui() {
         List<Message> sent = new ArrayList<>();
@@ -27,12 +27,15 @@ class LobbyMenuTest {
         var settings = new ClientSettings();
         var saved = new AtomicInteger();
         var quit = new AtomicInteger();
-        var panel = new LobbyPanel(model, settings, () -> { }, quit::incrementAndGet, saved::incrementAndGet);
+        var help = new AtomicInteger();
+        var about = new AtomicInteger();
+        var panel = new LobbyPanel(model, settings, () -> { }, quit::incrementAndGet, saved::incrementAndGet,
+                help::incrementAndGet, about::incrementAndGet);
         model.handleMessage(new LoginResponse(true, null, new UserProfile("alice", 1000, 0, 0), null));
         sent.clear();
         panel.setSize(1280, 660);
         layout(panel);
-        return new Ui(model, settings, panel, sent, saved, quit);
+        return new Ui(model, settings, panel, sent, saved, quit, help, about);
     }
 
     private void layout(Container parent) {
@@ -57,14 +60,24 @@ class LobbyMenuTest {
         SwingUtilities.invokeAndWait(() -> {
             var ui = ui();
             var texts = find(ui.panel, JButton.class).stream().filter(Component::isVisible).map(JButton::getText).toList();
-            assertEquals(List.of("Play", "Settings", "Quit game", "Change theme", "Leaderboard"), texts);
+            assertEquals(List.of("Play", "Settings", "Quit game", "Leaderboard", "How to Play", "About"), texts);
             JPanel surface = find(ui.panel, JPanel.class).stream().filter(p -> "mainMenuSurface".equals(p.getName())).findFirst().orElseThrow();
             assertTrue(surface.getWidth() <= 340);
-            assertTrue(surface.getHeight() < 390);
+            assertTrue(surface.getHeight() < 450);
             assertTrue(surface.getX() > ui.panel.getWidth() / 2);
             var profile = find(ui.panel, JLabel.class).stream().filter(l -> l.getText().startsWith("alice")).findFirst().orElseThrow();
+            assertEquals("alice", profile.getText());
+            assertTrue(profile.getFont().getSize2D() >= 20, "account name is more prominent than the small links");
+            var profilePoint = SwingUtilities.convertPoint(profile, 0, 0, ui.panel);
+            var quitPoint = SwingUtilities.convertPoint(button(ui, "Quit game"), 0, 0, ui.panel);
+            var leaderboardPoint = SwingUtilities.convertPoint(button(ui, "Leaderboard"), 0, 0, ui.panel);
+            assertTrue(profilePoint.y > quitPoint.y + button(ui, "Quit game").getHeight());
+            assertTrue(profilePoint.y + profile.getHeight() <= leaderboardPoint.y);
             assertTrue(profile.getHeight() >= profile.getFontMetrics(profile.getFont()).getHeight(),
                     "the compact account caption must not be clipped");
+            button(ui, "How to Play").doClick();
+            button(ui, "About").doClick();
+            assertEquals(1, ui.help.get()); assertEquals(1, ui.about.get());
             button(ui, "Quit game").doClick();
             assertEquals(1, ui.quit.get());
             assertTrue(ui.sent.isEmpty());
@@ -107,14 +120,14 @@ class LobbyMenuTest {
     @Test void settingsAreHiddenAtHomeAndChoosingStylePersistsOnce() throws Exception {
         SwingUtilities.invokeAndWait(() -> {
             var ui = ui();
-            assertTrue(find(ui.panel, JButton.class).stream().noneMatch(b -> b.getText().equals("Seal stones")));
+            assertTrue(find(ui.panel, JButton.class).stream().noneMatch(b -> b.getText().equals("Heraldic shields")));
             button(ui, "Settings").doClick();
-            button(ui, "Seal stones").doClick();
+            button(ui, "Heraldic shields").doClick();
             try {
                 assertEquals(2, ui.settings.pieceStyle());
                 assertEquals(1, ui.saved.get());
-                assertTrue(button(ui, "Seal stones").isSelected());
-                assertFalse(button(ui, "Ink tokens").isSelected());
+                assertTrue(button(ui, "Heraldic shields").isSelected());
+                assertFalse(button(ui, "Steel helms").isSelected());
                 assertTrue(ui.sent.isEmpty());
                 button(ui, "‹ Back").doClick();
                 assertNotNull(button(ui, "Play"));
@@ -143,21 +156,28 @@ class LobbyMenuTest {
         });
     }
 
-    @Test void themePickerChangesTheSceneAndSavesWithoutNetworkTraffic() throws Exception {
+    @Test void reducedMotionRemainsAvailableWithoutTheGameMenu() throws Exception {
+        SwingUtilities.invokeAndWait(() -> {
+            var ui = ui(); button(ui, "Settings").doClick();
+            button(ui, "Reduced motion: Off").doClick();
+            assertTrue(ui.settings.reducedMotion()); assertTrue(ui.model.reducedMotion());
+            button(ui, "Reduced motion: On").doClick();
+            assertFalse(ui.settings.reducedMotion()); assertFalse(ui.model.reducedMotion());
+            assertEquals(2, ui.saved.get()); assertTrue(ui.sent.isEmpty());
+            layout(ui.panel);
+            for (var button : find(ui.panel, JButton.class)) {
+                var point = SwingUtilities.convertPoint(button, 0, 0, ui.panel);
+                assertTrue(point.y >= 0 && point.y + button.getHeight() <= ui.panel.getHeight());
+            }
+        });
+    }
+
+    @Test void retiredThemeCannotBeSelectedFromTheMenu() throws Exception {
         SwingUtilities.invokeAndWait(() -> {
             var ui = ui();
-            button(ui, "Change theme").doClick();
-            assertTrue(button(ui, "Golden fields").isSelected());
-            button(ui, "Golden fields").doClick();
-            assertEquals(MenuTheme.GOLDEN_FIELDS, ui.settings.menuTheme());
-            assertTrue(button(ui, "Golden fields").isSelected());
-            assertFalse(button(ui, "Mountain valley").isSelected());
-            assertEquals(1, ui.saved.get());
-            button(ui, "Mountain valley").doClick();
-            assertEquals(MenuTheme.VALLEY, ui.settings.menuTheme());
-            assertEquals(2, ui.saved.get());
-            button(ui, "‹ Back").doClick();
-            assertNotNull(button(ui, "Play"));
+            assertTrue(find(ui.panel, JButton.class).stream().noneMatch(button ->
+                    List.of("Change theme", "Mountain valley").contains(button.getText())));
+            assertEquals(List.of(MenuTheme.GOLDEN_FIELDS), List.of(MenuTheme.values()));
             assertTrue(ui.sent.isEmpty());
         });
     }

@@ -15,7 +15,7 @@ public final class RenderBattlefieldLoop {
         plate = ImageIO.read(assets.resolve("battlefield-animation/clean-plate.png").toFile());
         extractFlowers();
         flag = ImageIO.read(assets.resolve("battlefield-animation/flag.png").toFile());
-        cloud = ImageIO.read(assets.resolve("valley-animation/cloud.png").toFile());
+        cloud = ImageIO.read(assets.resolve("battlefield-animation/cloud.png").toFile());
     }
 
     /** Writes 400 PNG frames into the supplied directory, for offline GIF/MP4 encoding. */
@@ -42,11 +42,6 @@ public final class RenderBattlefieldLoop {
             rotor(g, 1380, 521, 78, cycle + .5);
             rotor(g, 1103, 525, 33, -cycle + .7);
             wavingFlag(g, 218, 48, 620, 510, cycle, 0);
-            wavingFlag(g, 27, 230, 52, 140, cycle, .7);
-            wavingFlag(g, 77, 270, 38, 95, cycle, 1.4);
-            wavingFlag(g, 143, 313, 68, 160, cycle, 2.1);
-            wavingFlag(g, 264, 362, 60, 120, cycle, 1.2);
-            wavingFlag(g, 346, 392, 55, 115, cycle, 2.8);
             wavingFlag(g, 772, 552, 35, 60, cycle, 1.6);
             wavingFlag(g, 1225, 614, 29, 48, cycle, 2.4);
             wavingFlag(g, 1548, 514, 85, 202, cycle, .9);

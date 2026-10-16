@@ -54,7 +54,7 @@ class ForesightDialogTest {
                 assertTrue(dialog.isDisplayable(), "submission must wait for the server outcome");
                 dialog.setActionsEnabled(false, true);
                 assertFalse(button(dialog, "Confirm Deck Order").isEnabled());
-                button(dialog, "Resign").doClick();
+                button(dialog, "Surrender").doClick();
                 assertTrue(resigned.get(), "paused choices must still allow resignation");
             } finally {
                 dialog.dispose();
@@ -99,11 +99,11 @@ class ForesightDialogTest {
                 assertTrue(hasVisibleChoice(frame[0]));
                 model.resolveForesight(choice.view().ownChoice().preview().stream()
                         .map(CardInstance::instanceId).toList());
-                assertFalse(button(frame[0], "Resign").isEnabled(), "one in-flight action gates resignation");
+                assertFalse(button(frame[0], "Surrender").isEnabled(), "one in-flight action gates resignation");
                 model.handleActionReply(new ActionReply("choice", 1,
                         new ActionReceipt(false, choice.view().revision(), ActionError.INVALID_CHOICE),
                         new MatchSync("choice", "ROOM", choice.view(), false, 2)));
-                assertTrue(button(frame[0], "Resign").isEnabled(), "a rejection must restore resignation");
+                assertTrue(button(frame[0], "Surrender").isEnabled(), "a rejection must restore resignation");
                 model.handleGameUpdate(new GameUpdate(ended, terminal.events()));
             });
             SwingUtilities.invokeAndWait(() -> {

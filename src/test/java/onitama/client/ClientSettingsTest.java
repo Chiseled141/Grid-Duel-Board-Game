@@ -38,10 +38,9 @@ class ClientSettingsTest {
         assertEquals(4321, restored.port());
         assertEquals(3, restored.pieceStyle());
         assertTrue(restored.reducedMotion());
-        settings.setMenuTheme(MenuTheme.VALLEY);
-        settings.save(file);
-        assertEquals(MenuTheme.VALLEY, ClientSettings.load(file).menuTheme(),
-                "an explicit valley choice must survive the default change");
+        Files.writeString(file, "menuTheme=VALLEY\n");
+        assertEquals(MenuTheme.GOLDEN_FIELDS, ClientSettings.load(file).menuTheme(),
+                "a retired East Asian theme preference migrates to the remaining battlefield");
     }
 
     @Test void oldMissingUnknownOrNullThemeFallsBackToGoldenFields() throws Exception {
