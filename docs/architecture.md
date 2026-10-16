@@ -93,7 +93,11 @@ the tooltip.
 Accepted event batches are delivered separately from ordinary snapshot/selection
 refreshes. `ClientModel` filters stale, wrong-match and duplicate batches before
 history and animation; equal-revision events after a reply are still deliverable.
-The left rail groups turn actions below a scrollable card inspector. Hovering an
+The left rail defaults to a scrollable Played cards timeline above turn actions.
+It records only accepted MovementPlayed/SkillCommitted public events, with artwork,
+actor and turn, newest first. Local history survives same-match reconnect and resets
+for a fresh match; missed plays are not reconstructed from hidden hands. The Card
+details tab retains the scrollable inspector. Hovering an
 own card or public opponent movement card previews it without changing selection
 or sending actions. The last preview stays available for scrolling until the next
 hover or selection; changing selection restores the selected own card. Full descriptions and
@@ -177,3 +181,75 @@ bleaching the background. The previous `menu-background.png` is retained as sour
 The board is drawn directly in Swing as ivory/jade ceramic tiles inside a
 lacquered jade frame with brass inlay. Decorative brackets stay outside the
 7×7 playable grid; board geometry, rotation, hit testing and targeting are unchanged.
+
+## In-match chat
+
+ChatRequest/ChatMessage extend the version-2 wire allowlist. ClientHandler routes
+requests to MatchSession's executor, which checks current membership, match ID,
+live/unpaused status, text bounds and a per-player 500 ms cooldown before echoing
+the authenticated username and text to both players. No gameplay state or action
+sequence changes. ClientModel retains at most 200 messages for the current match
+and notifies ChatPanel through onChatChanged on the EDT. The right sidebar uses
+plain-text Swing components; Enter/Send queues through the existing connection.
+Same-match reconnect keeps local history; new matches clear it. There is no chat
+persistence or missed-message replay. Practice chat is disabled.
+
+Chat now uses a rounded jade conversation surface, a live/practice/offline status,
+plain-text message bubbles distinguished by sender, and an ivory message composer.
+Blank/invalid messages disable Send; Enter and server validation remain unchanged.
+
+## Animated valley menu
+
+Login and lobby inherit ValleyMenuPanel, which plays the selected bundled
+sixteen-second menu GIF through the JDK's native animated-image decoder. MenuTheme
+maps the two scene choices (Mountain valley and Golden fields) to their clip/still
+resources. ClientSettings persists menuTheme, defaulting to Golden fields for absent or
+unknown values. Login and lobby share that settings instance.
+
+Clips and first frames load once per theme on a worker and are cached. Painting
+scales the frame uniformly to cover the window, anchored left. Theme changes
+request the new clip without blocking the EDT. Reduced motion shows its first
+frame. Hidden/inactive menus and callbacks from a previously selected clip decline
+further image-observer updates. No landscape mesh deformation runs in the client.
+
+Both clips are authored offline with 400 frames at an encoded 25 fps and infinite
+looping. Valley layers use rigid branch rotation, drifting clouds, leaves and
+waterfall highlights. Golden fields uses a clean battlefield plate, isolated torn
+red flag cloth with a pinned attachment edge, two rotating windmill sail assemblies,
+drifting clouds and seeds, and five faint travelling wind wisps. The added
+foreground grass layer was removed after visual feedback; the painted meadow remains. The
+scene's poles, buildings and ground stay fixed. Tools RenderValleyLoop.java and
+RenderBattlefieldLoop.java render the respective frames. MP4 previews live under
+artifacts/. No runtime video library or additional dependency is required. Encoded
+frame rate is not a guarantee of sustained native decoder/full-window performance.
+The lobby title sticker and navigation wordmark are removed; login says Welcome
+and the native window/error title is Grid Duel. Onitama remains only as attribution
+in About and internal package/resource names.
+
+## Compact menu navigation
+
+LobbyPanel shows a compact column of unboxed text actions directly over the
+animated scenery. Home contains Play, Settings and Quit game, a small
+account caption and leaderboard link, and Resume match when a match is parked.
+A small Change theme button opens a focused Menu theme page with Mountain valley
+and Golden fields choices. Selection previews immediately, marks the current scene,
+and saves using the existing settings worker without network traffic.
+Play opens Create match, Join a game and Practice; each uses a focused page with
+Back navigation. Creation retains its pending code across page changes and does
+not submit another create request when returning. The room browser uses typed
+MatchSummary values and polls only while its page is showing. Its empty scroll
+area collapses completely when no rooms exist. Room rows use translucent dark
+surfaces, ivory text and gold selection; the viewport stays transparent. The room
+code input has a matching translucent fill, gold focus underline, ivory entry text
+and a placeholder, with a named accessible label and the same Enter/validation rules. Practice keeps
+Rookie/Senior/Legend choices. Settings owns the three piece styles; updates apply
+immediately and persistence runs on a worker. ClientSettings.save serializes file
+writes against the frame's preference saves. Quit delegates to closeAndSave.
+
+The cream panel, button fills, borders and navigation icons are removed. Warm ivory
+labels, champagne Play text and pale gold hover/selected underlines work across
+both scenes. A soft right-edge dark scrim and text shadows preserve legibility
+without a boxed surface. The account caption and leaderboard stack to avoid
+truncation. Focus and selected states stay visible; menu pages retain their routing.
+The earlier procedural mist/leaves and canopy mesh have been superseded by the
+prerecorded clip described above. Only media playback runs in the menu.

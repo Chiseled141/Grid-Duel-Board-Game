@@ -3,6 +3,7 @@ package onitama.server;
 import onitama.core.PlayerColor;
 import onitama.db.AuthenticationException;
 import onitama.net.ActionRequest;
+import onitama.net.ChatRequest;
 import onitama.net.CreateMatchRequest;
 import onitama.net.ErrorMessage;
 import onitama.net.JoinMatchRequest;
@@ -69,6 +70,7 @@ public final class ClientHandler implements Runnable {
             Map.entry(JoinMatchRequest.class, m -> handleJoinMatch((JoinMatchRequest) m)),
             Map.entry(ListMatchesRequest.class, m -> handleListMatches((ListMatchesRequest) m)),
             Map.entry(ActionRequest.class, m -> handleAction((ActionRequest) m)),
+            Map.entry(ChatRequest.class, m -> handleChat((ChatRequest) m)),
             Map.entry(RematchRequest.class, m -> handleRematch((RematchRequest) m)),
             Map.entry(ReconnectRequest.class, m -> handleReconnect((ReconnectRequest) m)),
             Map.entry(LeaderboardRequest.class, m -> handleLeaderboard((LeaderboardRequest) m)),
@@ -220,6 +222,16 @@ public final class ClientHandler implements Runnable {
             return;
         }
         session.submitAction(this, request);
+    }
+
+    private void handleChat(ChatRequest request) {
+        if (notAuthenticated()) return;
+        MatchSession session = match;
+        if (session == null) {
+            send(new ErrorMessage("Chat is only available in a live match."));
+            return;
+        }
+        session.submitChat(this, request);
     }
 
     private void handleRematch(RematchRequest request) {

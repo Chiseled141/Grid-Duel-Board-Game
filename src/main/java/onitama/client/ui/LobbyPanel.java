@@ -1,758 +1,492 @@
 package onitama.client.ui;
 
+import onitama.client.ClientSettings;
+import onitama.client.MenuTheme;
 import onitama.client.state.ClientModel;
 import onitama.client.state.ClientModelListener;
 import onitama.client.state.Screen;
 import onitama.core.Difficulty;
 import onitama.net.MatchSummary;
 
-import java.awt.BorderLayout;
-import java.awt.Color;
-import java.awt.Component;
-import java.awt.Dimension;
-import java.awt.FlowLayout;
-import java.awt.FontMetrics;
-import java.awt.Graphics;
-import java.awt.Graphics2D;
-import java.awt.GridLayout;
-import java.awt.RenderingHints;
-import java.awt.Toolkit;
+import java.awt.*;
 import java.awt.datatransfer.StringSelection;
-import java.util.List;
+import javax.swing.*;
+import javax.swing.event.DocumentEvent;
+import javax.swing.event.DocumentListener;
 
-import javax.swing.BorderFactory;
-import javax.swing.DefaultListModel;
-import javax.swing.JButton;
-import javax.swing.JComponent;
-import javax.swing.JLabel;
-import javax.swing.JList;
-import javax.swing.JPanel;
-import javax.swing.BoxLayout;
-import javax.swing.Box;
-import javax.swing.JScrollPane;
-import javax.swing.ScrollPaneConstants;
-import javax.swing.SwingConstants;
-import javax.swing.JTextField;
-import javax.swing.Timer;
-
-/**
- * The lobby, composed like the front page of an indie board game (§19-31):
- * the ONITAMA title with its tagline, the Master hero illustration, proper
- * CREATE/JOIN action cards, the room code as a major waiting object with a
- * copy button, and the leaderboard as a secondary navigation card. The
- * background carries faint dojo decoration instead of empty black.
- */
-public final class LobbyPanel extends JPanel {
-
+/** A compact menu with focused Play and Settings pages over the living valley. */
+public final class LobbyPanel extends ValleyMenuPanel {
     private final ClientModel model;
+    private final ClientSettings settings;
+    private final Runnable openLeaderboard;
+    private final Runnable quitGame;
+    private final Runnable saveSettings;
+    private final JPanel surface = new JPanel(new BorderLayout()) {
+        @Override public Dimension getPreferredSize() {
+            Dimension natural = super.getPreferredSize();
+            return new Dimension(340, natural.height);
+        }
 
-    private final JLabel roomCodeLabel = new JLabel("· · · · ·");
-    private final JLabel roomCaption = UiKit.label("CREATE A MATCH TO GET A CODE", 11f);
-    private final JLabel waitingLabel = UiKit.label(" ", 12f);
-    /** Code input with a muted "ENTER CODE" placeholder when empty/unfocused. */
-    private final JTextField joinField = new JTextField(10) {
-        @Override
-        protected void paintComponent(Graphics graphics) {
+    };
+    private final JLabel profile = caption(" ");
+    private final JLabel roomCode = caption("· · · · ·");
+    private final JLabel roomStatus = caption("Creating your room…");
+    private final JLabel noRooms = caption("No open rooms yet.");
+    private final JTextField joinField = new JTextField() {
+        @Override protected void paintComponent(Graphics graphics) {
+            Graphics2D g = UiKit.nice(graphics);
+            g.setColor(new Color(13, 25, 27, 100));
+            g.fillRoundRect(0, 0, getWidth(), getHeight(), 8, 8);
+            g.setColor(isFocusOwner() ? new Color(255, 211, 133) : new Color(235, 228, 211, 120));
+            g.drawLine(12, getHeight() - 2, getWidth() - 12, getHeight() - 2);
+            g.dispose();
             super.paintComponent(graphics);
             if (getText().isEmpty() && !isFocusOwner()) {
-                Graphics2D g = (Graphics2D) graphics.create();
-                g.setColor(Theme.MUTED_INK);
-                g.setFont(Theme.normal(11f));
-                FontMetrics metrics = g.getFontMetrics();
-                g.drawString("ENTER CODE", 12,
-                        (getHeight() + metrics.getAscent() - metrics.getDescent()) / 2 - 1);
+                g = UiKit.nice(graphics);
+                g.setFont(Theme.normal(14f));
+                g.setColor(new Color(235, 228, 211, 185));
+                g.drawString("Enter room code", 13, (getHeight() - g.getFontMetrics().getHeight()) / 2
+                        + g.getFontMetrics().getAscent());
                 g.dispose();
             }
         }
     };
-    private final DefaultListModel<String> matchListModel = new DefaultListModel<>();
-    private final JList<String> matchList = new JList<>(matchListModel);
-    private final JLabel profileName = UiKit.inkLabel(" ", 15f);
-    private final JLabel profileStats = UiKit.inkLabel(" ", 11f);
-    private final JComponent profileAvatar = new JComponent() {
-        {
-            setPreferredSize(new java.awt.Dimension(36, 40));
-            setOpaque(false);
-        }
+    private final DefaultListModel<MatchSummary> roomRows = new DefaultListModel<>();
+    private final JList<MatchSummary> rooms = new JList<>(roomRows);
+    private final JScrollPane roomScroll = new JScrollPane(rooms);
+    private final JButton join = new MenuAction("Join", this::joinRoom, true);
+    private final JButton create = new MenuAction("Create match", this::createRoom, false);
+    private final JButton practice = new MenuAction("Practice", () -> showPage("practice"), false);
+    private final JButton browse = new MenuAction("Join a game", () -> showPage("join"), false);
+    private final JButton resume;
+    private final JButton[] styles = new JButton[3];
+    private final java.util.Map<MenuTheme, JButton> themes = new java.util.EnumMap<>(MenuTheme.class);
+    private final java.util.Map<String, JPanel> pages = new java.util.LinkedHashMap<>();
+    private String currentPage = "home";
+    private boolean creatingRoom;
+    private final Timer refreshTimer;
 
-        @Override
-        protected void paintComponent(Graphics graphics) {
-            Graphics2D g = (Graphics2D) graphics.create();
-            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
-                    RenderingHints.VALUE_ANTIALIAS_ON);
-            UiKit.drawFigurine(g, getWidth() / 2, getHeight() - 4,
-                    getHeight() - 8, Theme.AMBER, true);
-            g.dispose();
-        }
-    };
-    private final JComponent onlineDot = UiKit.statusDot(10, () -> Theme.GREEN);
+    /** Builds the menu; Quit uses the frame's normal save-and-close path. */
+    public LobbyPanel(ClientModel model, ClientSettings settings, Runnable openLeaderboard, Runnable quitGame) {
+        this(model, settings, openLeaderboard, quitGame, () -> {
+            Thread writer = new Thread(() -> {
+                synchronized (settings) { settings.save(); }
+            }, "grid-duel-save-settings");
+            writer.setDaemon(true);
+            writer.start();
+        });
+    }
 
-    private int waitingDots;
-    private Timer waitingTimer;
-    private JPanel actionsColumn;
-    private JScrollPane actionsScroll;
-    private JPanel centerColumn;
-    private boolean wideLayout = true;
-    private final onitama.client.ClientSettings settings;
-    private final UiKit.PillButton[] styleButtons = new UiKit.PillButton[3];
-    private Runnable openLeaderboard;
-    private UiKit.PillButton returnPill;
-    private JPanel returnWrap;
-    private UiKit.PillButton playButton;
-    private UiKit.PillButton joinButton;
-    private UiKit.PillButton createButton;
-    private javax.swing.JLabel difficultyHint;
-    private JPanel difficultyRow;
-    private JPanel difficultySlot;
-    /**
-     * The right column's fixed card width. 446px is the settings pill row's
-     * natural width ("1 · INK TOKENS" … at 9f plus padding), so the header's
-     * profile + piece-style cards and the action cards below all share one
-     * width line — same left/right edges, no misaligned column.
-     */
-    private static final int COLUMN_WIDTH = 446;
-
-    /** Builds the lobby and subscribes it to the model. */
-    public LobbyPanel(ClientModel model, onitama.client.ClientSettings settings,
-                      Runnable openLeaderboard) {
+    // Inject persistence in UI tests so selecting a style never writes real user preferences.
+    LobbyPanel(ClientModel model, ClientSettings settings, Runnable openLeaderboard,
+               Runnable quitGame, Runnable saveSettings) {
+        super(model, Screen.LOBBY, settings);
         this.model = model;
+        this.resume = new MenuAction("Resume match", model::returnToParkedMatch, true);
+        this.refreshTimer = new Timer(5000, event -> model.refreshMatches());
         this.settings = settings;
         this.openLeaderboard = openLeaderboard;
-        setLayout(new BorderLayout());
-        setBackground(Theme.BG);
-        // Slim vertical page padding (sides keep the 16px rule): every pixel
-        // of height counts toward the scrollbar-free 720px target.
-        setBorder(BorderFactory.createEmptyBorder(8, 16, 8, 16));
-
-        // The header (title chip, profile, settings) and the action cards
-        // share one page column — the header is NORTH, actions EAST.
-        JPanel page = new JPanel(new BorderLayout());
-        page.setOpaque(false);
-        page.add(buildHeader(), BorderLayout.NORTH);
-
-        JPanel center = new JPanel(new BorderLayout(24, 0));
-        center.setOpaque(false);
-        center.add(buildActionsColumn(), BorderLayout.EAST);
-        page.add(center, BorderLayout.CENTER);
-        add(page, BorderLayout.CENTER);
-        this.centerColumn = center;
-
+        this.quitGame = quitGame;
+        this.saveSettings = saveSettings;
+        setLayout(new GridBagLayout());
+        setBorder(BorderFactory.createEmptyBorder(32, 32, 32, 48));
+        surface.setOpaque(false);
+        surface.setName("mainMenuSurface");
+        surface.setBorder(BorderFactory.createEmptyBorder(8, 0, 8, 0));
+        var anchor = new GridBagConstraints();
+        anchor.weightx = 1;
+        anchor.weighty = 1;
+        anchor.anchor = GridBagConstraints.LINE_END;
+        add(surface, anchor);
+        pages.put("home", buildHome());
+        pages.put("play", buildPlay());
+        pages.put("create", buildCreate());
+        pages.put("join", buildJoin());
+        pages.put("practice", buildPractice());
+        pages.put("settings", buildSettings());
+        pages.put("themes", buildThemes());
         model.addListener(new ClientModelListener() {
-            @Override
-            public void onScreenChanged(Screen screen) {
+            @Override public void onScreenChanged(Screen screen) {
                 if (screen == Screen.LOBBY) {
-                    refreshProfile();
-                    setWaitingVisible(false);
-                    hideDifficultyRow();
-                    refreshMatches();
-                    if (model.hasParkedMatch()) {
-                        returnPill.setText("RETURN TO MATCH · " + model.parkedRoomCode());
-                        returnPill.setVisible(true);
-                        returnWrap.setVisible(true);
-                    } else {
-                        returnPill.setVisible(false);
-                        returnWrap.setVisible(false);
-                    }
+                    creatingRoom = false;
+                    refreshState();
+                    showPage("home");
+                }
+                updatePolling();
+            }
+            @Override public void onLobbyChanged() { refreshState(); }
+            @Override public void onMatchCreated(String code) {
+                creatingRoom = false;
+                refreshState();
+                showPage("create");
+            }
+            @Override public void onError(String text) {
+                if (creatingRoom) {
+                    creatingRoom = false;
+                    roomStatus.setText("Room creation failed. Go back to try again.");
+                    refreshAvailability();
                 }
             }
-
-            @Override
-            public void onLobbyChanged() {
-                refreshProfile();
-                refreshMatches();
-            }
-
-            @Override
-            public void onMatchCreated(String roomCode) {
-                roomCodeLabel.setText(roomCode);
-                roomCaption.setText("SHARE THIS CODE WITH YOUR OPPONENT");
-                setWaitingVisible(true);
-            }
         });
+        addHierarchyListener(event -> updatePolling());
+        refreshState();
+        showPage("home");
+    }
 
-        new Timer(5000, event -> {
-            if (model.screen() == Screen.LOBBY) {
-                model.refreshMatches();
-            }
-        }).start();
+    private JPanel buildHome() {
+        JPanel page = page(null, null, null);
+        line(page, new MenuAction("Play", () -> showPage("play"), true));
+        line(page, new MenuAction("Settings", () -> showPage("settings"), false));
+        line(page, new MenuAction("Quit game", quitGame, false));
+        page.add(Box.createVerticalStrut(14));
+        line(page, resume);
+        line(page, smallButton("Change theme", () -> showPage("themes")));
+        JPanel footer = new JPanel(new BorderLayout(4, 0));
+        footer.setOpaque(false);
+        footer.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createEmptyBorder(),
+                BorderFactory.createEmptyBorder(10, 0, 0, 0)));
+        footer.add(profile, BorderLayout.NORTH);
+        footer.add(smallButton("Leaderboard", openLeaderboard), BorderLayout.SOUTH);
+        line(page, footer);
+        return page;
+    }
 
-        addComponentListener(new java.awt.event.ComponentAdapter() {
-            @Override
-            public void componentResized(java.awt.event.ComponentEvent event) {
-                relayout();
-            }
+    private JPanel buildPlay() {
+        JPanel page = page("Play", "Choose your next match.", "home");
+        line(page, create);
+        line(page, browse);
+        line(page, practice);
+        return page;
+    }
 
-            @Override
-            public void componentShown(java.awt.event.ComponentEvent event) {
-                relayout();
-            }
+    private JPanel buildCreate() {
+        JPanel page = page("Create match", "Share your room code with a friend.", "play");
+        roomCode.setFont(Theme.display(34f));
+        roomCode.setHorizontalAlignment(SwingConstants.CENTER);
+        roomCode.setPreferredSize(new Dimension(280, 64));
+        line(page, roomCode);
+        line(page, roomStatus);
+        line(page, smallButton("Copy code", () -> {
+            String code = model.pendingRoomCode();
+            if (code != null) Toolkit.getDefaultToolkit().getSystemClipboard()
+                    .setContents(new StringSelection(code), null);
+        }));
+        return page;
+    }
+
+    private JPanel buildJoin() {
+        JPanel page = page("Join a game", "Enter a room code or pick an open game.", "play");
+        joinField.setName("joinCode");
+        joinField.setOpaque(false);
+        joinField.setForeground(Theme.CREAM);
+        joinField.setCaretColor(Theme.AMBER);
+        joinField.setSelectionColor(new Color(111, 94, 53));
+        joinField.setSelectedTextColor(Theme.CREAM);
+        joinField.setFont(Theme.bold(20f));
+        joinField.setBorder(BorderFactory.createEmptyBorder(12, 13, 12, 13));
+        joinField.getAccessibleContext().setAccessibleName("Room code");
+        joinField.setToolTipText("Five-character room code");
+        joinField.addActionListener(event -> { if (join.isEnabled()) joinRoom(); });
+        joinField.getDocument().addDocumentListener(new DocumentListener() {
+            @Override public void insertUpdate(DocumentEvent event) { refreshAvailability(); }
+            @Override public void removeUpdate(DocumentEvent event) { refreshAvailability(); }
+            @Override public void changedUpdate(DocumentEvent event) { refreshAvailability(); }
         });
-    }
-
-    /**
-     * Responsive layout (§31): wide windows show the action cards beside the
-     * painting on the right; narrow ones center a capped column over the
-     * backdrop so nothing collapses.
-     */
-    private void relayout() {
-        if (centerColumn == null || actionsColumn == null) {
-            return;
-        }
-        // The scrollbar is an emergency fallback: hidden at 720px and up,
-        // armed only when the window is too short to hold the stack.
-        if (actionsScroll != null) {
-            actionsScroll.setVerticalScrollBarPolicy(getHeight() < 650
-                    ? ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED
-                    : ScrollPaneConstants.VERTICAL_SCROLLBAR_NEVER);
-        }
-        boolean wide = getWidth() >= 800;
-        if (wide == wideLayout) {
-            return;
-        }
-        wideLayout = wide;
-        centerColumn.remove(actionsColumn);
-        if (wide) {
-            actionsColumn.setPreferredSize(
-                    new Dimension(COLUMN_WIDTH, actionsColumn.getPreferredSize().height));
-            centerColumn.add(actionsColumn, BorderLayout.EAST);
-        } else {
-            int capped = Math.min(COLUMN_WIDTH, Math.max(280, getWidth() - 32));
-            actionsColumn.setPreferredSize(
-                    new Dimension(capped, actionsColumn.getPreferredSize().height));
-            centerColumn.add(actionsColumn, BorderLayout.CENTER);
-        }
-        centerColumn.revalidate();
-        repaint();
-    }
-
-    /** The colorful mountain-valley painting as the lobby background (cover, left-anchored). */
-    @Override
-    protected void paintComponent(Graphics graphics) {
-        super.paintComponent(graphics);
-        java.awt.Image background = AssetStore.optional("cinematic-valley.png");
-        if (background == null) {
-            return;
-        }
-        Graphics2D g = (Graphics2D) graphics.create();
-        // Cover-fit, anchored left: the temple and mountains stay on screen.
-        double scaleFactor = Math.max(getWidth() / (double) background.getWidth(null),
-                getHeight() / (double) background.getHeight(null));
-        int drawW = (int) (background.getWidth(null) * scaleFactor);
-        int drawH = (int) (background.getHeight(null) * scaleFactor);
-        g.drawImage(background, 0, (getHeight() - drawH) / 2, drawW, drawH, null);
-        // Subtle right-side scrim so the action cards keep their contrast.
-        g.setColor(Theme.withAlpha(Theme.BG, 40));
-        g.fillRect(getWidth() - COLUMN_WIDTH - 48, 0, COLUMN_WIDTH + 48, getHeight());
-        g.dispose();
-    }
-
-    // ------------------------------------------------------------------
-    // Header: title + profile
-    // ------------------------------------------------------------------
-
-    private JPanel buildHeader() {
-        JPanel header = new JPanel(new BorderLayout());
-        header.setOpaque(false);
-        // Small breathing room under the header so the action column below
-        // starts at a constant offset whatever the profile/settings height.
-        header.setBorder(BorderFactory.createEmptyBorder(0, 0, 4, 0));
-
-        // The title sticker: brush-weight ONITAMA wordmark, tracked ONLINE
-        // subtitle and a red hanko seal — readable without blocking the art.
-        // It hugs its content (FlowLayout wrapper) so a tall profile/settings
-        // column can't stretch it into a sparse box.
-        JPanel titleBlock = UiKit.sticker(12);
-        titleBlock.setLayout(new BorderLayout(14, 0));
-        JPanel titleText = new JPanel(new GridLayout(2, 1, 0, 0));
-        titleText.setOpaque(false);
-        JLabel title = new JLabel("ONITAMA");
-        title.setFont(Theme.display(44f));
-        title.setForeground(Theme.INK);
-        JLabel tagline = new JLabel("O N L I N E   ·   T H E   A N C I E N T   G A M E");
-        tagline.setFont(Theme.bold(11f));
-        tagline.setForeground(Theme.P2_DARK);
-        titleText.add(title);
-        titleText.add(tagline);
-        titleBlock.add(titleText, BorderLayout.CENTER);
-        titleBlock.add(sealStamp(), BorderLayout.EAST);
-        JPanel titleWrap = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
-        titleWrap.setOpaque(false);
-        titleWrap.add(titleBlock);
-        header.add(titleWrap, BorderLayout.WEST);
-
-        JPanel east = new JPanel(new BorderLayout(0, 10));
-        east.setOpaque(false);
-
-        // Both header cards share one width line: the piece-style pill row
-        // drives the settings card's natural width, and the profile sticker
-        // is pinned to exactly that width, so the two always keep identical
-        // left/right edges (right alignment is BorderLayout EAST's job).
-        JPanel settingsCard = buildSettingsCard();
-        int headerCardWidth = settingsCard.getPreferredSize().width;
-
-        JPanel profile = UiKit.sticker(10);
-        profile.setLayout(new FlowLayout(FlowLayout.LEFT, 8, 2));
-        profile.add(profileAvatar);
-        JPanel profileText = new JPanel(new GridLayout(2, 1, 0, -3));
-        profileText.setOpaque(false);
-        profileText.add(profileName);
-        profileText.add(profileStats);
-        profile.add(profileText);
-        profile.add(onlineDot);
-        profile.setPreferredSize(new Dimension(headerCardWidth,
-                profile.getPreferredSize().height));
-        east.add(profile, BorderLayout.NORTH);
-        east.add(settingsCard, BorderLayout.CENTER);
-        header.add(east, BorderLayout.EAST);
-        return header;
-    }
-
-    /** A small red hanko seal (drawn square stamp) for the title sticker. */
-    private JComponent sealStamp() {
-        return new JComponent() {
-            {
-                setPreferredSize(new java.awt.Dimension(34, 34));
+        line(page, joinField);
+        join.setFont(Theme.normal(23f));
+        join.setPreferredSize(new Dimension(292, 48));
+        line(page, join);
+        page.add(Box.createVerticalStrut(16));
+        line(page, caption("OPEN GAMES"));
+        rooms.setName("openRooms");
+        rooms.setOpaque(false);
+        rooms.setForeground(Theme.CREAM);
+        rooms.setFont(Theme.normal(14f));
+        rooms.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        rooms.setCellRenderer(new DefaultListCellRenderer() {
+            @Override protected void paintComponent(Graphics graphics) {
+                Graphics2D g = UiKit.nice(graphics);
+                g.setColor(getBackground());
+                g.fillRoundRect(0, 2, getWidth(), getHeight() - 4, 7, 7);
+                g.setFont(getFont());
+                drawMenuText(g, getText(), 12, (getHeight() - g.getFontMetrics().getHeight()) / 2
+                        + g.getFontMetrics().getAscent(), getForeground());
+                g.dispose();
+            }
+            @Override public Component getListCellRendererComponent(JList<?> list, Object value,
+                    int index, boolean selected, boolean focus) {
+                super.getListCellRendererComponent(list, value, index, selected, focus);
+                putClientProperty("html.disable", Boolean.TRUE);
+                MatchSummary room = (MatchSummary) value;
+                setText(room.roomCode() + "  ·  " + room.hostUsername());
                 setOpaque(false);
+                setForeground(selected || focus ? new Color(255, 211, 133) : Theme.CREAM);
+                setBackground(selected ? new Color(99, 77, 39, 180) : new Color(13, 25, 27, 100));
+                setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
+                return this;
             }
+        });
+        rooms.addListSelectionListener(event -> {
+            if (!event.getValueIsAdjusting() && rooms.getSelectedValue() != null)
+                joinField.setText(rooms.getSelectedValue().roomCode());
+        });
+        rooms.addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override public void mouseClicked(java.awt.event.MouseEvent event) {
+                if (event.getClickCount() == 2 && join.isEnabled()) joinRoom();
+            }
+        });
+        roomScroll.setName("roomBrowser");
+        roomScroll.setPreferredSize(new Dimension(280, 120));
+        roomScroll.setOpaque(false);
+        roomScroll.getViewport().setOpaque(false);
+        roomScroll.setBorder(null);
+        roomScroll.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
+        roomScroll.getVerticalScrollBar().setPreferredSize(new Dimension(6, 0));
+        roomScroll.getVerticalScrollBar().setUI(new javax.swing.plaf.basic.BasicScrollBarUI() {
+            @Override protected void configureScrollBarColors() {
+                thumbColor = new Color(213, 182, 123);
+                trackColor = new Color(25, 34, 35);
+            }
+            @Override protected JButton createDecreaseButton(int orientation) { return hiddenArrow(); }
+            @Override protected JButton createIncreaseButton(int orientation) { return hiddenArrow(); }
+            private JButton hiddenArrow() {
+                JButton button = new JButton();
+                button.setPreferredSize(new Dimension(0, 0));
+                return button;
+            }
+        });
+        line(page, noRooms);
+        line(page, roomScroll);
+        line(page, smallButton("Refresh games", model::refreshMatches));
+        return page;
+    }
 
-            @Override
-            protected void paintComponent(Graphics graphics) {
-                Graphics2D g = (Graphics2D) graphics.create();
-                g.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
-                        RenderingHints.VALUE_ANTIALIAS_ON);
-                g.setColor(Theme.P2);
-                g.fillRoundRect(2, 2, 30, 30, 8, 8);
-                g.setColor(Theme.INK);
-                g.setStroke(new java.awt.BasicStroke(2f));
-                g.drawRoundRect(2, 2, 30, 30, 8, 8);
-                g.setColor(Theme.CREAM);
-                g.setStroke(new java.awt.BasicStroke(2f));
-                g.drawRoundRect(7, 7, 20, 20, 4, 4);
-                g.drawLine(11, 11, 23, 23);
-                g.drawLine(23, 11, 11, 23);
+    private JPanel buildPractice() {
+        JPanel page = page("Practice", "Choose your opponent.", "play");
+        for (Difficulty difficulty : Difficulty.values()) {
+            String label = switch (difficulty) {
+                case ROOKIE -> "Rookie";
+                case SENIOR -> "Senior";
+                case LEGEND -> "Legend";
+            };
+            line(page, new MenuAction(label, () -> model.startPracticeMatch(difficulty), false));
+        }
+        return page;
+    }
+
+    private JPanel buildSettings() {
+        JPanel page = page("Settings", "Piece style", "home");
+        String[] names = {"Ink tokens", "Seal stones", "Ink silhouettes"};
+        for (int i = 0; i < names.length; i++) {
+            int style = i + 1;
+            styles[i] = new MenuAction(names[i], () -> {
+                synchronized (settings) { settings.setPieceStyle(style); }
+                BoardPanel.setDefaultPieceStyle(style);
+                updateStyles();
+                saveSettings.run();
+            }, false);
+            line(page, styles[i]);
+        }
+        page.add(Box.createVerticalStrut(10));
+        line(page, caption("Saved automatically"));
+        updateStyles();
+        return page;
+    }
+
+    private JPanel buildThemes() {
+        JPanel page = page("Menu theme", "Choose the view behind your menu.", "home");
+        for (MenuTheme theme : MenuTheme.values()) {
+            JButton button = new MenuAction(theme.label(), () -> {
+                synchronized (settings) { settings.setMenuTheme(theme); }
+                updateThemes();
+                repaint();
+                saveSettings.run();
+            }, false);
+            themes.put(theme, button);
+            line(page, button);
+        }
+        line(page, caption("Saved automatically"));
+        updateThemes();
+        return page;
+    }
+
+    private void updateThemes() {
+        themes.forEach((theme, button) -> button.setSelected(theme == settings.menuTheme()));
+    }
+
+    private JPanel page(String title, String subtitle, String back) {
+        JPanel page = new JPanel();
+        page.setName("menu-" + (title == null ? "home" : title.toLowerCase(java.util.Locale.ROOT).replace(' ', '-')));
+        page.setOpaque(false);
+        page.setLayout(new BoxLayout(page, BoxLayout.Y_AXIS));
+        if (back != null) {
+            line(page, smallButton("‹ Back", () -> showPage(back)));
+            page.add(Box.createVerticalStrut(8));
+        }
+        if (title != null) {
+            JLabel heading = caption(title);
+            heading.setFont(Theme.display(25f));
+            line(page, heading);
+        }
+        if (subtitle != null) line(page, caption(subtitle));
+        page.add(Box.createVerticalStrut(16));
+        return page;
+    }
+
+    private static JLabel caption(String text) {
+        JLabel label = new JLabel(text) {
+            @Override protected void paintComponent(Graphics graphics) {
+                Graphics2D g = UiKit.nice(graphics);
+                g.setFont(getFont());
+                int x = getInsets().left;
+                int y = getInsets().top + g.getFontMetrics().getAscent();
+                drawMenuText(g, getText(), x, y, getForeground());
                 g.dispose();
             }
         };
+        label.putClientProperty("html.disable", Boolean.TRUE);
+        label.setFont(Theme.normal(11f));
+        label.setForeground(new Color(235, 228, 211));
+        label.setBorder(BorderFactory.createEmptyBorder(3, 0, 3, 0));
+        return label;
     }
 
-    /**
-     * The settings card: piece style as one compact horizontal pill row.
-     * Three side-by-side pills instead of a 3-row stack keeps the header
-     * short enough that the lobby fits a 720px window without scrolling.
-     */
-    private JPanel buildSettingsCard() {
-        JPanel card = UiKit.surface(10);
-        card.setLayout(new BorderLayout(4, 4));
-
-        card.add(UiKit.label("PIECE STYLE", 10f), BorderLayout.NORTH);
-
-        JPanel styleRow = new JPanel(new GridLayout(1, 3, 6, 0));
-        styleRow.setBackground(Theme.SURFACE);
-        String[] names = {"1 · INK TOKENS", "2 · SEAL STONES", "3 · INK SILHOUETTES"};
-        for (int i = 0; i < 3; i++) {
-            UiKit.PillButton button = UiKit.miniPill(names[i],
-                    i + 1 == settings.pieceStyle() ? UiKit.Pill.GOLD : UiKit.Pill.CREAM_OUTLINE);
-            // The 9f labels antialias wider than their font metrics (worse on
-            // macOS), so the grid cell can ellipsize the longest one — pad
-            // every pill's preferred width to keep the full label visible.
-            Dimension pillSize = button.getPreferredSize();
-            button.setPreferredSize(new Dimension(pillSize.width + 10, pillSize.height));
-            int style = i + 1;
-            button.addActionListener(event -> {
-                settings.setPieceStyle(style);
-                settings.save();
-                BoardPanel.setDefaultPieceStyle(style);
-                updateStyleSelection();
-            });
-            styleButtons[i] = button;
-            styleRow.add(button);
-        }
-        card.add(styleRow, BorderLayout.CENTER);
-        return card;
+    private static JButton smallButton(String text, Runnable action) {
+        JButton button = new MenuAction(text, action, false);
+        button.setFont(Theme.normal(13f));
+        button.setPreferredSize(new Dimension(292, 30));
+        button.setBorder(BorderFactory.createEmptyBorder(4, 0, 4, 0));
+        return button;
     }
 
-    /** Highlights the style button matching the current preference. */
-    private void updateStyleSelection() {
-        for (int i = 0; i < styleButtons.length; i++) {
-            boolean selected = i + 1 == settings.pieceStyle();
-            styleButtons[i].setVariant(selected ? UiKit.Pill.GOLD : UiKit.Pill.CREAM_OUTLINE);
-        }
+    private static void line(JPanel page, JComponent component) {
+        component.setAlignmentX(Component.LEFT_ALIGNMENT);
+        component.setMaximumSize(new Dimension(Integer.MAX_VALUE, component.getPreferredSize().height));
+        page.add(component);
     }
 
-    // ------------------------------------------------------------------
-    // Hero illustration
-    // ------------------------------------------------------------------
-
-    // ------------------------------------------------------------------
-    // Actions column: create / join cards
-    // ------------------------------------------------------------------
-
-    private JPanel buildActionsColumn() {
-        JPanel column = new JPanel(new BorderLayout());
-        // The field twin of the local: relayout() moves this column between
-        // the wide and narrow anchors when the window crosses 800px.
-        actionsColumn = column;
-        column.setOpaque(false);
-        column.setPreferredSize(new java.awt.Dimension(COLUMN_WIDTH, 100));
-
-        // RETURN TO MATCH: shown while a live match is parked in the background.
-        returnPill = UiKit.pill("RETURN TO MATCH", UiKit.Pill.GOLD);
-        returnPill.addActionListener(event -> model.returnToParkedMatch());
-        returnPill.setVisible(false);
-        returnWrap = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 0));
-        returnWrap.setOpaque(false);
-        returnWrap.add(returnPill);
-        returnWrap.setVisible(false);
-
-        // CREATE card: title, subtitle, button, and the waiting ticket.
-        JPanel createCard = UiKit.sticker(14);
-        createCard.setLayout(new BorderLayout(10, 10));
-        JPanel createHead = new JPanel(new BorderLayout(8, 2));
-        createHead.setOpaque(false);
-        createHead.add(UiKit.inkLabel("CREATE A MATCH", 13f), BorderLayout.NORTH);
-        createHead.add(UiKit.label("Challenge another master to a duel.", 12f),
-                BorderLayout.SOUTH);
-        createCard.add(createHead, BorderLayout.NORTH);
-
-        JPanel createCenter = new JPanel(new BorderLayout(10, 10));
-        createCenter.setOpaque(false);
-        createButton = UiKit.pill("Create match", UiKit.Pill.GOLD);
-        createButton.addActionListener(event -> model.createMatch());
-        JPanel createRow = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 2));
-        createRow.setOpaque(false);
-        createRow.add(createButton);
-        createCenter.add(createRow, BorderLayout.NORTH);
-
-        // The ticket: the room code becomes the major waiting object.
-        ticket = new JPanel(new BorderLayout(6, 8));
-        ticket.setBackground(Theme.BOARD_LIGHT);
-        ticket.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createDashedBorder(Theme.INK, 6, 4),
-                BorderFactory.createEmptyBorder(10, 12, 10, 12)));
-        roomCodeLabel.setFont(Theme.display(30f));
-        roomCodeLabel.setForeground(Theme.INK);
-        roomCodeLabel.setHorizontalAlignment(JLabel.CENTER);
-        roomCaption.setHorizontalAlignment(JLabel.CENTER);
-        roomCaption.setForeground(Theme.INK);
-        ticket.add(roomCodeLabel, BorderLayout.CENTER);
-        JPanel ticketRow = new JPanel(new FlowLayout(FlowLayout.CENTER, 8, 0));
-        ticketRow.setOpaque(false);
-        JButton copy = UiKit.miniPill("Copy code", UiKit.Pill.GOLD_OUTLINE);
-        copy.addActionListener(event -> Toolkit.getDefaultToolkit()
-                .getSystemClipboard()
-                .setContents(new StringSelection(roomCodeLabel.getText()), null));
-        ticketRow.add(copy);
-        waitingLabel.setHorizontalAlignment(JLabel.CENTER);
-        waitingLabel.setForeground(Theme.INK);
-        waitingLabel.setFont(Theme.normal(10f));
-        ticketRow.add(waitingLabel);
-        ticket.add(ticketRow, BorderLayout.SOUTH);
-        ticket.setVisible(false);
-        createCenter.add(ticket, BorderLayout.CENTER);
-        createCard.add(createCenter, BorderLayout.CENTER);
-
-        // SINGLE PLAY card: one Play button, then pick the bot level.
-        JPanel singlePlayCard = buildSinglePlayCard();
-
-        // JOIN card: unified input row, list, refresh.
-        JPanel joinCard = buildJoinCard();
-
-        JPanel stack = new JPanel();
-        stack.setOpaque(false);
-        stack.setLayout(new BoxLayout(stack, BoxLayout.Y_AXIS));
-        // Tight 4px rhythm: with the leaderboard folded into the SINGLE PLAY
-        // header and the compact settings row, the three cards fit a 720px
-        // window without a scrollbar.
-        stack.add(wrap(returnWrap));
-        stack.add(Box.createVerticalStrut(4));
-        stack.add(wrap(createCard));
-        stack.add(Box.createVerticalStrut(4));
-        stack.add(wrap(singlePlayCard));
-        stack.add(Box.createVerticalStrut(4));
-        stack.add(wrap(joinCard));
-
-        // The column scrolls only as an emergency fallback on very short
-        // windows (<650px, armed in relayout()); from 720px up the bar stays
-        // hidden and the content is sized to fit.
-        actionsScroll = new JScrollPane(stack,
-                ScrollPaneConstants.VERTICAL_SCROLLBAR_NEVER,
-                ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
-        actionsScroll.setBorder(BorderFactory.createEmptyBorder());
-        actionsScroll.setOpaque(false);
-        actionsScroll.getViewport().setOpaque(false);
-        actionsScroll.getVerticalScrollBar().setUnitIncrement(16);
-        column.add(actionsScroll, BorderLayout.CENTER);
-        return column;
-    }
-
-    /** Holds a section stretched to the column width (uniform edges). */
-    private JPanel wrap(JComponent inner) {
-        JPanel holder = new JPanel(new BorderLayout());
-        holder.setOpaque(false);
-        holder.add(inner, BorderLayout.CENTER);
-        return holder;
-    }
-
-    /** The single-play card: a Play button that reveals the difficulty pick. */
-    private JPanel buildSinglePlayCard() {
-        JPanel card = UiKit.surface(14);
-        card.setLayout(new BorderLayout(8, 8));
-
-        // Header row: title left, leaderboard shortcut inline right — the
-        // leaderboard used to be a full card of its own, one row too many
-        // for a 720px window.
-        JPanel head = new JPanel(new BorderLayout(8, 0));
-        head.setOpaque(false);
-        head.add(UiKit.boldLabel("SINGLE PLAY", 13f), BorderLayout.WEST);
-        UiKit.PillButton leaderboardPill =
-                UiKit.miniPill("LEADERBOARD", UiKit.Pill.CREAM_OUTLINE);
-        leaderboardPill.addActionListener(event -> openLeaderboard.run());
-        head.add(leaderboardPill, BorderLayout.EAST);
-        card.add(head, BorderLayout.NORTH);
-
-        JPanel center = new JPanel(new BorderLayout(0, 8));
-        center.setBackground(Theme.SURFACE);
-
-        JPanel playRow = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 2));
-        playRow.setBackground(Theme.SURFACE);
-        playButton = UiKit.pill("Play", UiKit.Pill.GOLD);
-        playButton.addActionListener(event -> toggleDifficultyRow());
-        playRow.add(playButton);
-        center.add(playRow, BorderLayout.NORTH);
-
-        // Hidden until the player presses Play: the three bot levels, each
-        // with a one-line character description shown on hover/selection.
-        // The fixed-height slot keeps the reveal at a stable 36px so the
-        // card's rhythm does not jump as the row appears or hides.
-        difficultyRow = new JPanel(new GridLayout(1, 3, 8, 0));
-        difficultyRow.setBackground(Theme.SURFACE);
-        difficultyRow.add(difficultyPill("ROOKIE", Difficulty.ROOKIE,
-                "Forgiving — the dojo holds back."));
-        difficultyRow.add(difficultyPill("SENIOR", Difficulty.SENIOR,
-                "Sharp — two moves ahead."));
-        difficultyRow.add(difficultyPill("LEGEND", Difficulty.LEGEND,
-                "Merciless — five moves of iron sight."));
-        // Assign the FIELD: a local declaration here would shadow it and
-        // leave toggleDifficultyRow() dereferencing null on the first click.
-        difficultySlot = new JPanel(new BorderLayout());
-        difficultySlot.setBackground(Theme.SURFACE);
-        difficultySlot.setPreferredSize(new Dimension(10, 36));
-        difficultySlot.add(difficultyRow, BorderLayout.CENTER);
-        difficultySlot.setVisible(false);
-        JPanel difficultyBlock = new JPanel(new BorderLayout(0, 6));
-        difficultyBlock.setBackground(Theme.SURFACE);
-        difficultyBlock.add(difficultySlot, BorderLayout.NORTH);
-        difficultyHint = new JLabel("Pick your opponent.", SwingConstants.CENTER);
-        difficultyHint.setFont(Theme.normal(11f).deriveFont(java.awt.Font.ITALIC));
-        difficultyHint.setForeground(Theme.MUTED);
-        difficultyBlock.add(difficultyHint, BorderLayout.SOUTH);
-        center.add(difficultyBlock, BorderLayout.CENTER);
-
-        card.add(center, BorderLayout.CENTER);
-        return card;
-    }
-
-    /** Shows or hides the difficulty choice under the Play button. */
-    private void toggleDifficultyRow() {
-        difficultySlot.setVisible(!difficultySlot.isVisible());
+    private void showPage(String name) {
+        currentPage = name;
+        surface.removeAll();
+        surface.add(pages.get(name), BorderLayout.CENTER);
+        if (name.equals("join")) model.refreshMatches();
+        refreshAvailability();
+        updatePolling();
         revalidate();
         repaint();
     }
 
-    /** Hides the difficulty choice again (used when returning to the lobby). */
-    private void hideDifficultyRow() {
-        if (difficultySlot != null) {
-            difficultySlot.setVisible(false);
+    private void createRoom() {
+        if (model.hasParkedMatch() || creatingRoom) return;
+        if (model.pendingRoomCode() == null) {
+            creatingRoom = true;
+            roomStatus.setText("Creating your room…");
+            model.createMatch();
+        }
+        showPage("create");
+    }
+
+    private void joinRoom() {
+        if (!join.isEnabled()) return;
+        model.joinMatch(joinField.getText().trim().toUpperCase(java.util.Locale.ROOT));
+    }
+
+    private void refreshAvailability() {
+        boolean parked = model.hasParkedMatch();
+        create.setEnabled(!parked && !creatingRoom);
+        browse.setEnabled(!parked);
+        practice.setEnabled(!parked);
+        join.setEnabled(!parked && joinField.getText().trim().toUpperCase(java.util.Locale.ROOT).matches("[A-Z2-9]{5}"));
+        resume.setVisible(parked);
+    }
+
+    private void refreshState() {
+        if (model.me() != null) profile.setText(model.me().username() + "  ·  ELO " + model.me().elo());
+        String code = model.pendingRoomCode();
+        if (code != null) {
+            roomCode.setText(code);
+            roomStatus.setText("Waiting for an opponent…");
+        } else if (!creatingRoom) roomCode.setText("· · · · ·");
+        roomRows.clear();
+        for (MatchSummary room : model.openMatches())
+            if (!room.roomCode().equals(code)) roomRows.addElement(room);
+        noRooms.setVisible(roomRows.isEmpty());
+        roomScroll.setVisible(!roomRows.isEmpty());
+        refreshAvailability();
+    }
+
+    private void updateStyles() {
+        for (int i = 0; i < styles.length; i++) {
+            if (styles[i] != null) styles[i].setSelected(i + 1 == settings.pieceStyle());
         }
     }
 
-    /** One difficulty pill; describes itself on hover and starts the match. */
-    private UiKit.PillButton difficultyPill(String label, Difficulty difficulty,
-                                            String description) {
-        UiKit.PillButton pill = UiKit.miniPill(label, UiKit.Pill.GOLD);
-        pill.addActionListener(event -> {
-            difficultyHint.setText(description);
-            model.startPracticeMatch(difficulty);
-        });
-        pill.addMouseListener(new java.awt.event.MouseAdapter() {
-            @Override
-            public void mouseEntered(java.awt.event.MouseEvent event) {
-                difficultyHint.setText(description);
-            }
-
-            @Override
-            public void mouseExited(java.awt.event.MouseEvent event) {
-                difficultyHint.setText("Pick your opponent.");
-            }
-        });
-        return pill;
+    private void updatePolling() {
+        if (isShowing() && model.screen() == Screen.LOBBY && currentPage.equals("join")) refreshTimer.start();
+        else refreshTimer.stop();
     }
 
-    private JPanel ticket;
+    @Override public void removeNotify() {
+        refreshTimer.stop();
+        super.removeNotify();
+    }
 
-    /** The join card: code input + join button, open-match list, refresh. */
-    private JPanel buildJoinCard() {
-        JPanel card = UiKit.surface(14);
-        card.setLayout(new BorderLayout(8, 8));
+    @Override protected void paintComponent(Graphics graphics) {
+        super.paintComponent(graphics);
+        Graphics2D g = (Graphics2D) graphics.create();
+        try {
+            // An edge-to-edge scrim follows the scenery, without creating a menu box.
+            float left = getWidth() * .48f;
+            g.setPaint(new GradientPaint(left, 0, new Color(16, 23, 25, 0),
+                    getWidth(), 0, new Color(16, 23, 25, 160)));
+            g.fillRect((int) left, 0, getWidth() - (int) left, getHeight());
+        } finally { g.dispose(); }
+    }
 
-        JPanel joinHeader = new JPanel(new GridLayout(2, 1, 0, 0));
-        joinHeader.setBackground(Theme.SURFACE);
-        joinHeader.add(UiKit.boldLabel("JOIN A MATCH", 13f));
-        joinHeader.add(UiKit.label("Enter your opponent's code.", 12f));
-        card.add(joinHeader, BorderLayout.NORTH);
+    private static void drawMenuText(Graphics2D g, String text, int x, int y, Color color) {
+        g.setColor(new Color(10, 19, 22, 180));
+        g.drawString(text, x + 1, y + 2);
+        g.setColor(color);
+        g.drawString(text, x, y);
+    }
 
-        joinField.setPreferredSize(new Dimension(200, 36));
-        joinField.setToolTipText("The 5-character room code");
-        // Enter submits the join (§16).
-        joinField.addActionListener(event -> joinButton.doClick());
-        // The Join button is only live while a plausible code is entered.
-        joinButton = UiKit.pill("Join", UiKit.Pill.GOLD);
-        joinButton.setEnabled(false);
-        joinButton.addActionListener(event -> {
-            String code = joinField.getText().trim().toUpperCase();
-            if (!code.isEmpty()) {
-                model.joinMatch(code);
-            }
-        });
-        joinField.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
-            private void update() {
-                joinButton.setEnabled(joinField.getText().trim().length() >= 4);
-            }
+    private static final class MenuAction extends JButton {
+        private final boolean primary;
 
-            @Override
-            public void insertUpdate(javax.swing.event.DocumentEvent event) {
-                update();
-            }
+        MenuAction(String text, Runnable action, boolean primary) {
+            super(text);
+            this.primary = primary;
+            setPreferredSize(new Dimension(330, primary ? 65 : 53));
+            setBorder(BorderFactory.createEmptyBorder(8, 0, 8, 0));
+            setHorizontalAlignment(SwingConstants.LEFT);
+            setFont(primary ? Theme.display(34f) : Theme.normal(25f));
+            setContentAreaFilled(false);
+            setBorderPainted(false);
+            setFocusPainted(false);
+            setRolloverEnabled(true);
+            setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+            addActionListener(event -> action.run());
+        }
 
-            @Override
-            public void removeUpdate(javax.swing.event.DocumentEvent event) {
-                update();
-            }
-
-            @Override
-            public void changedUpdate(javax.swing.event.DocumentEvent event) {
-                update();
-            }
-        });
-        JPanel joinRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
-        joinRow.setBackground(Theme.SURFACE);
-        joinField.setBackground(Theme.BOARD_LIGHT);
-        joinField.setForeground(Theme.INK);
-        joinField.setBorder(UiKit.fieldBorder());
-        joinField.setFont(Theme.display(14f));
-        joinRow.add(joinField);
-        joinRow.add(joinButton);
-
-        // One CENTER child: join row on top, match list below (capped height
-        // so the column keeps its compact, uniform rhythm).
-        JPanel joinAndList = new JPanel(new BorderLayout(8, 8));
-        joinAndList.setBackground(Theme.SURFACE);
-        joinAndList.add(joinRow, BorderLayout.NORTH);
-
-        matchList.setBackground(Theme.SURFACE);
-        matchList.setForeground(Theme.CREAM);
-        matchList.setSelectionBackground(Theme.AMBER);
-        matchList.setSelectionForeground(Theme.INK);
-        matchList.setFont(Theme.normal(13f));
-        matchList.setCellRenderer(new MatchRowRenderer());
-        matchList.addMouseListener(new java.awt.event.MouseAdapter() {
-            @Override
-            public void mouseClicked(java.awt.event.MouseEvent event) {
-                if (event.getClickCount() == 2) {
-                    String entry = matchList.getSelectedValue();
-                    if (entry != null && entry.length() >= 5
-                            && entry.matches("[A-Z2-9]{5}.*")) {
-                        model.joinMatch(entry.substring(0, 5));
-                    }
+        @Override protected void paintComponent(Graphics graphics) {
+            Graphics2D g = UiKit.nice(graphics);
+            try {
+                boolean highlight = isEnabled() && (getModel().isRollover() || isFocusOwner());
+                Color color = !isEnabled() ? new Color(173, 175, 169)
+                        : highlight || isSelected() ? new Color(255, 211, 133)
+                        : primary ? new Color(255, 232, 184) : new Color(255, 248, 232);
+                g.setFont(getFont());
+                int x = getInsets().left + (highlight ? 5 : 0);
+                int y = (getHeight() - g.getFontMetrics().getHeight()) / 2 + g.getFontMetrics().getAscent();
+                drawMenuText(g, getText(), x, y, color);
+                if (highlight || isSelected()) {
+                    g.setColor(color);
+                    int width = Math.min(g.getFontMetrics().stringWidth(getText()), getWidth() - x - 4);
+                    g.setStroke(new BasicStroke(1.2f));
+                    g.drawLine(x, y + 6, x + width, y + 6);
                 }
-            }
-        });
-        JScrollPane matchScroll = new JScrollPane(matchList);
-        matchScroll.setBorder(BorderFactory.createEmptyBorder());
-        matchScroll.getViewport().setBackground(Theme.SURFACE);
-        // Two visible rows: the open-match list is usually the quiet dojo
-        // placeholder, and the shaved height keeps the lobby scrollbar-free
-        // at 720px (the list itself still scrolls by wheel when fuller).
-        matchScroll.setPreferredSize(new Dimension(10, 56));
-        joinAndList.add(matchScroll, BorderLayout.CENTER);
-        card.add(joinAndList, BorderLayout.CENTER);
-
-        JPanel southRow = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 2));
-        southRow.setBackground(Theme.SURFACE);
-        JButton refresh = UiKit.miniPill("Refresh", UiKit.Pill.CREAM_OUTLINE);
-        refresh.addActionListener(event -> model.refreshMatches());
-        southRow.add(refresh);
-        card.add(southRow, BorderLayout.SOUTH);
-        return card;
-    }
-
-    /** Open-match rows in body text; the quiet placeholder in muted small caps. */
-    private final class MatchRowRenderer extends javax.swing.DefaultListCellRenderer {
-        @Override
-        public Component getListCellRendererComponent(JList<?> list, Object value,
-                int index, boolean selected, boolean focused) {
-            JLabel label = (JLabel) super.getListCellRendererComponent(list,
-                    value, index, selected, focused);
-            String entry = String.valueOf(value);
-            if (entry.startsWith("THE DOJO")) {
-                setFont(Theme.normal(11f));
-                setForeground(selected ? Theme.INK : Theme.MUTED);
-            } else {
-                setFont(Theme.normal(13f));
-                setForeground(Theme.CREAM);
-            }
-            setBackground(selected ? Theme.AMBER : Theme.SURFACE);
-            setBorder(BorderFactory.createEmptyBorder(2, 6, 2, 6));
-            return label;
-        }
-    }
-
-    // ------------------------------------------------------------------
-    // Waiting state + data refresh
-    // ------------------------------------------------------------------
-
-    private void setWaitingVisible(boolean visible) {
-        ticket.setVisible(visible);
-        // While waiting for an opponent you already host a match — creating
-        // another would just fail server-side, so the button greys out.
-        createButton.setEnabled(!visible);
-        if (visible) {
-            waitingDots = 0;
-            if (waitingTimer != null) {
-                waitingTimer.stop();
-            }
-            waitingTimer = new Timer(500, event -> {
-                waitingDots = (waitingDots + 1) % 4;
-                waitingLabel.setText("WAITING FOR OPPONENT"
-                        + ".".repeat(waitingDots));
-            });
-            waitingTimer.start();
-        } else if (waitingTimer != null) {
-            waitingTimer.stop();
-        }
-        revalidate();
-        repaint();
-    }
-
-    private void refreshProfile() {
-        if (model.me() != null) {
-            profileName.setText(" " + model.me().username().toUpperCase() + " ");
-            profileStats.setText("  ELO " + model.me().elo() + "   ·   "
-                    + model.me().wins() + "W · " + model.me().losses() + "L  ");
-        }
-    }
-
-    private void refreshMatches() {
-        matchListModel.clear();
-        String ownCode = model.pendingRoomCode();
-        List<MatchSummary> others = model.openMatches().stream()
-                .filter(summary -> !summary.roomCode().equals(ownCode))
-                .toList();
-        if (others.isEmpty()) {
-            matchListModel.addElement("THE DOJO IS QUIET — CREATE A MATCH");
-        } else {
-            others.forEach(summary -> matchListModel.addElement(
-                    summary.roomCode() + "  —  " + summary.hostUsername()));
+            } finally { g.dispose(); }
         }
     }
 }

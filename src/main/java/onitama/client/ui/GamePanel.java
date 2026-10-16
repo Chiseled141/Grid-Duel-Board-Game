@@ -619,13 +619,28 @@ public final class GamePanel extends JPanel {
         });
         actions.add(endTurnButton);
 
-        rail.add(inspector, BorderLayout.CENTER);
+        JPanel reference = new JPanel(new BorderLayout(0, 8));
+        reference.setOpaque(false);
+        JPanel pages = new JPanel(new java.awt.CardLayout());
+        pages.add(new PlayedCardsPanel(model), "plays");
+        pages.add(inspector, "inspect");
+        JPanel tabs = new JPanel(new GridLayout(1, 2, 6, 0));
+        tabs.setOpaque(false);
+        JButton playsTab = UiKit.miniPill("Played cards", UiKit.Pill.GOLD);
+        JButton inspectTab = UiKit.miniPill("Card details", UiKit.Pill.CREAM_OUTLINE);
+        playsTab.addActionListener(e -> ((java.awt.CardLayout) pages.getLayout()).show(pages, "plays"));
+        inspectTab.addActionListener(e -> ((java.awt.CardLayout) pages.getLayout()).show(pages, "inspect"));
+        tabs.add(playsTab);
+        tabs.add(inspectTab);
+        reference.add(tabs, BorderLayout.NORTH);
+        reference.add(pages, BorderLayout.CENTER);
+        rail.add(reference, BorderLayout.CENTER);
         rail.add(actions, BorderLayout.SOUTH);
         return rail;
     }
 
     private Component buildRightColumn() {
-        JPanel column = new JPanel(new BorderLayout(0, 16));
+        JPanel column = new JPanel(new BorderLayout(0, 12));
         column.setOpaque(false);
         column.setPreferredSize(new Dimension(SIDEBAR_WIDTH, 100));
         JPanel top = new JPanel(new BorderLayout(0, 12));
@@ -640,6 +655,8 @@ public final class GamePanel extends JPanel {
 
         JPanel decks = new JPanel(new GridLayout(1, 2, 8, 0));
         decks.setOpaque(false);
+        // Compact deck art leaves space for conversation at the minimum window height.
+        decks.setPreferredSize(new Dimension(SIDEBAR_WIDTH, 100));
         decks.add(movementDeck);
         decks.add(skillDeck);
         JPanel middle = new JPanel(new GridBagLayout());
@@ -655,7 +672,11 @@ public final class GamePanel extends JPanel {
         turnCountLabel.setHorizontalAlignment(SwingConstants.CENTER);
         backCaption(turnCountLabel);
         middle.add(turnCountLabel, constraints);
-        column.add(middle, BorderLayout.CENTER);
+        JPanel conversation = new JPanel(new BorderLayout(0, 4));
+        conversation.setOpaque(false);
+        conversation.add(middle, BorderLayout.NORTH);
+        conversation.add(new ChatPanel(model), BorderLayout.CENTER);
+        column.add(conversation, BorderLayout.CENTER);
 
         JPanel bottom = new JPanel(new BorderLayout(0, 12));
         bottom.setOpaque(false);

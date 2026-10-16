@@ -47,6 +47,8 @@ class MessageSerializationTest {
                 new Ping(1695000000000L),
                 new Pong(1695000000000L),
                 new ErrorMessage("room not found"),
+                new ChatRequest("m1", "Hello 👋"),
+                new ChatMessage("m1", "alice", "Good luck!"),
                 new ProtocolHello(2),
                 new ProtocolReady(2),
                 new ActionRequest("m1", 1L, 0L, new onitama.core.duel.GameAction.SkipMovement()),

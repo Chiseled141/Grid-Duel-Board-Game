@@ -136,7 +136,9 @@ class DeckPresentationTest {
                 assertEquals(transition.before(viewer).opponentSkillCount(), after.opponentSkillCount(),
                         "draw still occurs when opponent hand count stays the same");
             }
-            assertTrue(find(ui.panel, JList.class).isEmpty(), "Move Log must be removed");
+            assertTrue(find(ui.panel, JList.class).stream().allMatch(list ->
+                    List.of("playedCards", "matchChatHistory").contains(list.getName())),
+                    "Only public card history and match chat use lists; the old Move Log stays removed");
             assertTrue(find(ui.panel, JLabel.class).stream().noneMatch(l -> l.getText().contains("MOVE LOG")));
             assertEquals(2, find(ui.panel, DeckStackPanel.class).size());
             assertEquals(2, find(ui.panel, PlayerBadgePanel.class).size());
