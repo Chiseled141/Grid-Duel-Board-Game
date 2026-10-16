@@ -34,8 +34,16 @@ class PresentationRegressionTest {
         });
         var panel = new GamePanel(model);
         model.handleMatchSync(sync(view));
+        panel.setSize(1440, 900);
+        layout(panel);
         return new Ui(model, panel, (CardHandPanel) field(panel, "hand"));
     }
+
+    private void layout(java.awt.Container parent) {
+        parent.doLayout();
+        for (var child : parent.getComponents()) if (child instanceof java.awt.Container c) layout(c);
+    }
+    private CardPlayOverlay play(Ui ui) { return (CardPlayOverlay) field(ui.panel, "playOverlay"); }
 
     private MatchSync sync(PlayerView view) { return new MatchSync("test", "ROOM", view, false, 1); }
     private List<String> ownMoves(PlayerView v) {
@@ -84,10 +92,10 @@ class PresentationRegressionTest {
             try {
                 deliver(ui, f);
                 assertEquals(f.after, ui.model.view(), "state must already be authoritative");
-                assertNotNull(field(ui.hand, "departingFace"), "outgoing copy must survive hand reconciliation");
+                assertTrue(play(ui).busy(), "accepted play must survive hand reconciliation");
                 assertEquals(5, ui.hand.getComponentCount(), "decoration cannot intercept clicks as a child");
-                ui.hand.finishDeparture();
-                assertNull(field(ui.hand, "departingFace"));
+                play(ui).cancel();
+                assertFalse(play(ui).busy());
                 assertEquals(f.after.ownSkillHand(), ((List<?>) field(ui.hand, "cards")).stream()
                         .filter(c -> c instanceof SkillCardPanel)
                         .map(c -> ((SkillCardPanel) c).instance()).toList());
@@ -100,10 +108,11 @@ class PresentationRegressionTest {
             var f = skill(); var ui = ui(f.before);
             try {
                 deliver(ui, f);
-                var face = (SkillCardPanel) field(ui.hand, "departingFace");
-                assertNotNull(face);
-                assertFalse(f.after.ownSkillHand().contains(face.instance()));
-                ui.hand.finishDeparture();
+                assertTrue(play(ui).busy());
+                var committed = f.events.stream().filter(e -> e instanceof PublicEvent.SkillCommitted)
+                        .map(e -> ((PublicEvent.SkillCommitted) e).skill()).findFirst().orElseThrow();
+                assertFalse(f.after.ownSkillHand().contains(committed));
+                play(ui).cancel();
                 assertEquals(f.after.ownSkillHand(), ((List<?>) field(ui.hand, "cards")).stream()
                         .filter(c -> c instanceof SkillCardPanel)
                         .map(c -> ((SkillCardPanel) c).instance()).toList());
@@ -116,13 +125,13 @@ class PresentationRegressionTest {
             var f = movement(false); var ui = ui(f.before);
             try {
                 deliver(ui, f);
-                var history = ui.model.historyMoves(); var timer = field(ui.hand, "departureTimer");
+                var history = ui.model.historyMoves(); var timer = field(play(ui), "timer");
                 ui.model.handleGameUpdate(new GameUpdate(sync(f.after), f.events));
                 ui.model.handleGameUpdate(new GameUpdate(sync(f.before), f.events));
                 ui.model.handleGameUpdate(new GameUpdate(new MatchSync("other", "ROOM", f.after, false, 1), f.events));
                 assertEquals(history, ui.model.historyMoves());
                 assertEquals(f.after, ui.model.view());
-                assertSame(timer, field(ui.hand, "departureTimer"));
+                assertSame(timer, field(play(ui), "timer"));
             } finally { ui.panel.removeNotify(); }
         });
     }
@@ -134,7 +143,7 @@ class PresentationRegressionTest {
                 ui.model.handleActionReply(new ActionReply("test", 1, new ActionReceipt(true, f.after.revision(), null), sync(f.after)));
                 ui.model.handleGameUpdate(new GameUpdate(sync(f.before), f.events));
                 assertTrue(ui.model.historyMoves().isEmpty());
-                assertNull(field(ui.hand, "departingFace"));
+                assertFalse(play(ui).busy());
             } finally { ui.panel.removeNotify(); }
         });
     }
@@ -150,9 +159,9 @@ class PresentationRegressionTest {
                 ui.model.setReducedMotion(true);
                 assertArrayEquals(cards, ui.hand.getComponents(), "preference must not require rebuilding the hand");
                 for (var card : cards) assertEquals(true, field(card, "reducedMotion"));
-                assertNull(field(ui.hand, "departureTimer"));
+                assertFalse(((Timer) field(play(ui), "timer")).isRunning());
                 assertNull(field(board, "selectionPulseTimer"));
-                ui.hand.finishDeparture();
+                play(ui).cancel();
                 for (var card : cards) {
                     if (card instanceof CardPanel) assertNull(field(card, "tween"));
                     else assertNull(field(card, "hoverTimer"));
@@ -167,7 +176,7 @@ class PresentationRegressionTest {
             var f = movement(true); var ui = ui(f.before);
             try {
                 deliver(ui, f);
-                var timer = (Timer) field(ui.hand, "departureTimer");
+                var timer = (Timer) field(play(ui), "timer");
                 assertTrue(timer.isRunning());
                 switch (reason) {
                     case "reconnect" -> ui.model.handleMatchSync(sync(f.after));
@@ -176,8 +185,8 @@ class PresentationRegressionTest {
                     case "dispose" -> ui.panel.removeNotify();
                 }
                 assertFalse(timer.isRunning());
-                assertNull(field(ui.hand, "departingFace"));
-                ui.hand.finishDeparture();
+                assertFalse(play(ui).busy());
+                play(ui).cancel();
                 for (var card : ui.hand.getComponents()) {
                     if (card instanceof CardPanel) assertNull(field(card, "tween"));
                 }
@@ -200,8 +209,22 @@ class PresentationRegressionTest {
                 Timer reflow = (Timer) field(ui.hand, "reflowTimer");
                 assertNotNull(reflow, "a visible replacement starts reflow");
                 assertTrue(reflow.isRunning(), "accepted-event cleanup must not cancel the new reflow");
-                assertNotNull(field(ui.hand, "departingFace"));
+                assertTrue(play(ui).busy());
             } finally { frame.dispose(); }
+        });
+    }
+
+    @Test void reducedMotionStillShowsTheAcceptedCardBesideTheBoard() throws Exception {
+        SwingUtilities.invokeAndWait(() -> {
+            var f = movement(false); var ui = ui(f.before);
+            try {
+                ui.model.setReducedMotion(true);
+                deliver(ui, f);
+                assertFalse(play(ui).busy());
+                var area = (PlayedCardArea) field(ui.panel, "ownPlay");
+                assertNotNull(field(area, "face"), "reduced motion must retain public card information");
+                assertEquals(false, field(area, "arriving"));
+            } finally { ui.panel.removeNotify(); }
         });
     }
 

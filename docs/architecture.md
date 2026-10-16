@@ -69,7 +69,7 @@ columns, historical nulls and the new-row move_count sentinel. Existing `move_co
 Retain login, lobby, leaderboard, practice and rematch. Game screen uses a
 7×7 board, a unified bottom hand (movement cards followed by private skills),
 public opponent movement faces and identity-free skill backs,
-two player crests with mana, phase, two shared deck stacks with public counts,
+two player crests with mana, phase, one unlabeled decorative draw pile,
 targeting and End Turn controls. The Move Log panel is removed; the model retains
 public history and last-move coordinates for existing consumers and board feedback.
 Remove transit/temple/Master presentation. Red flips canonical board coordinates.
@@ -93,18 +93,26 @@ the tooltip.
 Accepted event batches are delivered separately from ordinary snapshot/selection
 refreshes. `ClientModel` filters stale, wrong-match and duplicate batches before
 history and animation; equal-revision events after a reply are still deliverable.
-The left rail defaults to a scrollable Played cards timeline above turn actions.
-It records only accepted MovementPlayed/SkillCommitted public events, with artwork,
-actor and turn, newest first. Local history survives same-match reconnect and resets
-for a fresh match; missed plays are not reconstructed from hidden hands. The Card
-details tab retains the scrollable inspector. Hovering an
-own card or public opponent movement card previews it without changing selection
-or sending actions. The last preview stays available for scrolling until the next
-hover or selection; changing selection restores the selected own card. Full descriptions and
-mana costs use the match rules snapshot. The inspector also highlights turn flow,
-shows draft target counts/readiness and browses only the public spent-skill pile.
-Opponent skill backs have no inspection handlers or identities. Reference snapshots
-are decoration, not additional interactive card components; lifecycle reset clears them.
+The left rail contains only the public Played cards timeline, with accepted public
+movement/committed skill events, newest first. Same-match reconnect preserves local
+history; a new match clears it. The Card details tab and inspector are removed.
+Live card tooltips still use the match rules snapshot, and targeting guidance lives
+on the board/Cast Skill tooltips. Opponent skills remain identity-free backs.
+
+GamePanel now inherits the same animated scene panel as login/lobby and receives
+the shared ClientSettings from ClientFrame. Warm ivory/olive board squares and a
+bronze frame fit both backgrounds. Sidebars use translucent dark ink, and actions
+use unboxed ivory text with gold focus/hover/selection. Skip Movement, End Turn
+and Cast Skill retain the previous UiKit pill styling and its distinct states. Player colors and board
+highlights remain distinct. The VS, Your hand and bottom instruction banners are
+removed. Narrower rails and removed banners free space for a larger board and taller,
+wider hand cards; public opponent movement cards use an enlarged 0.48 scale. Skill art takes less space;
+live descriptions use larger type and more vertical room. Responsive fallback
+retains hover-to-front on smaller windows. Cards never cover the board.
+
+Both movement and skill draws originate from the same neutral decorative pile.
+No deck titles/counts are painted; this only changes presentation. The engine and
+protocol still own two distinct decks, including their original public counts.
 
 The hand always reflects the latest permitted view. Departing own cards are painted
 as temporary copies above the live hand, with no input-catching child component.
@@ -176,7 +184,8 @@ recipient view, and Help renders current balance values.
 The game and lobby share `assets/cinematic-valley.png`, a colorful painted
 mountain landscape. Jade surfaces/buttons, ivory captions, coral danger accents
 and gold actions use `Theme`; small caption plates preserve contrast without
-bleaching the background. The previous `menu-background.png` is retained as source art.
+bleaching the background. Obsolete menu-background, empty-board, master-piece and synthetic-grass images
+were removed; active stills, GIFs, student fallbacks and compositor sources remain.
 
 The board is drawn directly in Swing as ivory/jade ceramic tiles inside a
 lacquered jade frame with brass inlay. Decorative brackets stay outside the
@@ -217,7 +226,14 @@ looping. Valley layers use rigid branch rotation, drifting clouds, leaves and
 waterfall highlights. Golden fields uses a clean battlefield plate, isolated torn
 red flag cloth with a pinned attachment edge, two rotating windmill sail assemblies,
 drifting clouds and seeds, and five faint travelling wind wisps. The added
-foreground grass layer was removed after visual feedback; the painted meadow remains. The
+foreground grass layer was removed after visual feedback; the painted meadow remains.
+Eleven existing foreground flower heads are extracted directly from clean-plate
+pixels, lifted from their original positions, then pivoted about nearby
+stem roots in the offline render. Their slow sway spans roughly twelve pixels
+at GIF resolution, so it remains visible at normal menu size. Cutouts contain no generated flower pixels and
+are not duplicated elsewhere. Nearby source foliage fills their vacated pixels.
+Unrotated reassembly exactly reproduces the source plate. Cutout PNGs and the
+prepared plate are exported under artifacts/flower-cutouts/. The
 scene's poles, buildings and ground stay fixed. Tools RenderValleyLoop.java and
 RenderBattlefieldLoop.java render the respective frames. MP4 previews live under
 artifacts/. No runtime video library or additional dependency is required. Encoded
@@ -253,3 +269,27 @@ without a boxed surface. The account caption and leaderboard stack to avoid
 truncation. Focus and selected states stay visible; menu pages retain their routing.
 The earlier procedural mist/leaves and canopy mesh have been superseded by the
 prerecorded clip described above. Only media playback runs in the menu.
+
+### Physical hand interaction and scene music
+
+GamePanel binds own cards to CardPlayOverlay without legacy click callbacks. An upward
+left-button drag of at least38px selects on release. ClientSettings persists
+clickToSelectCards, default true: Click or slide up permits a left click on release
+as well; Slide up only requires the threshold. Short drags return over200ms.
+The floating Settings page exposes both options; both movement and skill bindings
+read the shared preference at gesture time. The hand reserves60px above its cards. Selected cards
+stay raised while targeting and awaiting acceptance. Esc clears targeting and
+returns the card; return it before drawing another. Live rule tooltips remain.
+Accepted public MovementPlayed/SkillCommitted events queue540ms flights to
+PlayedCardArea immediately left (own) and right (opponent) of the board. These
+are latest-play visual references, not authoritative discard piles. Opponent
+skills start concealed and reveal only the publicly committed face. Input is
+blocked during confirmed flights; duplicate/stale events are filtered by the
+model. Hand reconciliation and reflow retain all existing deck rules. Lifecycle
+changes clear visual masks/timers; reduced motion snaps decoration.
+
+MenuTheme selects bundled PCM WAV music. Golden fields uses the supplied
+replacement Golden .mp3 track; Mountain valley keeps menu-music.wav. Lobby theme
+changes notify ClientFrame, whose MenuMusic worker closes the previous clip and
+loads the chosen track off the EDT. Screen changes pause music in matches; the
+saved sound toggle controls both themes. No external decoder or dependency.

@@ -32,7 +32,7 @@ public final class BoardPanel extends JComponent {
 
     public static final int BOARD_SIZE = onitama.core.duel.Board.SIZE; // 7
     private static final int MIN_CELL = 26;
-    private static final double GRID_SHARE = 0.89;
+    private static final double GRID_SHARE = 0.96;
 
     private List<PlacedPiece> pieces = List.of();
     private PlayerColor viewColor = PlayerColor.BLUE;
@@ -406,7 +406,7 @@ public final class BoardPanel extends JComponent {
     /** Lacquered jade frame and ceramic tiles share the landscape's warm/cool palette. */
     private void paintBoard(Graphics2D g) {
         int grid = BOARD_SIZE * cell;
-        int rim = Math.max(3, Math.min(18, cell / 4));
+        int rim = Math.max(3, Math.min(16, cell / 4));
         int shadow = Math.max(2, rim / 3);
         int left = originX - rim, top = originY - rim;
         int size = grid + 2 * rim;
@@ -414,8 +414,8 @@ public final class BoardPanel extends JComponent {
 
         g.setColor(Theme.withAlpha(Theme.SHADOW, 180));
         g.fillRoundRect(left + shadow, top + shadow, size, size, arc, arc);
-        g.setPaint(new java.awt.GradientPaint(left, top, UiKit.lighten(Theme.BOARD_FRAME),
-                left + size, top + size, Theme.BOARD_FRAME));
+        g.setPaint(new java.awt.GradientPaint(left, top, new Color(85, 70, 48),
+                left + size, top + size, new Color(34, 33, 29)));
         g.fillRoundRect(left, top, size, size, arc, arc);
         g.setColor(Theme.INK);
         g.setStroke(new BasicStroke(2f));
@@ -430,7 +430,7 @@ public final class BoardPanel extends JComponent {
             for (int x = 0; x < BOARD_SIZE; x++) {
                 int px = displayX(x) * cell + originX;
                 int py = displayY(y) * cell + originY;
-                Color tile = (x + y) % 2 == 0 ? Theme.BOARD_LIGHT : Theme.BOARD_JADE;
+                Color tile = (x + y) % 2 == 0 ? new Color(232, 219, 181) : new Color(103, 112, 86);
                 g.setColor(tile);
                 g.fillRect(px, py, cell, cell);
                 // A restrained top-edge highlight suggests glazed stone without visual noise.

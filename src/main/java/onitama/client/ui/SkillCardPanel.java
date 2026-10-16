@@ -173,7 +173,7 @@ public final class SkillCardPanel extends JComponent {
 
     @Override
     protected void paintComponent(Graphics graphics) {
-        if (DeckDrawOverlay.isMasked(this)) return;
+        if (DeckDrawOverlay.isMasked(this) || CardPlayOverlay.isMasked(this)) return;
         Graphics2D g = UiKit.nice(graphics);
         int lift = selected ? 5 : (int) (hoverProgress * 4);
         int x = 5, y = 8 - lift, w = getWidth() - 12, h = getHeight() - 16;
@@ -190,17 +190,17 @@ public final class SkillCardPanel extends JComponent {
         String artPath = definition.artworkPath();
         if (artPath.startsWith("assets/")) artPath = artPath.substring(7);
         Image face = AssetStore.optional(artPath);
-        int artH = Math.max(50, (int) (h * .46));
+        int artH = Math.max(50, (int) (h * .34));
         if (face != null) {
             int iw = face.getWidth(null), ih = face.getHeight(null);
             g.drawImage(face, x + 5, y + 5, x + w - 5, y + artH,
                     (int) (iw * .04), (int) (ih * .20), (int) (iw * .96), (int) (ih * .50), null);
         }
         int titleY = y + artH;
-        g.setColor(Theme.INK);
+        g.setColor(new Color(42, 43, 35));
         g.fillRect(x + 4, titleY, w - 8, 26);
         g.setColor(Theme.CREAM);
-        float size = 12f;
+        float size = getWidth() >= 210 ? 15f : 12f;
         do { g.setFont(Theme.display(size)); size -= .5f; }
         while (g.getFontMetrics().stringWidth(definition.name().toUpperCase()) > w - 18 && size > 8);
         g.drawString(definition.name().toUpperCase(), x + 9, titleY + 17);
@@ -223,9 +223,9 @@ public final class SkillCardPanel extends JComponent {
             g.fillOval(x + w - 15, titleY + 32, 5, 5);
         }
         g.setColor(Theme.INK);
-        g.setFont(Theme.normal(11f));
+        g.setFont(Theme.normal(getWidth() >= 210 ? 13f : 11f));
         drawWrappedText(g, SkillText.render(definition), x + 9, titleY + 53, w - 18,
-                Math.max(2, (y + h - titleY - 58) / 12 + 1));
+                Math.max(2, (y + h - titleY - 58) / (g.getFontMetrics().getHeight()) + 1));
         g.dispose();
     }
 
@@ -247,7 +247,7 @@ public final class SkillCardPanel extends JComponent {
                     value = value.substring(0, value.length() - 1);
                 value += "…";
             }
-            g.drawString(value, x, y + i * 12);
+            g.drawString(value, x, y + i * g.getFontMetrics().getHeight());
         }
     }
 }

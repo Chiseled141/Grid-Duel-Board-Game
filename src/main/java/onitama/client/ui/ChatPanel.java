@@ -23,7 +23,7 @@ public final class ChatPanel extends JPanel {
             super.paintComponent(graphics);
             if (getText().isEmpty() && !isFocusOwner()) {
                 Graphics2D g = UiKit.nice(graphics);
-                g.setColor(Theme.MUTED_INK);
+                g.setColor(Theme.MUTED);
                 g.setFont(getFont());
                 g.drawString(isEnabled() ? "Say something…" : "Chat unavailable", 10,
                         (getHeight() - g.getFontMetrics().getHeight()) / 2 + g.getFontMetrics().getAscent());
@@ -31,7 +31,7 @@ public final class ChatPanel extends JPanel {
             }
         }
     };
-    private final JButton send = UiKit.miniPill("Send", UiKit.Pill.GOLD);
+    private final JButton send = MatchStyle.action("Send");
     private final JLabel status = UiKit.label("", 9f);
     private String matchId;
     private final javax.swing.Timer cooldown = new javax.swing.Timer(550, e -> refreshAvailability());
@@ -72,7 +72,7 @@ public final class ChatPanel extends JPanel {
             }
         };
         history.setName("matchChatHistory");
-        history.setBackground(Theme.BG);
+        history.setOpaque(false);
         history.setFocusable(false);
         history.setCellRenderer((list, message, index, selected, focus) -> new Bubble(message));
         JScrollPane scroll = new JScrollPane(history, JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED,
@@ -80,14 +80,16 @@ public final class ChatPanel extends JPanel {
         scroll.setName("chatScroll");
         scroll.setBorder(null);
         scroll.setMinimumSize(new Dimension(0, 0));
-        scroll.getViewport().setBackground(Theme.BG);
+        scroll.setOpaque(false);
+        scroll.getViewport().setOpaque(false);
         scroll.getVerticalScrollBar().setUnitIncrement(20);
         add(scroll, BorderLayout.CENTER);
         JPanel composer = new JPanel(new BorderLayout(5, 0));
         composer.setOpaque(false);
         input.setName("matchChatInput");
-        input.setBackground(Theme.CREAM);
-        input.setForeground(Theme.INK);
+        input.setBackground(new Color(33, 39, 37));
+        input.setForeground(MatchStyle.TEXT);
+        input.setCaretColor(MatchStyle.GOLD);
         input.setDisabledTextColor(Theme.MUTED_INK);
         input.setFont(Theme.normal(12f));
         input.setBorder(BorderFactory.createCompoundBorder(BorderFactory.createLineBorder(Theme.GRID_LINE),
@@ -129,9 +131,9 @@ public final class ChatPanel extends JPanel {
 
     @Override protected void paintComponent(Graphics graphics) {
         Graphics2D g = UiKit.nice(graphics);
-        g.setColor(Theme.BG);
+        g.setColor(MatchStyle.SURFACE);
         g.fillRoundRect(0, 0, getWidth(), getHeight(), 14, 14);
-        g.setColor(Theme.GRID_LINE);
+        g.setColor(new Color(192, 165, 113, 90));
         g.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 14, 14);
         g.dispose();
     }
@@ -203,13 +205,13 @@ public final class ChatPanel extends JPanel {
         @Override protected void paintComponent(Graphics graphics) {
             Graphics2D g = UiKit.nice(graphics);
             try {
-                g.setColor(own ? Theme.JADE : Theme.CREAM);
+                g.setColor(own ? new Color(66, 62, 44, 225) : new Color(23, 30, 31, 225));
                 g.fillRoundRect(own ? 21 : 0, 2, Math.max(1, getWidth() - 21), getHeight() - 7, 12, 12);
                 int x = own ? 30 : 9;
                 g.setFont(Theme.bold(9f));
-                g.setColor(own ? Theme.SKY : Theme.GOLD_INK);
+                g.setColor(MatchStyle.GOLD);
                 g.drawString(own ? "YOU" : message.sender(), x, 17);
-                g.setColor(own ? Theme.CREAM : Theme.INK);
+                g.setColor(MatchStyle.TEXT);
                 float y = 24;
                 for (var line : lines(getWidth())) {
                     y += line.getAscent();

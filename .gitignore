@@ -7,3 +7,7 @@ results/
 *.iml
 .vscode/
 logs/
+
+# Generated visual QA exports; runtime artwork belongs in src/main/resources.
+artifacts/
+docs/screenshots/

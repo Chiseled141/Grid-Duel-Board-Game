@@ -1,5 +1,7 @@
 # Golden fields animated menu theme
 
+> Historical screenshot/video exports named below were removed during the requested cleanup; runtime GIFs and regeneration sources remain.
+
 ## Request and acceptance
 
 Add a Change theme button and a second scene from the supplied sunset battlefield

@@ -89,10 +89,10 @@ class DeckPresentationTest {
             assertEquals(1, flights(ui).size());
             var flight = flights(ui).get(0);
             assertNotNull(flight.face(), "movement is public on either side");
-            var deck = (DeckStackPanel) field(ui.panel, "movementDeck");
+            var deck = (DeckStackPanel) field(ui.panel, "drawPile");
             assertEquals(SwingUtilities.convertRectangle(deck, deck.topBounds(), ui.overlay), flight.source().get());
             assertTrue(flight.destination().get().y < 200 == (actor != viewer));
-            assertEquals(transition.after(viewer).movementDeckCount(), deck.count());
+            assertEquals(1, find(ui.panel, DeckStackPanel.class).size());
             assertFalse(ui.overlay.contains(20, 20));
             assertTrue(ui.overlay.isFlyingTo(flight.key()));
             var beforeReplay = flights(ui);
@@ -118,7 +118,7 @@ class DeckPresentationTest {
         withTransition(transition, viewer, ui -> {
             assertEquals(count, flights(ui).size());
             var after = transition.after(viewer);
-            assertEquals(after.skillDeckCount(), ((DeckStackPanel) field(ui.panel, "skillDeck")).count());
+            assertEquals(1, find(ui.panel, DeckStackPanel.class).size());
             var badge = (PlayerBadgePanel) field(ui.panel, "ownBadge");
             assertEquals(viewer, field(badge, "color"));
             assertEquals(viewer == PlayerColor.BLUE ? after.blueMana() : after.redMana(), field(badge, "mana"));
@@ -140,7 +140,7 @@ class DeckPresentationTest {
                     List.of("playedCards", "matchChatHistory").contains(list.getName())),
                     "Only public card history and match chat use lists; the old Move Log stays removed");
             assertTrue(find(ui.panel, JLabel.class).stream().noneMatch(l -> l.getText().contains("MOVE LOG")));
-            assertEquals(2, find(ui.panel, DeckStackPanel.class).size());
+            assertEquals(1, find(ui.panel, DeckStackPanel.class).size());
             assertEquals(2, find(ui.panel, PlayerBadgePanel.class).size());
             assertEquals(after.ownSkillHand().size(), find(ui.panel, SkillCardPanel.class).size());
         });

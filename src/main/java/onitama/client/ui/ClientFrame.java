@@ -66,7 +66,8 @@ public final class ClientFrame extends JFrame {
 
         LoginPanel loginPanel = new LoginPanel(model, settings);
         LobbyPanel lobbyPanel = new LobbyPanel(model, settings, this::openLeaderboard, this::closeAndSave);
-        GamePanel gamePanel = new GamePanel(model);
+        lobbyPanel.onThemeChanged(this::updateMenuMusic);
+        GamePanel gamePanel = new GamePanel(model, settings);
         LeaderboardPanel leaderboardPanel = new LeaderboardPanel(model, () -> model.leaveToLobby());
 
         content.add(loginPanel, Screen.LOGIN.name());
@@ -344,7 +345,7 @@ public final class ClientFrame extends JFrame {
     }
 
     private void updateMenuMusic() {
-        menuMusic.setPlaying(settings.soundEnabled() && visibleScreen != Screen.GAME);
+        menuMusic.setPlaying(settings.soundEnabled() && visibleScreen != Screen.GAME, settings.menuTheme());
     }
 
     /** Releases the menu audio even when the frame is disposed without using Exit. */

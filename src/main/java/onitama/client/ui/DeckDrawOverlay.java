@@ -215,7 +215,7 @@ public final class DeckDrawOverlay extends JComponent {
     }
 
     /** Wraps the whole play surface so a flight can cross from a deck to either hand. */
-    public static JLayeredPane wrap(JComponent scene, DeckDrawOverlay overlay) {
+    public static JLayeredPane wrap(JComponent scene, JComponent overlay) {
         requireEdt();
         var layers = new JLayeredPane() {
             @Override public void doLayout() {

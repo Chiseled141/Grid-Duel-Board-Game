@@ -28,8 +28,8 @@ public final class PlayerBadgePanel extends JComponent {
     public PlayerBadgePanel(boolean own) {
         this.own = own;
         setOpaque(false);
-        setPreferredSize(new Dimension(270, 132));
-        setMinimumSize(new Dimension(180, 132));
+        setPreferredSize(new Dimension(228, 104));
+        setMinimumSize(new Dimension(180, 104));
     }
 
     /** Uses a permitted view; reserved mana is supplied only for the local player. */
@@ -63,17 +63,18 @@ public final class PlayerBadgePanel extends JComponent {
     @Override protected void paintComponent(Graphics graphics) {
         Graphics2D g = UiKit.nice(graphics);
         try {
+            g.scale(1, getHeight() / 132.0);
             Color accent = Theme.playerColor(color);
-            g.setColor(Theme.SURFACE);
-            g.fillRoundRect(1, 1, getWidth() - 2, getHeight() - 2, 14, 14);
-            g.setColor(active && !paused ? accent : Theme.OUTLINE);
+            g.setColor(MatchStyle.SURFACE);
+            g.fillRoundRect(1, 1, getWidth() - 2, 130, 14, 14);
+            g.setColor(active && !paused ? accent : new Color(190, 165, 114, 100));
             g.setStroke(new BasicStroke(active && !paused ? 2.5f : 1f));
-            g.drawRoundRect(2, 2, getWidth() - 5, getHeight() - 5, 13, 13);
+            g.drawRoundRect(2, 2, getWidth() - 5, 127, 13, 13);
             // An abstract compass crest avoids human portraits and needs no external asset.
             g.setColor(accent);
             g.drawOval(14, 19, 48, 48);
             g.fillPolygon(new int[]{38, 52, 38, 24}, new int[]{25, 43, 61, 43}, 4);
-            g.setColor(Theme.SURFACE);
+            g.setColor(MatchStyle.SURFACE);
             g.fillOval(33, 38, 10, 10);
             g.setFont(Theme.normal(9));
             g.setColor(Theme.CREAM);
@@ -92,7 +93,7 @@ public final class PlayerBadgePanel extends JComponent {
             g.setColor(Theme.CREAM);
             g.drawString(detail, getWidth() - 16 - g.getFontMetrics().stringWidth(detail), 88);
             int width = Math.max(1, getWidth() - 32);
-            g.setColor(Theme.OUTLINE);
+            g.setColor(new Color(190, 165, 114, 100));
             g.fillRoundRect(16, 101, width, 10, 6, 6);
             g.setColor(accent);
             g.fillRoundRect(16, 101, (int) (width * Math.max(0, Math.min(1, mana / (double) Math.max(1, cap)))), 10, 6, 6);

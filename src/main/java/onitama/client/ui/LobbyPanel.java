@@ -21,6 +21,9 @@ public final class LobbyPanel extends ValleyMenuPanel {
     private final Runnable openLeaderboard;
     private final Runnable quitGame;
     private final Runnable saveSettings;
+    private Runnable themeChanged = () -> { };
+
+    void onThemeChanged(Runnable listener) { themeChanged = listener; }
     private final JPanel surface = new JPanel(new BorderLayout()) {
         @Override public Dimension getPreferredSize() {
             Dimension natural = super.getPreferredSize();
@@ -59,6 +62,7 @@ public final class LobbyPanel extends ValleyMenuPanel {
     private final JButton practice = new MenuAction("Practice", () -> showPage("practice"), false);
     private final JButton browse = new MenuAction("Join a game", () -> showPage("join"), false);
     private final JButton resume;
+    private final JButton[] cardControls = new JButton[2];
     private final JButton[] styles = new JButton[3];
     private final java.util.Map<MenuTheme, JButton> themes = new java.util.EnumMap<>(MenuTheme.class);
     private final java.util.Map<String, JPanel> pages = new java.util.LinkedHashMap<>();
@@ -289,9 +293,26 @@ public final class LobbyPanel extends ValleyMenuPanel {
             line(page, styles[i]);
         }
         page.add(Box.createVerticalStrut(10));
+        line(page, caption("Card selection"));
+        String[] controls = {"Click or slide up", "Slide up only"};
+        for (int i = 0; i < controls.length; i++) {
+            boolean click = i == 0;
+            cardControls[i] = new MenuAction(controls[i], () -> {
+                synchronized (settings) { settings.setClickToSelectCards(click); }
+                updateCardControls();
+                saveSettings.run();
+            }, false);
+            line(page, cardControls[i]);
+        }
         line(page, caption("Saved automatically"));
+        updateCardControls();
         updateStyles();
         return page;
+    }
+
+    private void updateCardControls() {
+        cardControls[0].setSelected(settings.clickToSelectCards());
+        cardControls[1].setSelected(!settings.clickToSelectCards());
     }
 
     private JPanel buildThemes() {
@@ -300,6 +321,7 @@ public final class LobbyPanel extends ValleyMenuPanel {
             JButton button = new MenuAction(theme.label(), () -> {
                 synchronized (settings) { settings.setMenuTheme(theme); }
                 updateThemes();
+                themeChanged.run();
                 repaint();
                 saveSettings.run();
             }, false);

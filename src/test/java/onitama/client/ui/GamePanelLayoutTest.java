@@ -74,13 +74,30 @@ class GamePanelLayoutTest {
                 assertTrue(position.x + button.getWidth() <= boardPosition.x,
                         "turn buttons must occupy the left rail, outside the board");
             }
-            if (height >= 1180) assertTrue(board.cell() >= 95,
-                    "large windows must use their freed vertical space for a larger board");
+            if (height >= 1180) {
+                assertTrue(board.cell() >= 95, "large windows use the freed space for the board");
+                for (Component card : hand.getComponents()) {
+                    assertTrue(card.getHeight() >= 250, "large windows expose taller card descriptions");
+                    if (handSize == 3) assertTrue(card.getWidth() >= 210, "default hand cards grow wider");
+                }
+            }
+            for (PlayedCardArea area : find(panel, PlayedCardArea.class)) {
+                assertInside(panel, area, width, height);
+                var areaPoint = SwingUtilities.convertPoint(area, 0, 0, panel);
+                var grid = new java.awt.Rectangle(boardPosition.x + board.originX(),
+                        boardPosition.y + board.originY(), 7 * board.cell(), 7 * board.cell());
+                assertFalse(grid.intersects(new java.awt.Rectangle(areaPoint.x, areaPoint.y,
+                        area.getWidth(), area.getHeight())), "played-card areas stay outside board squares");
+            }
+            for (CardPanel card : find(panel, CardPanel.class)) {
+                if (!SwingUtilities.isDescendingFrom(card, hand)) assertTrue(card.getHeight() >= 110,
+                        "public enemy movement cards must be enlarged");
+            }
             assertTrue(board.originX() >= 0 && board.originY() >= 0);
             assertTrue(board.originX() + 7 * board.cell() <= board.getWidth());
             assertTrue(board.originY() + 7 * board.cell() <= board.getHeight());
             assertEquals(view.opponentSkillCount(), find(panel, CardBackPanel.class).size());
-            assertEquals(2, find(panel, DeckStackPanel.class).size());
+            assertEquals(1, find(panel, DeckStackPanel.class).size());
             ChatPanel chat = find(panel, ChatPanel.class).get(0);
             assertInside(panel, chat, width, height);
             var transcript = find(chat, javax.swing.JScrollPane.class).get(0);

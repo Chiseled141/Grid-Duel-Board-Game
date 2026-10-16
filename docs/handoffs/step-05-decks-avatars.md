@@ -1,5 +1,7 @@
 # Step 5 — Shared decks, draw flights and player badges
 
+> Historical screenshot/video exports named below were removed during the requested cleanup; runtime GIFs and regeneration sources remain.
+
 Completed implementation, reviewed 2026-10-14; final packaging 2026-10-15.
 
 ## Result

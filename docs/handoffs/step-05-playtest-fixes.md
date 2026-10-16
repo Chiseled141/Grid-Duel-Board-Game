@@ -1,5 +1,7 @@
 # Step 5 playtest fixes — 2026-10-14
 
+> Historical screenshot/video exports named below were removed during the requested cleanup; runtime GIFs and regeneration sources remain.
+
 Follow-up to `step-05-playtest.md`. Its original findings and screenshots are retained as review history.
 
 ## Changes

@@ -166,34 +166,36 @@ class Step05AnimationTest {
     }
 
     @Test
-    void practiceBotPresentationDelivered() {
-        model.startPracticeMatch(Difficulty.ROOKIE, 42L);
-        assertEquals(Screen.GAME, model.screen());
-        assertTrue(model.isPracticeMode());
+    void practiceBotPresentationDelivered() throws Exception {
+        javax.swing.SwingUtilities.invokeAndWait(() -> {
+            model.startPracticeMatch(Difficulty.ROOKIE, 42L);
+            assertEquals(Screen.GAME, model.screen());
+            assertTrue(model.isPracticeMode());
 
-        AtomicInteger presentations = new AtomicInteger();
-        List<PublicEvent> receivedEvents = new ArrayList<>();
+            AtomicInteger presentations = new AtomicInteger();
+            List<PublicEvent> receivedEvents = new ArrayList<>();
 
-        model.addListener(new ClientModelListener() {
-            @Override
-            public void onAcceptedPresentation(PlayerView priorView, PlayerView currentView, List<PublicEvent> events) {
-                presentations.incrementAndGet();
-                receivedEvents.addAll(events);
+            model.addListener(new ClientModelListener() {
+                @Override
+                public void onAcceptedPresentation(PlayerView priorView, PlayerView currentView, List<PublicEvent> events) {
+                    presentations.incrementAndGet();
+                    receivedEvents.addAll(events);
+                }
+            });
+
+            // Advance game until bot turn then step bot
+            for (int i = 0; i < 5; i++) {
+                if (model.myTurn()) {
+                    if (model.canSkipMovement()) model.skipMovement();
+                    else if (model.canEndTurn()) model.endTurn();
+                } else if (!model.isMatchOver()) {
+                    model.stepBot();
+                }
             }
+
+            assertTrue(presentations.get() > 0, "Bot steps should emit accepted presentations");
+            assertFalse(receivedEvents.isEmpty(), "Events should be recorded from practice steps");
         });
-
-        // Advance game until bot turn then step bot
-        for (int i = 0; i < 5; i++) {
-            if (model.myTurn()) {
-                if (model.canSkipMovement()) model.skipMovement();
-                else if (model.canEndTurn()) model.endTurn();
-            } else if (!model.isMatchOver()) {
-                model.stepBot();
-            }
-        }
-
-        assertTrue(presentations.get() > 0, "Bot steps should emit accepted presentations");
-        assertFalse(receivedEvents.isEmpty(), "Events should be recorded from practice steps");
     }
 
     @Test

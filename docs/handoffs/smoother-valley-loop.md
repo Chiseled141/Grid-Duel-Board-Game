@@ -1,5 +1,7 @@
 # Smoother valley loop
 
+> Historical screenshot/video exports named below were removed during the requested cleanup; runtime GIFs and regeneration sources remain.
+
 Request: reduce visible animation stutter with more frames and/or slower motion.
 Acceptance: retain the authored scene, increase actual distinct frames, keep GIF
 frame delays uniform and the loop seamless, preserve native playback/reduced

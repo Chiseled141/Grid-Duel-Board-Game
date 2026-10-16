@@ -13,10 +13,6 @@ public final class CardHandPanel extends JLayeredPane {
     private List<? extends JComponent> cards = List.of();
     private boolean reducedMotion = false;
     private Timer reflowTimer;
-    private JComponent departingFace;
-    private int departingIndex, departingCount;
-    private float departureProgress;
-    private Timer departureTimer;
     private float reflowProgress = 1f;
     private final java.util.Map<JComponent, Integer> startXMap = new java.util.HashMap<>();
 
@@ -33,39 +29,8 @@ public final class CardHandPanel extends JLayeredPane {
 
     }
 
-    /** Paints an own-card copy above the live hand without adding an input-catching child. */
-    public void animateDeparture(JComponent face, int index, int count) {
-        cancelDeparture();
-        if (reducedMotion) return;
-        departingFace = face;
-        departingIndex = index;
-        departingCount = count;
-        departureProgress = 0f;
-        long start = System.nanoTime();
-        departureTimer = new Timer(16, e -> {
-            departureProgress = Math.min(1f, (System.nanoTime() - start) / 200_000_000f);
-            if (departureProgress >= 1f) finishDeparture();
-            repaint();
-        });
-        departureTimer.start();
-        repaint();
-    }
-
-    /** Completes the current visual transition, for example before another local interaction. */
-    public void finishDeparture() {
-        cancelDeparture();
-    }
-
-    /** Discards the old outgoing-card copy while preserving a newly started hand reflow. */
-    public void cancelDeparture() {
-        if (departureTimer != null) { departureTimer.stop(); departureTimer = null; }
-        departingFace = null;
-        repaint();
-    }
-
     /** Snaps reflow and discards outgoing-card effects on lifecycle interruption. */
     public void cancelAnimations() {
-        cancelDeparture();
         if (reflowTimer != null) { reflowTimer.stop(); reflowTimer = null; }
         reflowProgress = 1f;
         startXMap.clear();
@@ -76,24 +41,6 @@ public final class CardHandPanel extends JLayeredPane {
     @Override public void removeNotify() {
         cancelAnimations();
         super.removeNotify();
-    }
-
-    @Override protected void paintChildren(java.awt.Graphics graphics) {
-        super.paintChildren(graphics);
-        if (departingFace == null) return;
-        int height = Math.min(210, Math.max(1, getHeight() - 16));
-        int width = 176;
-        double step = departingCount <= 1 ? 0 : Math.min(144,
-                Math.max(1, (getWidth() - width - 24.0) / (departingCount - 1)));
-        double x = (getWidth() - width - step * (departingCount - 1)) / 2 + departingIndex * step;
-        departingFace.setSize(width, height);
-        if (departingFace instanceof CardPanel movement)
-            movement.setCardScale(Math.min(.76, (height - 12) / 244.0));
-        java.awt.Graphics2D g = (java.awt.Graphics2D) graphics.create();
-        g.translate(x, 4 - 12 * departureProgress);
-        g.setComposite(java.awt.AlphaComposite.SrcOver.derive(1f - departureProgress));
-        departingFace.paint(g);
-        g.dispose();
     }
 
     private boolean isCardSelected(JComponent card) {
@@ -180,17 +127,19 @@ public final class CardHandPanel extends JLayeredPane {
         reflowTimer.start();
     }
 
+    private int heightForCards() { return Math.max(1, getHeight() - 72); }
+
     @Override
     public void doLayout() {
         if (cards.isEmpty()) return;
         int availableW = getWidth();
-        int width = 176;
+        int width = Math.min(236, Math.max(176, (int) (heightForCards() * .86)));
         if (cards.size() > 5 && availableW < 750) {
             width = Math.min(176, Math.max(130, (availableW - 30) / (cards.size() - 1) + 40));
         }
-        int height = Math.min(210, Math.max(1, getHeight() - 16));
+        int height = Math.max(1, getHeight() - 72);
         double step = cards.size() == 1 ? 0
-                : Math.min(144, Math.max(1, (availableW - width - 24.0) / (cards.size() - 1)));
+                : Math.min(width + 8, Math.max(1, (availableW - width - 24.0) / (cards.size() - 1)));
         double span = width + step * (cards.size() - 1);
         double start = (availableW - span) / 2;
         double mid = (cards.size() - 1) / 2.0;
@@ -198,7 +147,7 @@ public final class CardHandPanel extends JLayeredPane {
             int arc = (int) (8 * Math.pow((i - mid) / Math.max(1, mid), 2));
             JComponent card = cards.get(i);
             if (card instanceof CardPanel movement) {
-                movement.setCardScale(Math.min(.76, (height - 12) / 244.0));
+                movement.setCardScale(Math.min(1.0, (height - 12) / 244.0));
             }
             int targetX = (int) (start + i * step);
             int finalX = targetX;
@@ -207,7 +156,7 @@ public final class CardHandPanel extends JLayeredPane {
                 double eased = 1 - (1 - reflowProgress) * (1 - reflowProgress);
                 finalX = (int) (prevX + (targetX - prevX) * eased);
             }
-            card.setBounds(finalX, 4 + arc, width, height);
+            card.setBounds(finalX, 60 + arc, width, height);
         }
     }
 

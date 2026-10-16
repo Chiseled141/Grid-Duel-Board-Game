@@ -37,6 +37,9 @@ class PlayedCardsPanelTest {
             var panel = new PlayedCardsPanel(model);
             JList<?> plays = list(panel);
             assertEquals(0, plays.getModel().getSize());
+            var scroll = (JScrollPane) SwingUtilities.getAncestorOfClass(JScrollPane.class, plays);
+            assertFalse(scroll.isOpaque());
+            assertFalse(scroll.getViewport().isOpaque());
             for (int turn = 0; turn < 2; turn++) {
                 var move = Targeting.legalMoves(RulesEngine.project(game, game.turn())).get(0);
                 var accepted = (ActionResult.Accepted) RulesEngine.apply(game, game.turn(), move);

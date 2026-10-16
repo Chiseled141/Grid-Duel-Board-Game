@@ -32,38 +32,38 @@ class TargetingPresentationTest {
                 String id = view.ownSkillHand().stream().filter(c -> c.definitionId().equals(skill))
                         .findFirst().orElseThrow().instanceId();
                 model.skillClicked(id);
-                JLabel instruction = field(panel, "instructionLabel", JLabel.class);
+                BoardPanel instruction = field(panel, "boardPanel", BoardPanel.class);
                 JButton cast = field(panel, "castSkillButton", JButton.class);
-                assertTrue(instruction.getText().contains("choose a highlighted piece"));
+                assertTrue(instruction.getToolTipText().contains("choose a highlighted piece"));
                 assertFalse(cast.isEnabled());
 
                 int pieceId = model.skillOptions().selectablePieceIds().get(0);
                 model.boardClicked(view.pieces().stream().filter(p -> p.piece().id() == pieceId)
                         .findFirst().orElseThrow().square());
-                assertTrue(instruction.getText().contains("destination square"), instruction.getText());
+                assertTrue(instruction.getToolTipText().contains("destination square"), instruction.getToolTipText());
                 assertFalse(cast.isEnabled());
 
                 model.boardClicked(model.skillOptions().selectableSquares().get(0));
                 assertTrue(model.canCastSkill());
                 assertTrue(cast.isEnabled());
-                assertTrue(instruction.getText().startsWith("Ready to cast"), instruction.getText());
-                assertEquals(instruction.getText(), cast.getToolTipText());
+                assertTrue(instruction.getToolTipText().startsWith("Ready to cast"), instruction.getToolTipText());
+                assertEquals(instruction.getToolTipText(), cast.getToolTipText());
                 if (skill.equals("scatter")) {
-                    assertTrue(instruction.getText().contains("More targets are optional"));
+                    assertTrue(instruction.getToolTipText().contains("More targets are optional"));
                     int another = model.skillOptions().selectablePieceIds().stream()
                             .filter(p -> !model.skillDraft().pieceIds().contains(p)).findFirst().orElseThrow();
                     model.boardClicked(view.pieces().stream().filter(p -> p.piece().id() == another)
                             .findFirst().orElseThrow().square());
                     assertFalse(cast.isEnabled());
-                    assertTrue(instruction.getText().contains("destination square"));
+                    assertTrue(instruction.getToolTipText().contains("destination square"));
                     model.boardClicked(model.skillOptions().selectableSquares().get(0));
                     assertTrue(cast.isEnabled());
-                    assertTrue(instruction.getText().startsWith("Ready to cast"));
-                    assertFalse(instruction.getText().contains("More targets are optional"));
+                    assertTrue(instruction.getToolTipText().startsWith("Ready to cast"));
+                    assertFalse(instruction.getToolTipText().contains("More targets are optional"));
                 }
                 model.handleMatchSync(new MatchSync("targeting", "ROOM", view, true, 1));
                 assertFalse(cast.isEnabled());
-                assertTrue(instruction.getText().startsWith("Match paused"));
+                assertTrue(instruction.getToolTipText().startsWith("Match paused"));
             } finally {
                 panel.removeNotify();
             }
