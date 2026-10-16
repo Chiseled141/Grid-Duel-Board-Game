@@ -65,6 +65,101 @@ class ClientModelTest {
     }
 
     @Test
+    void publicOpponentSkillAppearsWhenCommittedWithoutRevealingTheirRemainingHand() {
+        GameState game = null;
+        for (int seed = 0; seed < 1000; seed++) {
+            var candidate = RulesEngine.newGame(rules, seed);
+            if (candidate.turn() == PlayerColor.RED && RulesEngine.project(candidate, PlayerColor.RED)
+                    .ownSkillHand().stream().anyMatch(c -> c.definitionId().equals("foresight"))) {
+                game = candidate;
+                break;
+            }
+        }
+        assertNotNull(game);
+        var actor = game.turn();
+        var hidden = RulesEngine.project(game, actor).ownSkillHand();
+        var initial = RulesEngine.project(game, PlayerColor.BLUE);
+        model.handleMatchSync(new MatchSync("skill-history", "ROOM", initial, false, 1));
+        assertTrue(model.playedCards().isEmpty());
+        var skip = (onitama.core.duel.ActionResult.Accepted) RulesEngine.apply(game, actor, new GameAction.SkipMovement());
+        model.handleGameUpdate(new onitama.net.GameUpdate(new MatchSync("skill-history", "ROOM",
+                RulesEngine.project(skip.nextState(), PlayerColor.BLUE), false, 1), skip.events()));
+        var foresight = hidden.stream().filter(c -> c.definitionId().equals("foresight")).findFirst().orElseThrow();
+        var cast = (onitama.core.duel.ActionResult.Accepted) RulesEngine.apply(skip.nextState(), actor,
+                new GameAction.CastSkill(foresight.instanceId(), new onitama.core.duel.SkillTargets.None()));
+        model.handleGameUpdate(new onitama.net.GameUpdate(new MatchSync("skill-history", "ROOM",
+                RulesEngine.project(cast.nextState(), PlayerColor.BLUE), false, 1), cast.events()));
+        assertEquals(List.of(new ClientModel.PlayedCard(initial.startedTurns(), actor, "foresight", true)), model.playedCards());
+        assertNull(model.view().ownChoice(), "opponent's pending preview stays private");
+    }
+
+    @Test
+    void playedCardsRecordOnlyPublicCardsOnceAndResetForNewMatches() {
+        var game = RulesEngine.newGame(rules, 42);
+        var initial = RulesEngine.project(game, game.turn());
+        model.handleMatchSync(new MatchSync("plays", "ROOM", initial, false, 1));
+        assertTrue(model.playedCards().isEmpty(), "hands and spent piles are not play events");
+        var move = Targeting.legalMoves(initial).get(0);
+        var accepted = (onitama.core.duel.ActionResult.Accepted) RulesEngine.apply(game, game.turn(), move);
+        var after = RulesEngine.project(accepted.nextState(), game.turn());
+        var sync = new MatchSync("plays", "ROOM", after, false, 2);
+        var update = new onitama.net.GameUpdate(sync, accepted.events());
+        model.handleGameUpdate(update);
+        assertEquals(List.of(new ClientModel.PlayedCard(initial.startedTurns(), game.turn(), move.movementCardId(), false)),
+                model.playedCards());
+        model.handleGameUpdate(update);
+        assertEquals(1, model.playedCards().size());
+        model.handleMatchSync(sync);
+        assertEquals(1, model.playedCards().size(), "same-match reconnect keeps locally seen plays");
+        model.handleGameUpdate(new onitama.net.GameUpdate(new MatchSync("foreign", "ROOM", after, false, 2),
+                List.of(new onitama.core.duel.PublicEvent.SkillCommitted(game.turn().opponent(),
+                        new CardInstance("dash#1", "dash")))));
+        assertEquals(1, model.playedCards().size());
+        model.handleMatchSync(new MatchSync("fresh", "ROOM", initial, false, 1));
+        assertTrue(model.playedCards().isEmpty());
+    }
+
+    @Test
+    void chatUsesServerEchoAndPreservesHistoryOnlyForSameMatch() {
+        var view = RulesEngine.project(RulesEngine.newGame(rules, 42), PlayerColor.BLUE);
+        var sync = new MatchSync("chat-1", "ROOM", view, false, 1);
+        model.handleMatchSync(sync);
+        assertTrue(model.canChat());
+        assertFalse(model.sendChat("  "));
+        assertFalse(model.sendChat("x".repeat(281)));
+        assertTrue(model.sendChat("hello"));
+        assertEquals(new onitama.net.ChatRequest("chat-1", "hello"), connection.sent.get(0));
+        assertTrue(model.chatMessages().isEmpty());
+        model.handleMessage(new onitama.net.ChatMessage("foreign", "other", "ignored"));
+        assertTrue(model.chatMessages().isEmpty());
+        for (int i = 0; i < 205; i++) {
+            model.handleMessage(new onitama.net.ChatMessage("chat-1", "alice", "message " + i));
+        }
+        assertEquals(200, model.chatMessages().size());
+        assertEquals("message 5", model.chatMessages().get(0).text());
+        model.handleMatchSync(sync);
+        assertEquals(200, model.chatMessages().size());
+        assertEquals(1, model.currentSync().nextSequence());
+        assertEquals(view, model.view());
+        model.handleMatchSync(new MatchSync("chat-2", "ROOM", view, false, 1));
+        assertTrue(model.chatMessages().isEmpty());
+        model.handleMatchSync(new MatchSync("chat-2", "ROOM", view, true, 1));
+        assertFalse(model.canChat());
+        assertFalse(model.sendChat("paused"));
+        model.handleMatchSync(new MatchSync("chat-2", "ROOM", view, false, 1));
+        connection.connected = false;
+        assertFalse(model.sendChat("offline"));
+        connection.connected = true;
+        model.handleMessage(new onitama.net.GameOver(null, onitama.core.duel.EndReason.DRAW, 1000, 1000));
+        assertFalse(model.canChat());
+        model.leaveToLobby();
+        assertTrue(model.chatMessages().isEmpty());
+        model.startPracticeMatch(onitama.core.Difficulty.ROOKIE, 42);
+        assertFalse(model.canChat());
+        model.resign();
+    }
+
+    @Test
     void matchSyncInitializesGameScreenAndSequence() {
         GameState game = RulesEngine.newGame(rules, 42L);
         PlayerView blueView = RulesEngine.project(game, PlayerColor.BLUE);

@@ -52,6 +52,8 @@ class MessageWireFilterTest {
                 new UserProfile("alice", 1016, 3, 1), "token"));
         assertDeserializes(new ProtocolHello(2));
         assertDeserializes(new ProtocolReady(2));
+        assertDeserializes(new ChatRequest("match-1", "Hello 👋"));
+        assertDeserializes(new ChatMessage("match-1", "alice", "Good luck!"));
     }
 
     @Test

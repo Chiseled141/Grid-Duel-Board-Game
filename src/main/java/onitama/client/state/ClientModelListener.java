@@ -30,6 +30,10 @@ public interface ClientModelListener {
     default void onPresentationReset() {
     }
 
+    /** The current match chat history changed or was cleared. */
+    default void onChatChanged() {
+    }
+
     /** Lobby data changed (open matches, profile). */
     default void onLobbyChanged() {
     }

@@ -81,6 +81,12 @@ class GamePanelLayoutTest {
             assertTrue(board.originY() + 7 * board.cell() <= board.getHeight());
             assertEquals(view.opponentSkillCount(), find(panel, CardBackPanel.class).size());
             assertEquals(2, find(panel, DeckStackPanel.class).size());
+            ChatPanel chat = find(panel, ChatPanel.class).get(0);
+            assertInside(panel, chat, width, height);
+            var transcript = find(chat, javax.swing.JScrollPane.class).get(0);
+            assertTrue(transcript.getViewport().getHeight() >= 30, "chat transcript must remain readable");
+            assertInside(panel, find(chat, javax.swing.JTextField.class).get(0), width, height);
+            assertInside(panel, find(chat, JButton.class).get(0), width, height);
             assertEquals(2, find(panel, PlayerBadgePanel.class).size());
             for (Component item : find(panel, DeckStackPanel.class)) assertInside(panel, item, width, height);
             for (Component item : find(panel, PlayerBadgePanel.class)) assertInside(panel, item, width, height);

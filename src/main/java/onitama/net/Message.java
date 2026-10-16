@@ -20,7 +20,7 @@ public sealed interface Message extends Serializable
         ListMatchesRequest, ListMatchesResponse,
         GameOver, RematchRequest, RematchAccept,
         OpponentLeft, ReconnectRequest, LeaderboardRequest, LeaderboardResponse,
-        Ping, Pong, ErrorMessage,
+        Ping, Pong, ErrorMessage, ChatRequest, ChatMessage,
         ProtocolHello, ProtocolReady, ActionRequest, MatchSync, ActionReply, GameUpdate {
 
     /**
@@ -48,6 +48,8 @@ public sealed interface Message extends Serializable
                     + "onitama.net.Ping;"
                     + "onitama.net.Pong;"
                     + "onitama.net.ErrorMessage;"
+                    + "onitama.net.ChatRequest;"
+                    + "onitama.net.ChatMessage;"
                     + "onitama.net.ProtocolHello;"
                     + "onitama.net.ProtocolReady;"
                     + "onitama.net.ActionRequest;"

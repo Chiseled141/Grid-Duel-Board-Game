@@ -31,7 +31,7 @@ import javax.swing.SwingUtilities;
  */
 public final class ClientFrame extends JFrame {
 
-    private static final String WINDOW_TITLE = "Onitama Online";
+    private static final String WINDOW_TITLE = "Grid Duel";
 
     private final OnitamaClient client;
     private final ClientModel model;
@@ -65,7 +65,7 @@ public final class ClientFrame extends JFrame {
         BoardPanel.setDefaultPieceStyle(settings.pieceStyle());
 
         LoginPanel loginPanel = new LoginPanel(model, settings);
-        LobbyPanel lobbyPanel = new LobbyPanel(model, settings, this::openLeaderboard);
+        LobbyPanel lobbyPanel = new LobbyPanel(model, settings, this::openLeaderboard, this::closeAndSave);
         GamePanel gamePanel = new GamePanel(model);
         LeaderboardPanel leaderboardPanel = new LeaderboardPanel(model, () -> model.leaveToLobby());
 
@@ -85,7 +85,7 @@ public final class ClientFrame extends JFrame {
             @Override
             public void onError(String text) {
                 JOptionPane.showMessageDialog(ClientFrame.this, text,
-                        "Onitama", JOptionPane.ERROR_MESSAGE);
+                        "Grid Duel", JOptionPane.ERROR_MESSAGE);
             }
         });
 
@@ -109,10 +109,9 @@ public final class ClientFrame extends JFrame {
     }
 
     /**
-     * The app header: ONITAMA ONLINE wordmark on the left, the Game/Help
+     * The app header: the Game/Help
      * menus with comfortable 8-12px padding, and a menu-music toggle on the
-     * right. The wordmark guarantees the product name is visible on every
-     * platform (macOS may render the frame title subtly).
+     * right. The painting remains unobstructed by a title block.
      */
     private javax.swing.JMenuBar buildMenuBar() {
         javax.swing.JMenuBar menuBar = new javax.swing.JMenuBar();
@@ -122,12 +121,6 @@ public final class ClientFrame extends JFrame {
         menuBar.setBackground(Theme.BG);
         menuBar.setOpaque(true);
         menuBar.setBorder(BorderFactory.createMatteBorder(0, 0, 2, 0, Theme.OUTLINE));
-
-        javax.swing.JLabel wordmark = new javax.swing.JLabel("ONITAMA ONLINE");
-        wordmark.setFont(Theme.display(14f));
-        wordmark.setForeground(Theme.AMBER);
-        wordmark.setBorder(BorderFactory.createEmptyBorder(0, 14, 0, 16));
-        menuBar.add(wordmark);
 
         javax.swing.JMenu game = styledMenu("Game");
         javax.swing.JMenuItem resign = new javax.swing.JMenuItem("Resign match");

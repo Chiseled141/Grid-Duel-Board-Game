@@ -17,6 +17,8 @@ import onitama.db.UserDao;
 import onitama.net.ActionReceipt;
 import onitama.net.ActionReply;
 import onitama.net.ActionRequest;
+import onitama.net.ChatRequest;
+import onitama.net.ChatMessage;
 import onitama.net.ErrorMessage;
 import onitama.net.GameOver;
 import onitama.net.GameUpdate;
@@ -62,11 +64,13 @@ public final class MatchSession {
 
     private static final class PlayerTrack {
         long nextSequence = 1;
+        Long lastChatNanos;
         ActionRequest lastRequest;
         ActionReceipt lastReceipt;
 
         void reset() {
             nextSequence = 1;
+            lastChatNanos = null;
             lastRequest = null;
             lastReceipt = null;
         }
@@ -194,6 +198,39 @@ public final class MatchSession {
                 finish(outcome.winner(), outcome.reason());
             }
         });
+    }
+
+    /** Relays validated chat on the match executor without changing gameplay state. */
+    public void submitChat(ClientHandler sender, ChatRequest request) {
+        submit(() -> {
+            PlayerColor actor = colorOf(sender);
+            if (actor == null || !chatParticipantsPresent() || finished || paused
+                    || !Objects.equals(matchId, request.matchId())) {
+                sender.send(new ErrorMessage("Chat requires the current live match and both players connected."));
+                return;
+            }
+            if (!ChatRequest.validText(request.text())) {
+                sender.send(new ErrorMessage("Chat must contain 1–280 characters on a single line."));
+                return;
+            }
+            PlayerTrack track = tracks.get(actor);
+            long now = System.nanoTime();
+            if (track.lastChatNanos != null
+                    && now - track.lastChatNanos < TimeUnit.MILLISECONDS.toNanos(500)) {
+                sender.send(new ErrorMessage("Please wait a moment before sending another message."));
+                return;
+            }
+            track.lastChatNanos = now;
+            broadcast(new ChatMessage(matchId, sender.username(), request.text().strip()));
+        });
+    }
+
+    private boolean chatParticipantsPresent() {
+        ClientHandler blue = players.get(PlayerColor.BLUE);
+        ClientHandler red = players.get(PlayerColor.RED);
+        // A handler can log in again or enter a new match before its old session retires.
+        return blue.currentMatch() == this && red.currentMatch() == this
+                && blueUsername.equals(blue.username()) && redUsername.equals(red.username());
     }
 
     /** Records a rematch vote; a fresh game starts once both players voted. */

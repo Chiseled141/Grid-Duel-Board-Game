@@ -27,15 +27,20 @@ public final class ClientSettings {
     private int pieceStyle = 1;
     private boolean soundEnabled = true;
     private boolean reducedMotion = false;
+    private volatile MenuTheme menuTheme = MenuTheme.GOLDEN_FIELDS;
 
     /** Loads the settings file; keeps defaults when it does not exist. */
     public static ClientSettings load() {
+        return load(FILE);
+    }
+
+    static ClientSettings load(Path file) {
         ClientSettings settings = new ClientSettings();
-        if (!Files.isRegularFile(FILE)) {
+        if (!Files.isRegularFile(file)) {
             return settings;
         }
         Properties properties = new Properties();
-        try (InputStream in = Files.newInputStream(FILE)) {
+        try (InputStream in = Files.newInputStream(file)) {
             properties.load(in);
         } catch (IOException e) {
             LOG.log(Level.FINE, "could not read settings", e);
@@ -50,11 +55,16 @@ public final class ClientSettings {
                 properties.getProperty("soundEnabled"), settings.soundEnabled);
         settings.reducedMotion = parseBoolean(
                 properties.getProperty("reducedMotion"), settings.reducedMotion);
+        settings.menuTheme = MenuTheme.fromPreference(properties.getProperty("menuTheme"));
         return settings;
     }
 
-    /** Persists the current settings; failures are logged, never thrown. */
-    public void save() {
+    /** Serializes preference writes from menu workers and the frame; failures are logged. */
+    public synchronized void save() {
+        save(FILE);
+    }
+
+    synchronized void save(Path file) {
         Properties properties = new Properties();
         properties.setProperty("host", host);
         properties.setProperty("port", String.valueOf(port));
@@ -63,9 +73,10 @@ public final class ClientSettings {
         properties.setProperty("pieceStyle", String.valueOf(pieceStyle));
         properties.setProperty("soundEnabled", String.valueOf(soundEnabled));
         properties.setProperty("reducedMotion", String.valueOf(reducedMotion));
+        properties.setProperty("menuTheme", menuTheme.name());
         try {
-            Files.createDirectories(FILE.getParent());
-            try (OutputStream out = Files.newOutputStream(FILE)) {
+            Files.createDirectories(file.toAbsolutePath().getParent());
+            try (OutputStream out = Files.newOutputStream(file)) {
                 properties.store(out, "Onitama Online client settings");
             }
         } catch (IOException e) {
@@ -139,5 +150,13 @@ public final class ClientSettings {
 
     public void setReducedMotion(boolean reducedMotion) {
         this.reducedMotion = reducedMotion;
+    }
+
+    /** Preferred scene shared by login and the main menu. */
+    public MenuTheme menuTheme() { return menuTheme; }
+
+    /** Selects a scene; null safely restores the Golden fields. */
+    public void setMenuTheme(MenuTheme theme) {
+        menuTheme = theme == null ? MenuTheme.GOLDEN_FIELDS : theme;
     }
 }

@@ -42,8 +42,32 @@ bots remain a load-test tool with CSV output. SQLite stores users and matches.
 
 `mvn package` builds `target/onitama.jar`; `onitama.Main` dispatches `server`,
 `client`, `bots`, or `demo`. Existing shell/batch launch scripts remain supported.
-Out of scope: web/mobile clients, HTTP/WebSocket, spectators, chat, replay
+Out of scope: web/mobile clients, HTTP/WebSocket, spectators, replay
 recording, cloud automation, and matchmaking beyond room codes.
+
+### Played-card history (2026-10-16)
+
+The left game panel defaults to a local timeline of publicly played movement and
+committed skill cards from either player, showing owner, turn and artwork newest
+first. Record only accepted public events; never infer unseen opponent skills or
+private Foresight previews. Duplicate/stale updates do not add entries. Same-match
+reconnect preserves locally observed plays; new matches/rematches clear them.
+Card details remain available in a separate tab. This applies in practice too.
+
+### In-match chat (2026-10-16)
+
+Live multiplayer matches support ephemeral text chat between their two connected
+players. ChatRequest(matchId, text) is client-to-server; ChatMessage(matchId,
+sender, text) is server-to-client, with identity derived from the authenticated
+handler. Both records use serialVersionUID=1L and the version-2 wire allowlist;
+update client and server together. Chat does not consume gameplay sequences or
+change revision, turn, phase, RNG or reconnect deadlines. It is allowed during
+private choices but not while paused or finished. Reject stale matches, blank
+text, more than 280 UTF-16 code units, control/format/line-separator characters,
+and sends less than 500 ms apart per player. Accepted text is stripped and echoed
+to both players. Client history keeps the last 200 accepted messages; same-match
+reconnect retains that local history, while a fresh match/rematch or leaving a
+finished match clears it. No storage or replay of missed chat; practice has no chat.
 
 ## 2. Gameplay rules
 

@@ -23,6 +23,8 @@ import onitama.core.duel.Targeting;
 import onitama.core.duel.TurnPhase;
 import onitama.net.ActionReply;
 import onitama.net.ActionRequest;
+import onitama.net.ChatRequest;
+import onitama.net.ChatMessage;
 import onitama.net.CreateMatchRequest;
 import onitama.net.ErrorMessage;
 import onitama.net.GameOver;
@@ -81,10 +83,12 @@ public final class ClientModel {
 
     // Match state
     private MatchSync currentSync;
+    private final List<ChatMessage> chatMessages = new ArrayList<>();
     private ActionRequest inFlightRequest;
     private String roomCode;
     private String opponentName;
     private final List<MoveInfo> historyMoves = new ArrayList<>();
+    private final List<PlayedCard> playedCards = new ArrayList<>();
     private boolean rematchOfferedByOpponent;
     private boolean gameOverAnnounced;
     private boolean matchOver;
@@ -123,6 +127,14 @@ public final class ClientModel {
     /** One compact move-history row. */
     public record MoveInfo(int number, String cardName, String fromSquare,
                            String toSquare, boolean capture, boolean pass) {
+    }
+
+    /** A card revealed by a permitted public play event, never an opponent draw. */
+    public record PlayedCard(int turn, PlayerColor actor, String definitionId, boolean skill) { }
+
+    /** Public card plays in acceptance order; same-match reconnect retains the local list. */
+    public List<PlayedCard> playedCards() {
+        return List.copyOf(playedCards);
     }
 
     public ClientModel(ServerConnection connection) {
@@ -178,6 +190,24 @@ public final class ClientModel {
 
     public void requestLeaderboard() {
         connection.send(new LeaderboardRequest());
+    }
+
+    /** True when chat can be sent to a connected opponent in the live match. */
+    public boolean canChat() {
+        return screen == Screen.GAME && currentSync != null && !practiceMode
+                && !matchOver && !currentSync.paused() && connection.isConnected();
+    }
+
+    /** Queues match text through the connection; display waits for the server echo. */
+    public boolean sendChat(String text) {
+        if (!canChat() || !ChatRequest.validText(text)) return false;
+        connection.send(new ChatRequest(currentSync.matchId(), text));
+        return true;
+    }
+
+    /** Immutable, bounded local history; messages missed during disconnect are not replayed. */
+    public List<ChatMessage> chatMessages() {
+        return List.copyOf(chatMessages);
     }
 
     public void resign() {
@@ -488,6 +518,13 @@ public final class ClientModel {
             handleActionReply(reply);
         } else if (message instanceof GameUpdate update) {
             handleGameUpdate(update);
+        } else if (message instanceof ChatMessage chat) {
+            if (!practiceMode && currentSync != null && currentSync.matchId().equals(chat.matchId())
+                    && chat.sender() != null && ChatRequest.validText(chat.text())) {
+                if (chatMessages.size() == 200) chatMessages.remove(0);
+                chatMessages.add(chat);
+                fire(ClientModelListener::onChatChanged);
+            }
         } else if (message instanceof GameOver over) {
             matchOver = true;
             matchParked = false;
@@ -611,9 +648,12 @@ public final class ClientModel {
         } else if (event instanceof PublicEvent.PieceEliminated elim) {
             lastCaptureSquare = elim.at();
         } else if (event instanceof PublicEvent.MovementPlayed played) {
+            playedCards.add(new PlayedCard(currentSync.view().startedTurns(), played.actor(), played.cardId(), false));
             historyMoves.add(new MoveInfo(historyMoves.size() + 1,
                     played.cardId(), "", "", false, false));
         } else if (event instanceof PublicEvent.SkillCommitted committed) {
+            playedCards.add(new PlayedCard(currentSync.view().startedTurns(), committed.actor(),
+                    committed.skill().definitionId(), true));
             historyMoves.add(new MoveInfo(historyMoves.size() + 1,
                     committed.skill().instanceId(), "", "", false, false));
         }
@@ -778,11 +818,14 @@ public final class ClientModel {
         practiceState = null;
         practiceRandom = null;
         currentSync = null;
+        chatMessages.clear();
+        fire(ClientModelListener::onChatChanged);
         inFlightRequest = null;
         roomCode = null;
         opponentName = null;
         pendingRoomCode = null;
         historyMoves.clear();
+        playedCards.clear();
         rematchOfferedByOpponent = false;
         gameOverAnnounced = false;
         matchOver = false;

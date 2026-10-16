@@ -20,13 +20,13 @@ import javax.swing.JToggleButton;
 import javax.swing.SwingUtilities;
 
 /**
- * Login and registration screen: a cream sticker card centered on the coal
+ * Login and registration screen: a cream sticker card centered on the animated valley
  * background with gold pill buttons. Credentials validate inline (short
  * entries shake the card), the password has a show/hide eye, and a muted
  * hint names the server the client will dial. Failed attempts are shown
  * inline.
  */
-public final class LoginPanel extends JPanel {
+public final class LoginPanel extends ValleyMenuPanel {
 
     private static final char BULLET = '•';
     private static final int MIN_CREDENTIAL_LENGTH = 3;
@@ -45,6 +45,7 @@ public final class LoginPanel extends JPanel {
 
     /** Builds the panel and subscribes it to the model. */
     public LoginPanel(ClientModel model, ClientSettings settings) {
+        super(model, Screen.LOGIN, settings);
         this.model = model;
         this.settings = settings;
         setLayout(new GridBagLayout());
@@ -72,18 +73,13 @@ public final class LoginPanel extends JPanel {
         constraints.insets = new Insets(5, 6, 5, 6);
         constraints.fill = GridBagConstraints.HORIZONTAL;
 
-        // Title row: starburst flourish + wordmark in the display font.
         constraints.gridx = 0;
         constraints.gridy = 0;
         constraints.gridwidth = 2;
-        JPanel title = new JPanel(new GridBagLayout());
-        title.setOpaque(false);
-        title.add(UiKit.flourish(26));
-        JLabel wordmark = new JLabel("ONITAMA ONLINE");
-        wordmark.setFont(Theme.display(24f));
-        wordmark.setForeground(Theme.INK);
-        title.add(wordmark);
-        card.add(title, constraints);
+        JLabel welcome = new JLabel("WELCOME");
+        welcome.setFont(Theme.display(22f));
+        welcome.setForeground(Theme.INK);
+        card.add(welcome, constraints);
 
         constraints.gridwidth = 1;
         addFieldRow(card, constraints, 1, "USERNAME", usernameField);
