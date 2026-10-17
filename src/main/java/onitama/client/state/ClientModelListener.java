@@ -13,6 +13,11 @@ public interface ClientModelListener {
     default void onScreenChanged(Screen screen) {
     }
 
+    /** Returns to an already-running match without preparing a new match. */
+    default void onMatchResumed() {
+        onScreenChanged(Screen.GAME);
+    }
+
     /** Any in-match data changed (new state, selection, opponent info). */
     default void onMatchChanged() {
     }

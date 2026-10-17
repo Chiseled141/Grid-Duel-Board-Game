@@ -277,7 +277,8 @@ public final class ClientModel {
             return;
         }
         matchParked = false;
-        setScreen(Screen.GAME);
+        screen = Screen.GAME;
+        fire(ClientModelListener::onMatchResumed);
         if (practiceMode) {
             scheduleBotTurn();
         }
@@ -741,8 +742,17 @@ public final class ClientModel {
         scheduleBotTurn();
     }
 
+    private boolean matchEntryPending;
+
+    /** Holds local practice turns while the match-entry screen is visible. */
+    public void setMatchEntryPending(boolean pending) {
+        matchEntryPending = pending;
+        if (pending) stopBotTimer();
+        else if (screen == Screen.GAME) scheduleBotTurn();
+    }
+
     private void scheduleBotTurn() {
-        if (practiceMode && practiceState != null && practiceState.turn() == PlayerColor.RED
+        if (!matchEntryPending && screen == Screen.GAME && practiceMode && practiceState != null && practiceState.turn() == PlayerColor.RED
                 && practiceState.outcome() == null) {
             botTimer.restart();
         }
@@ -753,7 +763,7 @@ public final class ClientModel {
     }
 
     void stepBot() {
-        if (!practiceMode || practiceState == null || practiceState.turn() != PlayerColor.RED
+        if (matchEntryPending || screen != Screen.GAME || !practiceMode || practiceState == null || practiceState.turn() != PlayerColor.RED
                 || practiceState.outcome() != null) {
             return;
         }

@@ -1,9 +1,57 @@
 # Grid Duel
 
 A two-player strategy game on a 7×7 board, built with Java 17 and Swing.
-Each player controls six identical pieces and combines public movement cards
+Each player controls seven identical pieces and combines public movement cards
 with private skill cards. The authoritative server handles accounts, rooms,
 match rules, reconnects, Elo and SQLite persistence.
+
+## How to run the game
+
+Install **JDK 17 or newer** and **Maven**. Open a terminal in this project's folder
+(the folder containing `pom.xml`).
+
+### 1. Build the game
+
+```bash
+mvn package
+```
+
+Wait for `BUILD SUCCESS`. This creates `target/onitama.jar`.
+
+### 2. Start the server
+
+In the same terminal, run:
+
+```bash
+java -jar target/onitama.jar server --port 5555 --db data/onitama.db
+```
+
+Keep this terminal open while playing. The server saves accounts and results in
+`data/onitama.db`; no separate database installation is needed.
+
+### 3. Open the game
+
+Open a **second terminal** in the same project folder and run:
+
+```bash
+java -jar target/onitama.jar client --host 127.0.0.1 --port 5555
+```
+
+In the game window:
+
+- **Register** an account, or **Login** if you already have one.
+- Choose **Play → Practice** to play against a bot.
+- For two players, open another client with the same command, log in with a
+  different account, and create/join a room from **Play**.
+- When a new match finishes loading, press **Enter Match**. **Return to Match**
+  opens an ongoing match immediately.
+
+Next time, repeat steps 2 and 3. Rebuild only after changing or updating the code.
+To stop, close the game windows and press **Ctrl+C** in the server terminal.
+
+If the game cannot connect, check that the server is running and both commands
+use port `5555`. If the server says the port is already in use, an existing server
+may already be running.
 
 ## Gameplay
 
@@ -14,34 +62,14 @@ match rules, reconnects, Elo and SQLite persistence.
   cast skills are spent permanently; draw a replacement while the deck has cards.
 - Start with 2 mana, gain 1 at each own-turn start (including the first), cap 5.
 - Movement jumps. Friendly landing is illegal; landing on an enemy eliminates it.
-- Eliminate all enemy pieces to win. Otherwise 60 completed player turns is a draw.
-  Elimination takes priority over the turn limit.
+- Win by eliminating every enemy or reaching 8 points. Each enemy eliminated
+  earns 1 point; holding a gold square until your turn starts earns +1 point.
+- Blue squares award +1 bonus mana at your turn start, within the 5-mana cap.
+- Otherwise, 60 completed player turns is a draw. Elimination and score wins
+  take priority over the turn limit.
 
 These are bundled defaults. The [authoritative spec](GRID-DUEL-BOARD-GAME_SPEC.md)
 defines effects, targeting and configurable balance.
-
-## Build and run locally
-
-Requires JDK 17+ and Maven. Dependencies are SQLite JDBC and test-only JUnit 5.
-
-```bash
-mvn clean verify
-java -jar target/onitama.jar server --port 5555 --db data/onitama.db
-```
-
-In another terminal:
-
-```bash
-java -jar target/onitama.jar client --host 127.0.0.1 --port 5555
-```
-
-Register/login, then create a room or join using its code. For two players on one
-computer, launch two clients. The lobby also offers local practice against Rookie,
-Senior or Legend heuristic bots; practice does not change Elo.
-
-The Swing UI includes illustrated cards in a bottom hand, public movement and
-face-down opponent skills, two deck stacks with draw animations, both players'
-avatars and mana, legal targets, reduced motion, and a leaderboard.
 
 Additional modes:
 

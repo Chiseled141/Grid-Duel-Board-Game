@@ -68,6 +68,11 @@ public final class GamePanel extends JPanel {
             });
 
     private final ClientModel model;
+
+    /** Lets the match loader await the same background future used by matches. */
+    static java.util.concurrent.CompletableFuture<Void> preloadBackground() {
+        return MATCH_BACKGROUND.thenAccept(image -> { });
+    }
     private final ClientSettings settings;
 
     private final BoardPanel boardPanel = new BoardPanel();
@@ -158,6 +163,8 @@ public final class GamePanel extends JPanel {
     private static final int SIDEBAR_WIDTH = 228;
 
     private ForesightDialog foresightDialog;
+    private boolean entryPending;
+    private GameOver pendingGameOver;
     private String foresightMatchId;
     private long foresightChoiceId;
 
@@ -270,6 +277,7 @@ public final class GamePanel extends JPanel {
 
             @Override
             public void onPresentationReset() {
+                pendingGameOver = null;
                     cancelPresentation();
                 ownPlay.clear(); enemyPlay.clear();
                 ownBadge.reset();
@@ -1083,7 +1091,18 @@ public final class GamePanel extends JPanel {
         }
     }
 
+    /** Defers match dialogs until the player leaves the loading screen. */
+    void setEntryPending(boolean pending) {
+        entryPending = pending;
+        if (!pending) {
+            refresh();
+            GameOver over = pendingGameOver; pendingGameOver = null;
+            if (over != null && model.screen() == Screen.GAME) showGameOverDialog(over);
+        }
+    }
+
     private void showGameOverDialog(GameOver over) {
+        if (entryPending) { pendingGameOver = over; return; }
         if (model.gameOverAnnounced()) {
             return;
         }
