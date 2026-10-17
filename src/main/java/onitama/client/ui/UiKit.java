@@ -360,6 +360,7 @@ public final class UiKit {
         JToggleButton toggle = new JToggleButton() {
             {
                 setSelected(true);
+                setRolloverEnabled(true);
                 setOpaque(false);
                 setContentAreaFilled(false);
                 setFocusPainted(false);
@@ -374,24 +375,19 @@ public final class UiKit {
                 Graphics2D g = (Graphics2D) graphics.create();
                 g.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
                         RenderingHints.VALUE_ANTIALIAS_ON);
-                int h = getHeight();
-                int cx = h / 2 - 1;
-                int cy = h / 2;
-                g.setColor(isSelected() ? Theme.AMBER : Theme.MUTED);
+                int cx = getWidth() / 2 - 5;
+                int cy = getHeight() / 2;
+                boolean hover = getModel().isRollover() || isFocusOwner();
+                g.setColor(hover ? Theme.AMBER : isSelected()
+                        ? new Color(255, 238, 200) : new Color(218, 214, 201));
                 g.fillRect(cx - 6, cy - 3, 4, 6);
-                int[] speakerX = {cx - 2, cx + 3, cx + 3, cx - 2};
-                int[] speakerY = {cy - 3, cy - 7, cy + 7, cy + 3};
-                g.fillPolygon(speakerX, speakerY, 4);
-                g.setColor(Theme.INK);
-                g.setStroke(new java.awt.BasicStroke(1.5f));
-                g.drawPolygon(speakerX, speakerY, 4);
-                g.drawRect(cx - 6, cy - 3, 4, 6);
+                g.fillPolygon(new int[]{cx - 2, cx + 3, cx + 3, cx - 2},
+                        new int[]{cy - 3, cy - 7, cy + 7, cy + 3}, 4);
+                g.setStroke(new java.awt.BasicStroke(1.5f, java.awt.BasicStroke.CAP_ROUND, java.awt.BasicStroke.JOIN_ROUND));
                 if (isSelected()) {
                     g.drawArc(cx + 4, cy - 5, 6, 10, -60, 120);
                     g.drawArc(cx + 6, cy - 8, 10, 16, -60, 120);
                 } else {
-                    g.setColor(Theme.CORAL);
-                    g.setStroke(new java.awt.BasicStroke(2f));
                     g.drawLine(cx + 5, cy - 6, cx + 13, cy + 6);
                 }
                 g.dispose();

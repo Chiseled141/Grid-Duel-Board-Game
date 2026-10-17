@@ -71,3 +71,17 @@ request an appropriate focus target after display to keep ancestor bindings live
 Room-screen validation: full native mvn test, independent read-only review with
 native mvn test and final mvn clean verify each passed 562 tests, zero failures,
 errors or skips. Inspected Create/Join previews; refreshed the local client.
+
+## Account chip follow-up
+
+Top-right account uses bold Outfit20 for the username and a compact gold Elo11
+badge on a subtle charcoal rounded surface. A separate matching sound square
+uses cream/gold icon strokes and gold hover/focus borders. The existing toggle
+state, audio worker, saved preference and hit area are unchanged. Full native
+suite and independent read-only review each passed 563 tests, zero failures,
+errors or skips. Inspected home-menu preview and existing account/music coverage.
+
+User rejected the account chip: removed its entire fill/border and Elo badge
+paint/padding. Username and Elo now float directly over the scene. Sound also
+uses icon strokes only, without a square fill or outline; gold hover/focus color
+remains. Account/music actions and hit bounds stay unchanged.
