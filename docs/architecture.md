@@ -267,10 +267,20 @@ floats at the upper right of menu screens, without reserving layout height.
 How to Play remains available inside a match; About and the home help links are removed. Reduced motion is available in Settings, and Quit retains the
 normal save-and-close path.
 
+The home menu paints a resolution-independent Deck Duel title in the blue sky
+above the central cloud, between the flag and action column. Bundled Cinzel
+Decorative Bold (SIL OFL, license retained) differs from the Outfit controls;
+compact pale-champagne lettering, restrained card ornament and a white serif subtitle read
+“A Card-Based Strategy Board Game”. It is painted only on home, adds no click
+surface and leaves the authored background animation unchanged. The subtitle uses
+its original 15-pixel serif styling and offset shadow, without a glyph outline.
+
 LobbyPanel shows a compact column of unboxed text actions directly over the
 animated scenery. Home contains Play, Settings, Leaderboard and Quit game in
 that order, plus Resume match when a match is parked. The player's name floats
-at the top right beside a smaller Elo label and the sound icon. Quit game opens
+at the top right as transparent text: bold Outfit username and a smaller gold
+Elo label. The sound icon also floats directly over the scenery, with no fill
+or border; its strokes turn gold on hover/focus. No account chip or badge is drawn. Quit game opens
 a confirmation; No or Escape returns to the menu, and confirmation uses the normal
 save-and-close path.
 How to Play and About are removed from the home menu; in-match Help remains.

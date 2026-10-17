@@ -104,6 +104,8 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
         setBorder(BorderFactory.createEmptyBorder(32, 32, 32, 48));
         surface.setOpaque(false);
         surface.setName("mainMenuSurface");
+        getAccessibleContext().setAccessibleName("Deck Duel main menu");
+        getAccessibleContext().setAccessibleDescription("A Card-Based Strategy Board Game");
         surface.setBorder(BorderFactory.createEmptyBorder(8, 0, 8, 0));
         var anchor = new GridBagConstraints();
         anchor.gridx = 0; anchor.gridy = 0;
@@ -111,11 +113,13 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
         anchor.weighty = 1;
         anchor.anchor = GridBagConstraints.LINE_END;
         add(surface, anchor);
-        profile.setFont(Theme.cardTitle(21f));
+        profile.setFont(Theme.bold(20f));
         profile.setName("menuPlayerName");
         add(profile, anchor);
         rating.setName("menuPlayerElo");
-        rating.setFont(Theme.normal(13f));
+        rating.setFont(Theme.bold(11f));
+        rating.setForeground(new Color(255, 218, 151));
+        rating.setBorder(BorderFactory.createEmptyBorder(3, 0, 3, 0));
         add(rating, anchor);
         pages.put("home", buildHome());
         pages.put("play", buildPlay());
@@ -167,9 +171,9 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
         int ratingWidth = rating.getPreferredSize().width;
         int width = Math.min(profile.getPreferredSize().width, Math.max(0, getWidth() - 122 - ratingWidth));
         // Align the account pair with the floating sound button without a header bar.
-        int right = getWidth() - 76;
-        rating.setBounds(Math.max(0, right - ratingWidth), 14, ratingWidth, 40);
-        profile.setBounds(Math.max(0, right - ratingWidth - 12 - width), 14, width, 40);
+        int right = getWidth() - 84;
+        rating.setBounds(Math.max(0, right - ratingWidth), 22, ratingWidth, 24);
+        profile.setBounds(Math.max(0, right - ratingWidth - 14 - width), 16, width, 36);
     }
 
     private JPanel buildHome() {
@@ -642,6 +646,7 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
 
     @Override protected void paintChildren(Graphics graphics) {
         super.paintChildren(graphics);
+        if (currentPage.equals("home")) MenuTitle.paint((Graphics2D) graphics, getWidth(), getHeight());
         if (petalTimer.isRunning()) MenuPetals.paint(graphics, this, petalTargets,
                 (System.nanoTime() - petalStartedAt) / 1_000_000_000.0);
     }
