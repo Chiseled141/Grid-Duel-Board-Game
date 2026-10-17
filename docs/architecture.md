@@ -110,6 +110,8 @@ removed. Narrower rails and removed banners free space for a larger board and ta
 wider hand cards; public opponent movement cards use an enlarged 0.48 scale. Skill art takes less space;
 live descriptions use larger type and more vertical room. Responsive fallback
 retains hover-to-front on smaller windows. Cards never cover the board.
+The hand reserves 24 fewer pixels above its cards, giving that height to the
+board while preserving card-face and deck sizes.
 
 Movement and skill draws use a neutral decorative pile on the drawing player's
 side: lower-left locally, right of the opponent's top hand for their draws.
@@ -217,9 +219,12 @@ first frame for reduced motion. Unknown/retired menu preferences map to Golden
 fields. The old valley scene, renderer and music are removed. Golden fields music
 retains its non-blocking audio worker and persisted sound toggle.
 
-The offline battlefield compositor retains flower sway, windmill rotors, flags,
-clouds, seeds and wind wisps. Four small hillside flags and the cloth beside the
-main flag are removed; the latter's pole remains. The main mast is lightly weathered. Output remains 1280x720 at encoded 25 fps. This encoding is
+The offline battlefield compositor retains flower sway, windmill rotors, the main flag,
+clouds, seeds and wind wisps. Flower cutouts also cover the center and right meadow;
+the original left-side blooms keep their existing sway strength and timing.
+The small flag cloths and the subsequently added faded linen strip are removed.
+The nearby weathered pole remains bare. The main mast is lightly weathered.
+Output remains 1280x720 at encoded 25 fps. This encoding is
 not a promise of sustained full-window decoder performance.
 
 CardArt supplies printed European woodcut-style faces and neutral backs. Movement
@@ -364,3 +369,18 @@ to the displayed action. Gameplay input waits until the visual backlog drains.
 Pause, reconnect/new match, disconnect, resize, leaving, disposal and reduced
 motion clear the queue and transient effects. Bot action timing and networking
 are unchanged. Terminal game-over snapshots retain the existing immediate snap.
+
+### Objective rules (grid-duel-v3, protocol 4)
+
+Seven pieces fill each home row. Capture points and center-turn rewards are stored
+in GameState and projected publicly, with the immutable configurable score target
+(default 8). Two mirrored gold-highlighted scoring squares on y=3 each award +1 score at own-turn start;
+one blue-highlighted mana square on y=2 and its mirrored partner on y=4 each award +1 capped
+mana at that boundary. The server generates the layout once from match RNG and
+includes it in every view; bots and rendering use the same immutable layout. Landing alone gives nothing.
+Elimination wins before score; the turn-limit draw starts no further rewarded turn.
+Movement/skill resolution awards each eliminated enemy once, after full validation.
+Player badges display scores; translucent gold/blue tile highlights and hover details identify the objectives. The stone texture remains visible; there are no medallions or text on the tiles.
+Bots value center defense and useful mana occupation without hidden-state access.
+Tiger/Lance has forward range 3; Frog/Rabbit flank jumps have sideways range 3.
+Their relative diagrams expand to 7×7, while other patterns stay at 5×5.

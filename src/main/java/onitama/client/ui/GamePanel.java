@@ -529,14 +529,16 @@ public final class GamePanel extends JPanel {
     /** Gives smaller windows more board space while keeping the hand readable. */
     @Override
     public void doLayout() {
-        int handHeight = Math.max(284, Math.min(330, (int) (getHeight() * .32)));
+        // Reclaim unused space above the hand for the board, preserving the card faces' size.
+        int handHeight = Math.max(260, Math.min(306, (int) (getHeight() * .32) - 24));
         if (hand.getPreferredSize().height != handHeight) {
             hand.setPreferredSize(new Dimension(720, handHeight));
             hand.setMinimumSize(new Dimension(280, handHeight));
         }
-        int railWidth = Math.max(196, Math.min(242, (int) ((handHeight - 72) * .86) + 20));
+        int railWidth = Math.max(196, Math.min(242,
+                (int) ((handHeight - CardHandPanel.VERTICAL_SPACE) * .86) + 20));
         turnRail.setPreferredSize(new Dimension(railWidth, 100));
-        drawPile.setPreferredSize(new Dimension(railWidth, handHeight - 60));
+        drawPile.setPreferredSize(new Dimension(railWidth, handHeight - 36));
         super.doLayout();
     }
 
@@ -797,6 +799,8 @@ public final class GamePanel extends JPanel {
         int theirs = own == PlayerColor.BLUE ? view.redMana() : view.blueMana();
         int ownPieces = (int) view.pieces().stream().filter(p -> p.piece().color() == own).count();
         String name = model.me() == null ? "YOU" : model.me().username();
+        ownBadge.updateScore(view.score(own), view.rules().scoreToWin());
+        opponentBadge.updateScore(view.score(own.opponent()), view.rules().scoreToWin());
         ownBadge.update(name, own, mine, view.rules().manaCap(), view.reservedMana(), ownPieces,
                 view.outcome() == null && view.turn() == own, paused, model.reducedMotion());
         opponentBadge.update(model.opponentName(), own.opponent(), theirs, view.rules().manaCap(), 0,
@@ -1096,6 +1100,7 @@ public final class GamePanel extends JPanel {
                 : Theme.playerTextColor(won ? myColor() : opponentColor());
         String wayText = switch (over.way()) {
             case ELIMINATION -> "By elimination";
+            case SCORE -> "Score target reached";
             case FORFEIT -> "By forfeit";
             case DRAW -> "Draw — 60-turn limit reached";
         };

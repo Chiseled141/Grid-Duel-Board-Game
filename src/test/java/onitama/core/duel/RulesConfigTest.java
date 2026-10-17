@@ -19,7 +19,7 @@ class RulesConfigTest {
     @DisplayName("Default configuration constructs successfully and validates bounds")
     void defaultConfigurationValid() {
         RulesConfig config = DuelTestFixture.defaultRulesConfig();
-        assertEquals("grid-duel-v1", config.rulesVersion());
+        assertEquals("grid-duel-v3", config.rulesVersion());
         assertEquals(2, config.movementHandSize());
         assertEquals(3, config.skillHandSize());
         assertEquals(2, config.initialMana());
@@ -36,7 +36,7 @@ class RulesConfigTest {
         List<Card> cards = new ArrayList<>(CardDeck.catalog());
         List<SkillDefinition> skills = new ArrayList<>(DuelTestFixture.defaultSkillDefinitions());
 
-        RulesConfig config = new RulesConfig("grid-duel-v1", 2, 3, 2, 1, 5, 60, cards, skills);
+        RulesConfig config = new RulesConfig("grid-duel-v3", 2, 3, 2, 1, 5, 60, cards, skills);
 
         cards.remove(0);
         skills.remove(0);
@@ -59,39 +59,39 @@ class RulesConfigTest {
 
         // Movement hand size must be exactly 2
         assertThrows(IllegalArgumentException.class,
-                () -> new RulesConfig("grid-duel-v1", 1, 3, 2, 1, 5, 60, cards, skills));
+                () -> new RulesConfig("grid-duel-v3", 1, 3, 2, 1, 5, 60, cards, skills));
         assertThrows(IllegalArgumentException.class,
-                () -> new RulesConfig("grid-duel-v1", 3, 3, 2, 1, 5, 60, cards, skills));
+                () -> new RulesConfig("grid-duel-v3", 3, 3, 2, 1, 5, 60, cards, skills));
 
         // Skill hand size 1..6
         assertThrows(IllegalArgumentException.class,
-                () -> new RulesConfig("grid-duel-v1", 2, 0, 2, 1, 5, 60, cards, skills));
+                () -> new RulesConfig("grid-duel-v3", 2, 0, 2, 1, 5, 60, cards, skills));
         assertThrows(IllegalArgumentException.class,
-                () -> new RulesConfig("grid-duel-v1", 2, 7, 2, 1, 5, 60, cards, skills));
+                () -> new RulesConfig("grid-duel-v3", 2, 7, 2, 1, 5, 60, cards, skills));
 
         // Mana cap 1..20
         assertThrows(IllegalArgumentException.class,
-                () -> new RulesConfig("grid-duel-v1", 2, 3, 2, 1, 0, 60, cards, skills));
+                () -> new RulesConfig("grid-duel-v3", 2, 3, 2, 1, 0, 60, cards, skills));
         assertThrows(IllegalArgumentException.class,
-                () -> new RulesConfig("grid-duel-v1", 2, 3, 2, 1, 21, 60, cards, skills));
+                () -> new RulesConfig("grid-duel-v3", 2, 3, 2, 1, 21, 60, cards, skills));
 
         // Initial mana 0..manaCap
         assertThrows(IllegalArgumentException.class,
-                () -> new RulesConfig("grid-duel-v1", 2, 3, -1, 1, 5, 60, cards, skills));
+                () -> new RulesConfig("grid-duel-v3", 2, 3, -1, 1, 5, 60, cards, skills));
         assertThrows(IllegalArgumentException.class,
-                () -> new RulesConfig("grid-duel-v1", 2, 3, 6, 1, 5, 60, cards, skills));
+                () -> new RulesConfig("grid-duel-v3", 2, 3, 6, 1, 5, 60, cards, skills));
 
         // Income 1..manaCap
         assertThrows(IllegalArgumentException.class,
-                () -> new RulesConfig("grid-duel-v1", 2, 3, 2, 0, 5, 60, cards, skills));
+                () -> new RulesConfig("grid-duel-v3", 2, 3, 2, 0, 5, 60, cards, skills));
         assertThrows(IllegalArgumentException.class,
-                () -> new RulesConfig("grid-duel-v1", 2, 3, 2, 6, 5, 60, cards, skills));
+                () -> new RulesConfig("grid-duel-v3", 2, 3, 2, 6, 5, 60, cards, skills));
 
         // Turn limit 2..500
         assertThrows(IllegalArgumentException.class,
-                () -> new RulesConfig("grid-duel-v1", 2, 3, 2, 1, 5, 1, cards, skills));
+                () -> new RulesConfig("grid-duel-v3", 2, 3, 2, 1, 5, 1, cards, skills));
         assertThrows(IllegalArgumentException.class,
-                () -> new RulesConfig("grid-duel-v1", 2, 3, 2, 1, 5, 501, cards, skills));
+                () -> new RulesConfig("grid-duel-v3", 2, 3, 2, 1, 5, 501, cards, skills));
     }
 
     @Test
@@ -102,13 +102,13 @@ class RulesConfigTest {
         // 15 cards
         List<Card> incomplete = CardDeck.catalog().subList(0, 15);
         assertThrows(IllegalArgumentException.class,
-                () -> new RulesConfig("grid-duel-v1", 2, 3, 2, 1, 5, 60, incomplete, skills));
+                () -> new RulesConfig("grid-duel-v3", 2, 3, 2, 1, 5, 60, incomplete, skills));
 
         // Duplicate card
         List<Card> duplicate = new ArrayList<>(CardDeck.catalog());
         duplicate.set(1, duplicate.get(0));
         assertThrows(IllegalArgumentException.class,
-                () -> new RulesConfig("grid-duel-v1", 2, 3, 2, 1, 5, 60, duplicate, skills));
+                () -> new RulesConfig("grid-duel-v3", 2, 3, 2, 1, 5, 60, duplicate, skills));
     }
 
     @Test
@@ -122,13 +122,13 @@ class RulesConfigTest {
             List<Card> cards = new ArrayList<>(CardDeck.catalog());
             cards.set(0, new Card(tiger.id(), tiger.name(), tiger.stamp(), offsets));
             assertThrows(IllegalArgumentException.class, () -> new RulesConfig(
-                    "grid-duel-v1", 2, 3, 2, 1, 5, 60, cards, DuelTestFixture.defaultSkillDefinitions()));
+                    "grid-duel-v3", 2, 3, 2, 1, 5, 60, cards, DuelTestFixture.defaultSkillDefinitions()));
         }
         // Offset ordering is presentation only; the same pattern remains valid.
         List<Card> reordered = new ArrayList<>(CardDeck.catalog());
         reordered.set(0, new Card(tiger.id(), tiger.name(), tiger.stamp(),
                 List.of(tiger.offsets().get(1), tiger.offsets().get(0))));
-        assertDoesNotThrow(() -> new RulesConfig("grid-duel-v1", 2, 3, 2, 1, 5, 60,
+        assertDoesNotThrow(() -> new RulesConfig("grid-duel-v3", 2, 3, 2, 1, 5, 60,
                 reordered, DuelTestFixture.defaultSkillDefinitions()));
     }
 
@@ -145,7 +145,7 @@ class RulesConfigTest {
         }
         // Total enabled copies = 1, but 2 * skillHandSize(3) = 6 -> must fail
         assertThrows(IllegalArgumentException.class,
-                () -> new RulesConfig("grid-duel-v1", 2, 3, 2, 1, 5, 60, CardDeck.catalog(), skills));
+                () -> new RulesConfig("grid-duel-v3", 2, 3, 2, 1, 5, 60, CardDeck.catalog(), skills));
     }
 
     @Test
@@ -157,7 +157,7 @@ class RulesConfigTest {
                 "sidestep", "SIDESTEP", SkillCategory.MOVEMENT, 6, 1,
                 Map.of(SkillParameter.DISTANCE, 1), "desc", "art"));
         assertThrows(IllegalArgumentException.class,
-                () -> new RulesConfig("grid-duel-v1", 2, 3, 2, 1, 5, 60, CardDeck.catalog(), invalidCost));
+                () -> new RulesConfig("grid-duel-v3", 2, 3, 2, 1, 5, 60, CardDeck.catalog(), invalidCost));
 
         // Copies out of range 0..4
         List<SkillDefinition> invalidCopies = new ArrayList<>(DuelTestFixture.defaultSkillDefinitions());
@@ -165,7 +165,7 @@ class RulesConfigTest {
                 "sidestep", "SIDESTEP", SkillCategory.MOVEMENT, 1, 5,
                 Map.of(SkillParameter.DISTANCE, 1), "desc", "art"));
         assertThrows(IllegalArgumentException.class,
-                () -> new RulesConfig("grid-duel-v1", 2, 3, 2, 1, 5, 60, CardDeck.catalog(), invalidCopies));
+                () -> new RulesConfig("grid-duel-v3", 2, 3, 2, 1, 5, 60, CardDeck.catalog(), invalidCopies));
 
         // Distance parameter out of range (1..6)
         List<SkillDefinition> invalidDistance = new ArrayList<>(DuelTestFixture.defaultSkillDefinitions());
@@ -173,7 +173,7 @@ class RulesConfigTest {
                 "sidestep", "SIDESTEP", SkillCategory.MOVEMENT, 1, 1,
                 Map.of(SkillParameter.DISTANCE, 7), "desc", "art"));
         assertThrows(IllegalArgumentException.class,
-                () -> new RulesConfig("grid-duel-v1", 2, 3, 2, 1, 5, 60, CardDeck.catalog(), invalidDistance));
+                () -> new RulesConfig("grid-duel-v3", 2, 3, 2, 1, 5, 60, CardDeck.catalog(), invalidDistance));
 
         // Unexpected parameter on skill that has none
         List<SkillDefinition> extraParam = new ArrayList<>(DuelTestFixture.defaultSkillDefinitions());
@@ -181,6 +181,6 @@ class RulesConfigTest {
                 "advance", "ADVANCE", SkillCategory.MOVEMENT, 3, 1,
                 Map.of(SkillParameter.DISTANCE, 1), "desc", "art"));
         assertThrows(IllegalArgumentException.class,
-                () -> new RulesConfig("grid-duel-v1", 2, 3, 2, 1, 5, 60, CardDeck.catalog(), extraParam));
+                () -> new RulesConfig("grid-duel-v3", 2, 3, 2, 1, 5, 60, CardDeck.catalog(), extraParam));
     }
 }

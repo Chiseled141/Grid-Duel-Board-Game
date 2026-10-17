@@ -24,13 +24,14 @@ class RulesConfigLoaderTest {
     void loadBundledDefaults() {
         RulesConfig config = RulesConfigLoader.load(null);
         assertNotNull(config);
-        assertEquals("grid-duel-v1", config.rulesVersion());
+        assertEquals("grid-duel-v3", config.rulesVersion());
         assertEquals(2, config.movementHandSize());
         assertEquals(3, config.skillHandSize());
         assertEquals(2, config.initialMana());
         assertEquals(1, config.manaPerTurn());
         assertEquals(5, config.manaCap());
         assertEquals(60, config.turnLimit());
+        assertEquals(8, config.scoreToWin());
         assertEquals(16, config.movementCards().size());
         assertEquals(24, config.skills().size());
 
@@ -51,6 +52,7 @@ class RulesConfigLoaderTest {
                 mana.cap=7
                 mana.initial=4
                 turn.limit=120
+                score.target=10
                 skill.sidestep.distance=3
                 skill.sidestep.description=Move friendly piece {distance} steps.
                 """;
@@ -60,6 +62,7 @@ class RulesConfigLoaderTest {
         assertEquals(7, config.manaCap());
         assertEquals(4, config.initialMana());
         assertEquals(120, config.turnLimit());
+        assertEquals(10, config.scoreToWin());
         assertEquals(1, config.manaPerTurn()); // inherited from default
 
         SkillDefinition sidestep = config.skills().stream()
@@ -150,4 +153,12 @@ class RulesConfigLoaderTest {
         Files.writeString(sparseCopies, sb.toString(), StandardCharsets.UTF_8);
         assertThrows(ConfigException.class, () -> RulesConfigLoader.load(sparseCopies));
     }
+    @Test void invalidScoreTargetsAreRejected(@TempDir Path directory) throws IOException {
+        Path override = directory.resolve("score.properties");
+        for (String target : new String[] {"0", "-1", "101", "not-a-number"}) {
+            Files.writeString(override, "score.target=" + target);
+            assertThrows(ConfigException.class, () -> RulesConfigLoader.load(override));
+        }
+    }
+
 }

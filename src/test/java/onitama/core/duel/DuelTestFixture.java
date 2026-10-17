@@ -171,7 +171,7 @@ public final class DuelTestFixture {
      */
     public static RulesConfig defaultRulesConfig() {
         return new RulesConfig(
-                "grid-duel-v1",
+                "grid-duel-v3",
                 2,
                 3,
                 2,
@@ -187,7 +187,7 @@ public final class DuelTestFixture {
      */
     public static RulesConfig rulesConfigWithTurnLimit(int turnLimit) {
         return new RulesConfig(
-                "grid-duel-v1",
+                "grid-duel-v3",
                 2,
                 3,
                 2,

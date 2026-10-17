@@ -16,17 +16,17 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class BoardTest {
 
     @Test
-    @DisplayName("7x7 starting setup has 12 pieces, correct IDs, colors, coordinates, and center gaps")
+    @DisplayName("7x7 starting setup has 14 pieces, stable IDs, colors, coordinates, and full home rows")
     void startingBoardLayout() {
         Board board = Board.newGame();
 
         assertEquals(7, Board.SIZE);
-        assertEquals(6, board.countPieces(PlayerColor.BLUE));
-        assertEquals(6, board.countPieces(PlayerColor.RED));
+        assertEquals(7, board.countPieces(PlayerColor.BLUE));
+        assertEquals(7, board.countPieces(PlayerColor.RED));
 
-        // Center gaps on home rows must be empty
-        assertNull(board.pieceAt(3, 0));
-        assertNull(board.pieceAt(3, 6));
+        // Seventh pieces fill the former gaps without changing existing IDs.
+        assertEquals(new Piece(12, PlayerColor.BLUE), board.pieceAt(3, 0));
+        assertEquals(new Piece(13, PlayerColor.RED), board.pieceAt(3, 6));
 
         // Blue starting row y=0
         int[] blueCols = {0, 1, 2, 4, 5, 6};
@@ -52,7 +52,7 @@ class BoardTest {
         }
 
         List<PlacedPiece> placed = board.placedPieces();
-        assertEquals(12, placed.size());
+        assertEquals(14, placed.size());
     }
 
     @Test

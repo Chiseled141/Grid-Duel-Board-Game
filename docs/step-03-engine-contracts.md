@@ -1,3 +1,9 @@
+> Rules update: seven pieces, capture +1 score, two scoring squares on y=3 give +1 score each at own-turn start,
+> two mana squares on y=2/y=4 give +1 mana each at own-turn start (capped),
+> with mirrored, randomly chosen columns fixed for the match, default target 8.
+> Elimination takes precedence over SCORE, then the existing completed-turn draw.
+> Rewards are part of accepted transitions only; projection/reconnect/retry never grants them.
+
 # Step 3 — Engine and integration contracts
 
 Status: **implemented in `onitama.core.duel` and the live client/server** (2026-10-12).
@@ -44,21 +50,21 @@ record SkillDefinition(String id, String name, SkillCategory category,
                        String descriptionTemplate, String artworkPath) {}
 record RulesConfig(String rulesVersion, int movementHandSize, int skillHandSize,
                    int initialMana, int manaPerTurn, int manaCap, int turnLimit,
-                   List<Card> movementCards, List<SkillDefinition> skills) {}
+                   List<Card> movementCards, List<SkillDefinition> skills, int scoreToWin) {}
 enum SkillCategory { MOVEMENT, ATTACK, CONTROL, RESOURCE }
 enum SkillParameter { DISTANCE, RANGE, MAX_TARGETS, REQUIRED_ALLIES, MANA_GAIN, LOOKAHEAD }
 enum TurnPhase { MOVEMENT, SKILL, CHOICE, END, FINISHED }
-enum EndReason { ELIMINATION, FORFEIT, DRAW }
+enum EndReason { ELIMINATION, SCORE, FORFEIT, DRAW }
 record GameOutcome(PlayerColor winner, EndReason reason) {}
 ```
 
 Shapes omit routine constructors/Javadoc/serialization declarations. `GameOutcome.winner` is null only for DRAW; ongoing state has a null outcome. Legacy STONE/STREAM strings remain DB history, not new live EndReason values.
 
-Piece IDs 0–5 are Blue, 6–11 Red, assigned left-to-right along each starting row. IDs persist through moves/swaps; eliminated IDs never return. Coordinates remain canonical Blue-relative, including network targets. GUI converts clicks for Red before constructing actions.
+Piece IDs 0–5 are Blue, 6–11 Red, assigned left-to-right along each starting row. The new center pieces have IDs 12 (Blue) and 13 (Red), preserving all older IDs. IDs persist through moves/swaps; eliminated IDs never return. Coordinates remain canonical Blue-relative, including network targets. GUI converts clicks for Red before constructing actions.
 
 Movement cards retain existing lowercase definition IDs and one copy each. Skill instances are `definitionId#ordinal`, ordinals starting at 1, e.g. `strike#1`. An instance occupies exactly one of hand/deck/spent. This distinction supports later configured multiple copies without confusing a held copy with another. Public skill definitions and copy counts are not secret; membership/order of hidden zones is secret. Do not expose instance IDs for opponent held cards. All definition and instance IDs are bounded to 64 characters.
 
-`RulesConfig` contains public definitions, never shuffled order, seed, hands or mutable configuration. Rules version is `grid-duel-v1`; protocol version is separately 2; config schema version is separately 1.
+`RulesConfig` contains public definitions, never shuffled order, seed, hands or mutable configuration. Rules version is `grid-duel-v3`; protocol version is separately 4; config schema version is separately 1.
 
 ## 3. Authoritative state and pure engine API
 
@@ -67,11 +73,13 @@ Movement cards retain existing lowercase definition IDs and one copy each. Skill
 | Field | Meaning |
 | --- | --- |
 | `RulesConfig rules` | Immutable snapshot selected at match creation |
+| `ObjectiveLayout objectives` | Immutable, public scoring/mana square lists chosen once per match |
 | `Board board` | 49 squares, zero/one piece per square, unique surviving IDs |
 | `blueMovementHand`, `redMovementHand` | Ordered movement definition IDs; two per player |
 | `blueSkillHand`, `redSkillHand` | Ordered CardInstance lists |
 | `movementDeck`, `skillDeck` | Private ordered lists; index 0 is the top |
 | `spentSkills` | Public chronological list of consumed instances |
+| `blueScore`, `redScore` | Public running scores; copied with state and included in every PlayerView |
 | `blueMana`, `redMana` | Mana balances including any pending reserved mana |
 | `turn`, `phase` | Active color and phase |
 | `startedTurns`, `completedTurns` | Start at 1 and 0 after initial mana grant |
@@ -190,7 +198,7 @@ record PlayerView(PlayerColor viewer, RulesConfig rules, long revision,
                   int blueMana, int redMana, int reservedMana,
                   int movementDeckCount, int skillDeckCount,
                   List<CardInstance> spentSkills, ForesightView ownChoice,
-                  GameOutcome outcome) {}
+                  GameOutcome outcome, int blueScore, int redScore, ObjectiveLayout objectives) {}
 record ForesightView(long choiceId, String skillInstanceId, int reservedMana,
                      List<CardInstance> preview) {}
 ```
@@ -229,7 +237,7 @@ No cancellation after reveal. Reconnect restores the same pending choice. Discon
 
 ## 8. Wire contract, retries and compatibility
 
-Java object stream creation order remains output+flush, then input+filter. The first application message sent by the server is existing `ErrorMessage("GRID_DUEL_PROTOCOL:2")` as a backward-decodable greeting; the new client consumes this exact marker internally, never displays it as an error. Client responds with new `ProtocolHello(int version)`, server returns `ProtocolReady(int version)` when version=2. Do not send login/register/reconnect/game commands before readiness. Use a 5-second handshake deadline, then close with a clear incompatibility message. Old clients can decode the greeting and see a version hint; a new server rejects their pre-handshake login with an existing ErrorMessage. A new client talking to an old server times out locally with an upgrade message. This avoids sending an unknown class to an old deserializer merely to negotiate a version.
+Java object stream creation order remains output+flush, then input+filter. The first application message sent by the server is existing `ErrorMessage("GRID_DUEL_PROTOCOL:4")` as a backward-decodable greeting; the new client consumes this exact marker internally, never displays it as an error. Client responds with new `ProtocolHello(int version)`, server returns `ProtocolReady(int version)` when version=4. Do not send login/register/reconnect/game commands before readiness. Use a 5-second handshake deadline, then close with a clear incompatibility message. Old clients can decode the greeting and see a version hint; a new server rejects their pre-handshake login with an existing ErrorMessage. A new client talking to an old server times out locally with an upgrade message. This avoids sending an unknown class to an old deserializer merely to negotiate a version.
 
 New messages under `onitama.net`:
 
@@ -271,12 +279,13 @@ Validate before creating the match; never start a partially configured game. Can
 | Key | Supported value |
 | --- | --- |
 | `config.schemaVersion` | Exactly 1 |
-| `rules.version` | Exactly `grid-duel-v1` |
+| `rules.version` | Exactly `grid-duel-v3` |
 | `movement.handSize` | Exactly 2 (Refocus depends on this) |
 | `skill.handSize` | 1..6, and twice this <= total enabled skill copies |
 | `mana.initial` | 0..mana.cap |
 | `mana.income` | 1..mana.cap |
 | `mana.cap` | 1..20 |
+| `score.target` | Integer 1..100, default 8; victory target for eliminations plus center rewards |
 | `turn.limit` | 2..500 completed player turns |
 | `skill.<id>.cost` | 0..mana.cap |
 | `skill.<id>.copies` | 0..4; default 1; 0 removes from deal, not definition catalog |
@@ -304,7 +313,7 @@ ALTER TABLE matches ADD COLUMN completed_turns INTEGER;
 
 Database startup first ensures the existing base tables, inspects `PRAGMA table_info(matches)` through PreparedStatement under the existing connection monitor, then adds only absent columns in a transaction. Use constant SQL with PreparedStatement, never interpolate user input. Existing rows retain legacy version, original move_count and null new counters. Fresh databases receive the same schema through the same path. No migration runs midway through a match. Roll back/fail startup on migration error; do not erase tables.
 
-For new grid-duel-v1 records, write started_turns and completed_turns from final state and set legacy NOT NULL `move_count=0` as a documented not-applicable sentinel. Readers must branch on rules_version and must never display that sentinel as the new game's move/turn count. Legacy rows continue displaying their original half-moves. Historical result reason remains a String so STONE/STREAM still load; new live EndReason does not accept them.
+For new grid-duel-v3 records, write started_turns and completed_turns from final state and set legacy NOT NULL `move_count=0` as a documented not-applicable sentinel. Readers must branch on rules_version and must never display that sentinel as the new game's move/turn count. Legacy rows continue displaying their original half-moves. Historical result reason remains a String so STONE/STREAM still load; new live EndReason does not accept them.
 
 Evolve `server.MatchResult`: retain existing player/rating/room/result fields, replace moveCount with `String rulesVersion, int startedTurns, int completedTurns` for new matches. Evolve `MatchDao.MatchRecord`: retain old fields for reads and append `String rulesVersion, Integer startedTurns, Integer completedTurns` (nullable only for legacy rows). The migrated game writes only version 2 rules; no new legacy match producer is required. Update DAO consumers/tests in the same persistence task. A terminal action can leave completedTurns one below startedTurns; draws reach equality. Resignation/forfeit uses the current counters with no artificial EndTurn.
 

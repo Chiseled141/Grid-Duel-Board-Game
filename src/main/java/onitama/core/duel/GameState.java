@@ -14,6 +14,7 @@ public final class GameState {
 
     private final RulesConfig rules;
     private final Board board;
+    private final ObjectiveLayout objectives;
     private final List<String> blueMovementHand;
     private final List<String> redMovementHand;
     private final List<CardInstance> blueSkillHand;
@@ -21,6 +22,7 @@ public final class GameState {
     private final List<String> movementDeck;
     private final List<CardInstance> skillDeck;
     private final List<CardInstance> spentSkills;
+    private int blueScore, redScore;
     private int blueMana;
     private int redMana;
     private PlayerColor turn;
@@ -51,7 +53,17 @@ public final class GameState {
             long revision,
             GameRandom randomState,
             GameOutcome outcome) {
+        this(rules, board, blueMovementHand, redMovementHand, blueSkillHand, redSkillHand,
+                movementDeck, skillDeck, spentSkills, blueMana, redMana, turn, phase,
+                startedTurns, completedTurns, revision, randomState, outcome, ObjectiveLayout.standard());
+    }
 
+    GameState(RulesConfig rules, Board board, List<String> blueMovementHand, List<String> redMovementHand,
+              List<CardInstance> blueSkillHand, List<CardInstance> redSkillHand, List<String> movementDeck,
+              List<CardInstance> skillDeck, List<CardInstance> spentSkills, int blueMana, int redMana,
+              PlayerColor turn, TurnPhase phase, int startedTurns, int completedTurns, long revision,
+              GameRandom randomState, GameOutcome outcome, ObjectiveLayout objectives) {
+        this.objectives = Objects.requireNonNull(objectives, "objectives must not be null");
         this.rules = Objects.requireNonNull(rules, "rules must not be null");
         this.board = Objects.requireNonNull(board, "board must not be null");
         this.blueMovementHand = new ArrayList<>(blueMovementHand);
@@ -77,6 +89,9 @@ public final class GameState {
      * Creates an independent deep copy of another state, including board, collections and RNG.
      */
     GameState(GameState other) {
+        this.blueScore = other.blueScore;
+        this.redScore = other.redScore;
+        this.objectives = other.objectives;
         this.rules = other.rules;
         this.board = new Board(other.board);
         this.blueMovementHand = new ArrayList<>(other.blueMovementHand);
@@ -98,6 +113,9 @@ public final class GameState {
         this.outcome = other.outcome;
     }
 
+    /** Public layout fixed for the lifetime of this match. */
+    public ObjectiveLayout objectives() { return objectives; }
+
     public RulesConfig rules() { return rules; }
     public Board board() { return board; }
     public List<String> blueMovementHand() { return Collections.unmodifiableList(blueMovementHand); }
@@ -107,6 +125,13 @@ public final class GameState {
     public List<String> movementDeck() { return Collections.unmodifiableList(movementDeck); }
     public List<CardInstance> skillDeck() { return Collections.unmodifiableList(skillDeck); }
     public List<CardInstance> spentSkills() { return Collections.unmodifiableList(spentSkills); }
+    /** Public score earned by eliminations and center control. */
+    public int score(PlayerColor color) { return color == PlayerColor.BLUE ? blueScore : redScore; }
+
+    void addScore(PlayerColor color, int amount) {
+        if (color == PlayerColor.BLUE) blueScore += amount; else redScore += amount;
+    }
+
     public int blueMana() { return blueMana; }
     public int redMana() { return redMana; }
     public PlayerColor turn() { return turn; }

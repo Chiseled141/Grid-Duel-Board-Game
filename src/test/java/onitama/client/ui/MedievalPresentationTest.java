@@ -22,12 +22,13 @@ class MedievalPresentationTest {
             for (PlayerColor viewer : PlayerColor.values()) {
                 var board = new BoardPanel(); board.setView(RulesEngine.viewFor(game, viewer));
                 for (PlayerColor actor : PlayerColor.values()) for (Card card : rules.movementCards()) {
+                    int radius = radius(card);
                     Set<Point> expected = new java.util.HashSet<>();
                     for (Offset offset : card.offsets()) {
                         int dx = actor == PlayerColor.BLUE ? offset.dx() : -offset.dx();
                         int dy = actor == PlayerColor.BLUE ? offset.dy() : -offset.dy();
-                        expected.add(new Point(2 + board.displayX(3 + dx) - board.displayX(3),
-                                2 + board.displayY(3 + dy) - board.displayY(3)));
+                        expected.add(new Point(radius + board.displayX(3 + dx) - board.displayX(3),
+                                radius + board.displayY(3 + dy) - board.displayY(3)));
                     }
                     assertDiagram(card, actor, viewer, expected);
                 }
@@ -45,12 +46,19 @@ class MedievalPresentationTest {
 
     private void assertDiagram(Card card, PlayerColor color, PlayerColor viewer, Set<Point> destinations) {
         var face = CardArt.movementFace(card, color, viewer);
-        for (int row = 0; row < 5; row++) for (int col = 0; col < 5; col++) {
-            if (row == 2 && col == 2) continue;
-            int pixel = face.getRGB(2 * (37 + col * 25 + 6), 2 * (79 + row * 25 + 6));
+        int radius = radius(card), size = radius * 2 + 1, cell = 125 / size;
+        int left = (200 - size * cell) / 2;
+        for (int row = 0; row < size; row++) for (int col = 0; col < size; col++) {
+            if (row == radius && col == radius) continue;
+            int pixel = face.getRGB(2 * (left + col * cell + 4), 2 * (79 + row * cell + 4));
             assertEquals(destinations.contains(new Point(col, row)), pixel == Theme.playerTextColor(color).getRGB(),
                     "landing at " + col + "," + row + " for " + color);
         }
+    }
+
+    private int radius(Card card) {
+        return Math.max(2, card.offsets().stream()
+                .mapToInt(offset -> Math.max(Math.abs(offset.dx()), Math.abs(offset.dy()))).max().orElseThrow());
     }
 
     @Test void ruleDescriptionsStayOffTheFaceButRemainAvailableForInspection() throws Exception {

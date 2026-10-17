@@ -16,7 +16,8 @@ public record Piece(int id, PlayerColor color) implements Serializable {
     public Piece {
         Objects.requireNonNull(color, "color must not be null");
         int firstId = color == PlayerColor.BLUE ? 0 : 6;
-        if (id < firstId || id >= firstId + 6) {
+        int seventhId = color == PlayerColor.BLUE ? 12 : 13;
+        if ((id < firstId || id >= firstId + 6) && id != seventhId) {
             throw new IllegalArgumentException("piece id does not belong to " + color + ": " + id);
         }
     }

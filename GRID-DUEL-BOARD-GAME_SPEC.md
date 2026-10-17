@@ -29,11 +29,9 @@ classes and unused legacy mechanics have been removed.
 
 ## 1. Product scope
 
-Two players control six identical pieces each on a plain 7×7 board. Reusable
+Two players control seven identical pieces each on a 7×7 board with three public objective squares. Reusable
 movement cards establish positioning; 24 distinct single-use skills and mana
-create tactical variety. Eliminate all enemy pieces to win; 60 completed player
-turns without a winner is a draw. No points, objectives, terrain, random battle
-boards, Masters, temples, HP, armor, reactions, or ongoing statuses in version 1.
+create tactical variety. Eliminate all enemy pieces or reach the configured score target (default 8) to win. Each enemy eliminated gives 1 point; each occupied scoring square gives 1 point at own-turn start. The 60 completed-player-turn limit remains. No additional terrain, Masters, temples, HP, armor, reactions or ongoing statuses.
 
 Server: headless authoritative matches, accounts, five-character room codes,
 multiple matches, reconnect grace, match records and Elo. Client: Swing
@@ -80,21 +78,22 @@ finished match clears it. No storage or replay of missed chat; practice has no c
 The following defaults define the first playable version.
 
 - Coordinates: `x=0..6`, `y=0..6`. Blue begins on `y=0`; Red begins on `y=6`.
-- Place Blue pieces at `(0,0), (1,0), (2,0), (4,0), (5,0), (6,0)`.
-- Place Red pieces at `(0,6), (1,6), (2,6), (4,6), (5,6), (6,6)`.
-- Leaving the middle starting square empty gives a symmetric six-piece formation. Every piece has a stable identity, but identical abilities.
+- Place Blue pieces at `(0,0), (1,0), (2,0), (3,0), (4,0), (5,0), (6,0)`.
+- Place Red pieces at `(0,6), (1,6), (2,6), (3,6), (4,6), (5,6), (6,6)`.
+- Both starting rows are full, giving a symmetric seven-piece formation. Every piece has a stable identity, but identical abilities.
 - There are no temples, special pieces, HP, armor, upgrades, or passive statuses.
-- Use the existing 16 movement-card patterns, one copy each. Preserve their offsets; enlarge the board, not the patterns. Native offsets are Blue-relative; Red negates both components.
+- Use 16 movement-card patterns, one copy each. Lance/Tiger jumps forward 3; Left Feint/Frog and Right Feint/Rabbit jump sideways 3; the other 13 patterns are unchanged. Native offsets are Blue-relative; Red negates both components.
 - Shuffle each shared deck separately. Deal alternately Blue then Red: two movement cards each and three skill cards each.
 - This leaves 12 movement cards and 18 skill cards in their respective decks.
 - Choose the starting player randomly, independently of card stamps. Use seeded randomness for repeatable tests.
+- Public objective layout is generated once per match: two scoring squares at (x,3)/(6-x,3), x in 0..2, and two mana squares at (x,2)/(6-x,4), x in 0..6. All four are distinct and symmetric under 180-degree rotation. Store and reuse this layout across actions, retries and reconnects.
 - Both players begin with 2 mana. At their first turn start, they gain 1, so each first acts with 3 mana.
 
 ### 2.2 Turn sequence
 
 A player turn contains these ordered phases:
 
-1. **Start:** gain 1 mana, capped at 5. This happens exactly once per turn, including after reconnecting.
+1. **Start:** gain 1 mana plus 1 per occupied mana square, capped at 5. Each occupied scoring square gives 1 score. Rewards happen exactly once when a new own turn starts; reconnecting/retries do not repeat them. Landing alone gives no reward.
 2. **Movement:** play at most one movement card, or skip movement.
 3. **Skill:** play at most one skill card, or skip the skill.
 4. **End:** finish the turn, increase the completed-turn count, then give the opponent the turn unless the match has ended.
@@ -146,15 +145,16 @@ An End Turn action skips any remaining optional phases. A player may end a turn 
 
 - After a complete movement or skill resolves, zero opposing pieces means an immediate win. Do not wait for End Turn.
 - Resolve mandatory card bookkeeping as part of that successful action before marking it complete; no further player actions follow a win.
-- If an elimination win happens on the 60th player turn, that win takes precedence over the turn-limit draw.
+- Elimination or score wins caused by an action on the 60th player turn take precedence over the turn-limit draw. Elimination has priority when both win conditions occur together.
 - Otherwise, End Turn on completed turn 60 ends the match as a draw. This means 30 turns each in a normal alternating match, not 60 turns each.
 - Remaining-piece count and remaining mana do not break a draw.
 - Resignation loses immediately. Keep the existing 60-second reconnect grace and forfeit behavior for the online game.
-- No objective points, kill points, temple victory, or Master-capture victory in this version.
+- Every enemy eliminated by a completed movement or skill gives its actor 1 point. Resolve multi-target skills atomically. After elimination check, reaching `score.target` (default 8) wins immediately with reason SCORE. A center turn-start reward can also win before movement.
+- Score and mana objectives require a piece occupying the square at own-turn start. There is no persistent ownership after leaving. No temple or Master-capture victory.
 
 ### 2.7 Public and private information
 
-Public: board, turn and phase, both mana totals, both movement hands, skill-hand counts, remaining deck counts, spent skills, completed-turn count, and match result.
+Public: board, turn and phase, both scores and score target, both mana totals, both movement hands, skill-hand counts, remaining deck counts, spent skills, completed-turn count, and match result.
 
 Private to a player: their skill hand and any active Foresight preview. Undrawn deck identities/order and the match random seed stay server-private during play.
 
@@ -300,7 +300,7 @@ are not yet implemented. Preserve transaction and rating behavior.
   movement exchange or permanent skill consumption. Opponent skill faces may
   appear only after their public committed event.
 - Draw from the player's side; Red flips canonical coordinates. Movement
-  diagrams come from offset data, not painted rules. A compact 5×5 offset
+  diagrams come from offset data, not painted rules. A 5×5 (or 7×7 for range-three cards) relative offset
   diagram is still valid for the existing patterns; it is not the game board.
 - Movement selection highlights legal landings. Skill selection follows shared
   target constraints, supports ordered/multiple targets, and allows cancellation
@@ -332,7 +332,7 @@ the migration requirements; current validation is recorded in the handoff report
 
 | Existing area | Required treatment during implementation |
 | --- | --- |
-| CardPatternTest (UT01) | Preserve all 16 Appendix offsets and Red rotation; adapt board-boundary expectations only where necessary |
+| CardPatternTest (UT01) | Validate all 16 updated Appendix offsets and Red rotation; adapt board-boundary expectations only where necessary |
 | RulesEngineTest (UT02) | Preserve jumping/friendly-landing/capture checks; expand to 7×7, phase and rejection atomicity |
 | WinConditionTest (UT03) | Replace Master/temple assertions with elimination, 60-turn draw and win-before-draw precedence |
 | CardCycleTest (UT04) | Replace transit and forced-pass tests with return/shuffle/draw and optional skip/end semantics |
@@ -345,7 +345,7 @@ the migration requirements; current validation is recorded in the handoff report
 
 Additional coverage required with the implementing tasks:
 
-- Setup: six identical pieces per side at specified squares, 12/18 undealt
+- Setup: seven identical pieces per side at specified squares, 12/18 undealt
   movement/skill cards, first active player's mana 3 and opponent's mana 2.
 - Card conservation: movement cards stay in hands/deck; skills stay in
   hands/deck/spent pile, no duplicates or replenishment after exhaustion.
@@ -374,7 +374,7 @@ validate IDs, effect parameters, costs, copy counts and deck/hand constraints
 before creating a match; errors must identify the bad setting. Do not silently
 fall back from malformed supplied values. Never parse files inside core.
 
-First-version structural rules remain 7×7 with the specified six-piece setup.
+First-version structural rules remain 7×7 with the specified seven-piece setup.
 Balance defaults: two movement cards, three skills initially, starting mana 2,
 income 1, cap 5, 60-turn limit, one copy of each skill. Costs/ranges/counts must be
 editable within supported effect constraints. Typed fields, file layout and
@@ -400,10 +400,10 @@ orientation); rotate 180° for the other player. `UT01` encodes exactly this.
 
 | Card | Offsets (dx, dy) |
 |---|---|
-| Tiger | (0,+2), (0,−1) |
+| Tiger | (0,+3), (0,−1) |
 | Dragon | (−2,+1), (+2,+1), (−1,−1), (+1,−1) |
-| Frog | (−2,0), (−1,+1), (+1,−1) |
-| Rabbit | (+2,0), (+1,+1), (−1,−1) |
+| Frog | (−3,0), (−1,+1), (+1,−1) |
+| Rabbit | (+3,0), (+1,+1), (−1,−1) |
 | Crab | (0,+1), (−2,0), (+2,0) |
 | Elephant | (−1,0), (+1,0), (−1,+1), (+1,+1) |
 | Goose | (−1,0), (+1,0), (−1,+1), (+1,−1) |

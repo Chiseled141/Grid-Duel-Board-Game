@@ -25,14 +25,14 @@ public final class CardDeck {
         // Stamp colors are a fixed assignment (8 blue / 8 red); per-card stamps
         // are not publicly standardized.
         cards.add(new Card("tiger", "Tiger", PlayerColor.BLUE,
-                List.of(new Offset(0, 2), new Offset(0, -1))));
+                List.of(new Offset(0, 3), new Offset(0, -1))));
         cards.add(new Card("dragon", "Dragon", PlayerColor.RED,
                 List.of(new Offset(-2, 1), new Offset(2, 1),
                         new Offset(-1, -1), new Offset(1, -1))));
         cards.add(new Card("frog", "Frog", PlayerColor.RED,
-                List.of(new Offset(-2, 0), new Offset(-1, 1), new Offset(1, -1))));
+                List.of(new Offset(-3, 0), new Offset(-1, 1), new Offset(1, -1))));
         cards.add(new Card("rabbit", "Rabbit", PlayerColor.BLUE,
-                List.of(new Offset(2, 0), new Offset(1, 1), new Offset(-1, -1))));
+                List.of(new Offset(3, 0), new Offset(1, 1), new Offset(-1, -1))));
         cards.add(new Card("crab", "Crab", PlayerColor.BLUE,
                 List.of(new Offset(0, 1), new Offset(-2, 0), new Offset(2, 0))));
         cards.add(new Card("elephant", "Elephant", PlayerColor.RED,

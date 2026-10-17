@@ -79,7 +79,7 @@ class GamePanelLayoutTest {
                         "turn buttons must occupy the left rail, outside the board");
             }
             if (height >= 1180) {
-                assertTrue(board.cell() >= 95, "large windows use the freed space for the board");
+                assertTrue(board.cell() >= 98, "reclaimed hand spacing enlarges the board in large windows");
                 for (Component card : hand.getComponents()) {
                     assertTrue(card.getHeight() >= 250, "large windows expose taller card descriptions");
                     if (handSize == 3) assertTrue(card.getWidth() >= 210, "default hand cards grow wider");

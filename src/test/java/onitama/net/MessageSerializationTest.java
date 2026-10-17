@@ -49,8 +49,8 @@ class MessageSerializationTest {
                 new ErrorMessage("room not found"),
                 new ChatRequest("m1", "Hello 👋"),
                 new ChatMessage("m1", "alice", "Good luck!"),
-                new ProtocolHello(2),
-                new ProtocolReady(2),
+                new ProtocolHello(4),
+                new ProtocolReady(4),
                 new ActionRequest("m1", 1L, 0L, new onitama.core.duel.GameAction.SkipMovement()),
                 new MatchSync("m1", "ROOM1", onitama.core.duel.RulesEngine.project(
                         onitama.core.duel.RulesEngine.newGame(onitama.config.RulesConfigLoader.load(null), 42L),

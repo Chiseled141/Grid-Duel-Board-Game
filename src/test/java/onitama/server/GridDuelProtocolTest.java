@@ -75,27 +75,28 @@ class GridDuelProtocolTest {
     }
 
     @Test
-    void handshakeNegotiatesProtocolVersion2() throws Exception {
+    void handshakeNegotiatesProtocolVersion4() throws Exception {
         client1 = new ScriptedClient(port, false);
         ErrorMessage greeting = client1.expect(ErrorMessage.class);
-        assertEquals("GRID_DUEL_PROTOCOL:2", greeting.text());
+        assertEquals("GRID_DUEL_PROTOCOL:4", greeting.text());
 
-        client1.send(new ProtocolHello(2));
+        client1.send(new ProtocolHello(4));
         ProtocolReady ready = client1.expect(ProtocolReady.class);
-        assertEquals(2, ready.version());
+        assertEquals(4, ready.version());
 
         client1.send(new RegisterRequest("user101", "password123"));
         LoginResponse response = client1.expectLoginOk();
         assertTrue(response.ok());
     }
 
-    @Test
-    void handshakeRejectsMismatchedVersion() throws Exception {
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(ints = {2, 3, 99})
+    void handshakeRejectsMismatchedVersion(int version) throws Exception {
         client1 = new ScriptedClient(port, false);
         ErrorMessage greeting = client1.expect(ErrorMessage.class);
-        assertEquals("GRID_DUEL_PROTOCOL:2", greeting.text());
+        assertEquals("GRID_DUEL_PROTOCOL:4", greeting.text());
 
-        client1.send(new ProtocolHello(99));
+        client1.send(new ProtocolHello(version));
         ErrorMessage err = client1.expect(ErrorMessage.class);
         assertTrue(err.text().contains("incompatible protocol version"));
         client1.expectClosed();
@@ -105,7 +106,7 @@ class GridDuelProtocolTest {
     void handshakeRejectsPreHandshakeCommands() throws Exception {
         client1 = new ScriptedClient(port, false);
         ErrorMessage greeting = client1.expect(ErrorMessage.class);
-        assertEquals("GRID_DUEL_PROTOCOL:2", greeting.text());
+        assertEquals("GRID_DUEL_PROTOCOL:4", greeting.text());
 
         // Attempting to log in before handshake
         client1.send(new LoginRequest("user1", "pw1"));

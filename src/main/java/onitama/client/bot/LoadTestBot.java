@@ -228,14 +228,14 @@ public final class LoadTestBot implements Runnable {
             in.setObjectInputFilter(Message.WIRE_FILTER);
 
             ErrorMessage greeting = (ErrorMessage) in.readObject();
-            if (!"GRID_DUEL_PROTOCOL:2".equals(greeting.text())) {
+            if (!"GRID_DUEL_PROTOCOL:4".equals(greeting.text())) {
                 throw new IOException("unexpected greeting: " + greeting.text());
             }
             out.reset();
-            out.writeObject(new ProtocolHello(2));
+            out.writeObject(new ProtocolHello(4));
             out.flush();
             ProtocolReady ready = (ProtocolReady) in.readObject();
-            if (ready.version() != 2) {
+            if (ready.version() != 4) {
                 throw new IOException("unexpected ready version: " + ready.version());
             }
         } catch (Exception e) {

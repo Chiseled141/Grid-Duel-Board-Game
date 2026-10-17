@@ -98,6 +98,8 @@ class AllSkillsTest {
     @Test
     void testRecallBlueAndRed() {
         GameState blueState = createTestState("recall", 1, PlayerColor.BLUE);
+        // Vacate the now-filled center home square before recalling.
+        blueState.board().move(new Square(3, 0), new Square(3, 1));
         // Move piece 0 to (3, 3), then recall to empty (3, 0)
         blueState.board().move(new Square(0, 0), new Square(3, 3));
         ActionResult res = RulesEngine.apply(blueState, PlayerColor.BLUE,
@@ -108,6 +110,7 @@ class AllSkillsTest {
 
         // Red recalls to y = 6
         GameState redState = createTestState("recall", 1, PlayerColor.RED);
+        redState.board().move(new Square(3, 6), new Square(3, 5));
         redState.board().move(new Square(0, 6), new Square(3, 3));
         ActionResult redRes = RulesEngine.apply(redState, PlayerColor.RED,
                 new GameAction.CastSkill("recall#1", new SkillTargets.Relocate(6, new Square(3, 6))));
@@ -356,7 +359,8 @@ class AllSkillsTest {
     void testBanish() {
         GameState state = createTestState("banish", 4, PlayerColor.BLUE);
         // Friendly 0 at (3, 3), adjacent enemy 6 at (3, 4).
-        // Enemy 6 is RED, starting row is y = 6. Destination (3, 6) is empty.
+        // Enemy 6 is RED. Vacate its center home square before banishing.
+        state.board().move(new Square(3, 6), new Square(4, 5));
         state.board().move(new Square(0, 0), new Square(3, 3));
         state.board().move(new Square(0, 6), new Square(3, 4));
 

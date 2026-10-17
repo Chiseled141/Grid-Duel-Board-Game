@@ -100,7 +100,7 @@ public final class RulesEngine {
                 0,
                 0L,
                 rng,
-                null);
+                null, ObjectiveLayout.generate(rng));
     }
 
     /**
@@ -205,14 +205,17 @@ public final class RulesEngine {
         next.setTurn(nextTurn);
         next.setStartedTurns(next.startedTurns() + 1);
         if (nextTurn == PlayerColor.BLUE) {
-            next.setBlueMana(Math.min(next.rules().manaCap(), next.blueMana() + next.rules().manaPerTurn()));
+            next.setBlueMana(Math.min(next.rules().manaCap(), next.blueMana() + next.rules().manaPerTurn() + next.objectives().manaBonus(next.board(), nextTurn)));
         } else {
-            next.setRedMana(Math.min(next.rules().manaCap(), next.redMana() + next.rules().manaPerTurn()));
+            next.setRedMana(Math.min(next.rules().manaCap(), next.redMana() + next.rules().manaPerTurn() + next.objectives().manaBonus(next.board(), nextTurn)));
         }
         next.setPhase(TurnPhase.MOVEMENT);
         next.setRevision(state.revision() + 1);
 
-        List<PublicEvent> events = List.of(new PublicEvent.TurnStarted(nextTurn, next.startedTurns()));
+        next.addScore(nextTurn, next.objectives().scoreBonus(next.board(), nextTurn));
+        List<PublicEvent> events = new ArrayList<>();
+        events.add(new PublicEvent.TurnStarted(nextTurn, next.startedTurns()));
+        finishVictory(next, nextTurn, events);
         return new ActionResult.Accepted(next, events);
     }
 
@@ -283,16 +286,8 @@ public final class RulesEngine {
             events.add(new PublicEvent.PieceEliminated(captured.id(), move.to()));
         }
 
-        // 4. Win condition check: elimination wins immediately
-        int opponentRemaining = next.board().countPieces(actor.opponent());
-        if (opponentRemaining == 0) {
-            next.setPhase(TurnPhase.FINISHED);
-            GameOutcome outcome = new GameOutcome(actor, EndReason.ELIMINATION);
-            next.setOutcome(outcome);
-            events.add(new PublicEvent.MatchEnded(outcome));
-        } else {
-            next.setPhase(TurnPhase.SKILL);
-        }
+        awardEliminations(state, next, actor);
+        if (!finishVictory(next, actor, events)) next.setPhase(TurnPhase.SKILL);
 
         next.setRevision(state.revision() + 1);
         return new ActionResult.Accepted(next, List.copyOf(events));
@@ -388,16 +383,8 @@ public final class RulesEngine {
         // Card bookkeeping: consume held skill, append to spent, draw top replacement if available
         next.consumeHeldSkill(actor, heldInstance.instanceId());
 
-        // Elimination check
-        int oppRemaining = next.board().countPieces(actor.opponent());
-        if (oppRemaining == 0) {
-            next.setPhase(TurnPhase.FINISHED);
-            GameOutcome outcome = new GameOutcome(actor, EndReason.ELIMINATION);
-            next.setOutcome(outcome);
-            events.add(new PublicEvent.MatchEnded(outcome));
-        } else {
-            next.setPhase(TurnPhase.END);
-        }
+        awardEliminations(state, next, actor);
+        if (!finishVictory(next, actor, events)) next.setPhase(TurnPhase.END);
 
         next.setRevision(state.revision() + 1);
         return new ActionResult.Accepted(next, List.copyOf(events));
@@ -456,6 +443,21 @@ public final class RulesEngine {
         next.setRevision(state.revision() + 1);
 
         return new ActionResult.Accepted(next, List.of());
+    }
+
+    private static void awardEliminations(GameState before, GameState after, PlayerColor actor) {
+        int eliminated = before.board().countPieces(actor.opponent()) - after.board().countPieces(actor.opponent());
+        after.addScore(actor, eliminated);
+    }
+
+    private static boolean finishVictory(GameState state, PlayerColor actor, List<PublicEvent> events) {
+        EndReason reason = state.board().countPieces(actor.opponent()) == 0 ? EndReason.ELIMINATION
+                : state.score(actor) >= state.rules().scoreToWin() ? EndReason.SCORE : null;
+        if (reason == null) return false;
+        state.setPhase(TurnPhase.FINISHED);
+        state.setOutcome(new GameOutcome(actor, reason));
+        events.add(new PublicEvent.MatchEnded(state.outcome()));
+        return true;
     }
 
     private static Card findCard(RulesConfig rules, String cardId) {
@@ -519,6 +521,6 @@ public final class RulesEngine {
                 state.skillDeck().size(),
                 state.spentSkills(),
                 ownChoice,
-                state.outcome());
+                state.outcome(), state.score(PlayerColor.BLUE), state.score(PlayerColor.RED), state.objectives());
     }
 }

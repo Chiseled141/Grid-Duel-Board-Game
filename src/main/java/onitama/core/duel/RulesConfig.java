@@ -22,12 +22,13 @@ public record RulesConfig(
         int manaCap,
         int turnLimit,
         List<Card> movementCards,
-        List<SkillDefinition> skills) implements Serializable {
+        List<SkillDefinition> skills,
+        int scoreToWin) implements Serializable {
 
     @Serial
     private static final long serialVersionUID = 1L;
 
-    public static final String EXPECTED_RULES_VERSION = "grid-duel-v1";
+    public static final String EXPECTED_RULES_VERSION = "grid-duel-v3";
 
     public static final Set<String> EXPECTED_MOVEMENT_IDS = Set.of(
             "tiger", "dragon", "frog", "rabbit", "crab", "elephant", "goose", "rooster",
@@ -39,7 +40,16 @@ public record RulesConfig(
             "vault", "flank", "transposition", "gust", "rally", "scatter",
             "crossfire", "chain-strike", "mana-surge", "refocus", "foresight", "banish");
 
+    /** Creates a rules snapshot using the standard eight-point victory target. */
+    public RulesConfig(String rulesVersion, int movementHandSize, int skillHandSize, int initialMana,
+                       int manaPerTurn, int manaCap, int turnLimit, List<Card> movementCards,
+                       List<SkillDefinition> skills) {
+        this(rulesVersion, movementHandSize, skillHandSize, initialMana, manaPerTurn, manaCap,
+                turnLimit, movementCards, skills, 8);
+    }
+
     public RulesConfig {
+        if (scoreToWin < 1 || scoreToWin > 100) throw new IllegalArgumentException("scoreToWin must be 1..100");
         Objects.requireNonNull(rulesVersion, "rulesVersion must not be null");
         Objects.requireNonNull(movementCards, "movementCards must not be null");
         Objects.requireNonNull(skills, "skills must not be null");

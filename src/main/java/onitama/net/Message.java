@@ -64,6 +64,7 @@ public sealed interface Message extends Serializable
                     + "onitama.core.Offset;"
                     + "onitama.core.Card;"
                     + "onitama.core.duel.PlayerView;"
+                    + "onitama.core.duel.ObjectiveLayout;"
                     + "onitama.core.duel.RulesConfig;"
                     + "onitama.core.duel.SkillDefinition;"
                     + "onitama.core.duel.SkillCategory;"

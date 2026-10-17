@@ -249,13 +249,14 @@ public final class ClientFrame extends JFrame {
                     + "<br><br>Select a skill and follow its targeting instructions. Resolve any "
                     + "Foresight choice before continuing. Hover cards for their full descriptions."
                     + "<br><br>Use End Turn when ready. ESC clears the current selection.";
-            default -> "<b>GRID DUEL</b><br><br>Each player has six identical pieces on a 7x7 board. "
-                    + "Eliminate every opposing piece to win. Otherwise, " + limit
+            default -> "<b>GRID DUEL</b><br><br>Each player has seven identical pieces on a 7x7 board. "
+                    + "Eliminate every opposing piece or reach " + (rules == null ? 8 : rules.scoreToWin()) + " points to win. Earn 1 point per enemy eliminated. Hold either gold-highlighted square until your next turn starts for +1 point each. Two mirrored gold-highlighted squares are chosen on the middle row for each match. Otherwise, " + limit
                     + " completed player turns end in a draw. Elimination takes priority."
                     + "<br><br>Turn order: optional movement, optional one skill, then End Turn. "
                     + "Movement jumps; landing on an enemy eliminates it. Friendly landing is illegal."
                     + "<br><br>Start with " + initial + " mana. Gain " + gain
-                    + " at each own-turn start, including the first, up to " + cap + ".";
+                    + " at each own-turn start, including the first, up to " + cap + "."
+                    + " Occupy either blue-highlighted square on the adjacent central rows for +1 bonus mana at your turn start; the same cap applies.";
         };
     }
 
