@@ -10,6 +10,7 @@ import javax.swing.Timer;
 
 /** A compact overlapping hand; hovered cards come forward without covering the board. */
 public final class CardHandPanel extends JLayeredPane {
+    static final int VERTICAL_SPACE = 48;
     private List<? extends JComponent> cards = List.of();
     private boolean reducedMotion = false;
     private Timer reflowTimer;
@@ -127,7 +128,7 @@ public final class CardHandPanel extends JLayeredPane {
         reflowTimer.start();
     }
 
-    private int heightForCards() { return Math.max(1, getHeight() - 72); }
+    private int heightForCards() { return Math.max(1, getHeight() - VERTICAL_SPACE); }
 
     @Override
     public void doLayout() {
@@ -137,7 +138,7 @@ public final class CardHandPanel extends JLayeredPane {
         if (cards.size() > 5 && availableW < 750) {
             width = Math.min(176, Math.max(130, (availableW - 30) / (cards.size() - 1) + 40));
         }
-        int height = Math.max(1, getHeight() - 72);
+        int height = heightForCards();
         double step = cards.size() == 1 ? 0
                 : Math.min(width + 8, Math.max(1, (availableW - width - 24.0) / (cards.size() - 1)));
         double span = width + step * (cards.size() - 1);
@@ -156,7 +157,7 @@ public final class CardHandPanel extends JLayeredPane {
                 double eased = 1 - (1 - reflowProgress) * (1 - reflowProgress);
                 finalX = (int) (prevX + (targetX - prevX) * eased);
             }
-            card.setBounds(finalX, 60 + arc, width, height);
+            card.setBounds(finalX, 36 + arc, width, height);
         }
     }
 

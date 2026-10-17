@@ -24,10 +24,10 @@ class CardPatternTest {
 
     /** Appendix A of the brief: card id -> offsets (dx, dy), Blue's orientation. */
     private static final Map<String, int[][]> APPENDIX_A = Map.ofEntries(
-            Map.entry("tiger", new int[][]{{0, 2}, {0, -1}}),
+            Map.entry("tiger", new int[][]{{0, 3}, {0, -1}}),
             Map.entry("dragon", new int[][]{{-2, 1}, {2, 1}, {-1, -1}, {1, -1}}),
-            Map.entry("frog", new int[][]{{-2, 0}, {-1, 1}, {1, -1}}),
-            Map.entry("rabbit", new int[][]{{2, 0}, {1, 1}, {-1, -1}}),
+            Map.entry("frog", new int[][]{{-3, 0}, {-1, 1}, {1, -1}}),
+            Map.entry("rabbit", new int[][]{{3, 0}, {1, 1}, {-1, -1}}),
             Map.entry("crab", new int[][]{{0, 1}, {-2, 0}, {2, 0}}),
             Map.entry("elephant", new int[][]{{-1, 0}, {1, 0}, {-1, 1}, {1, 1}}),
             Map.entry("goose", new int[][]{{-1, 0}, {1, 0}, {-1, 1}, {1, -1}}),
@@ -81,12 +81,12 @@ class CardPatternTest {
         assertEquals(16, catalogIds.size(), "ids must be unique");
     }
 
-    /** Every offset of every card has range at most dx,dy in [-2, 2]. */
+    /** Every offset of every card has range at most dx,dy in [-3, 3]. */
     @org.junit.jupiter.api.Test
     void allCatalogOffsetsAreWithinRange() {
         for (Card card : CardDeck.catalog()) {
             for (Offset offset : card.offsets()) {
-                assertTrue(Math.abs(offset.dx()) <= 2 && Math.abs(offset.dy()) <= 2,
+                assertTrue(Math.abs(offset.dx()) <= 3 && Math.abs(offset.dy()) <= 3,
                         card.id() + " offset out of range: " + offset);
             }
         }

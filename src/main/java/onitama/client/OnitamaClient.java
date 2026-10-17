@@ -82,22 +82,22 @@ public final class OnitamaClient implements AutoCloseable, ServerConnection {
         try {
             Object greetingObj = in.readObject();
             if (!(greetingObj instanceof onitama.net.ErrorMessage greeting)
-                    || !"GRID_DUEL_PROTOCOL:2".equals(greeting.text())) {
+                    || !"GRID_DUEL_PROTOCOL:4".equals(greeting.text())) {
                 newSocket.close();
-                throw new IOException("server handshake failed: expected GRID_DUEL_PROTOCOL:2 greeting, got " + greetingObj);
+                throw new IOException("server handshake failed: expected GRID_DUEL_PROTOCOL:4 greeting, got " + greetingObj);
             }
             out.reset();
-            out.writeObject(new onitama.net.ProtocolHello(2));
+            out.writeObject(new onitama.net.ProtocolHello(4));
             out.flush();
 
             Object readyObj = in.readObject();
-            if (!(readyObj instanceof onitama.net.ProtocolReady ready) || ready.version() != 2) {
+            if (!(readyObj instanceof onitama.net.ProtocolReady ready) || ready.version() != 4) {
                 newSocket.close();
-                throw new IOException("server handshake failed: expected ProtocolReady(2), got " + readyObj);
+                throw new IOException("server handshake failed: expected ProtocolReady(4), got " + readyObj);
             }
         } catch (java.net.SocketTimeoutException e) {
             newSocket.close();
-            throw new IOException("handshake timed out waiting for GRID_DUEL_PROTOCOL:2: server upgrade required", e);
+            throw new IOException("handshake timed out waiting for GRID_DUEL_PROTOCOL:4: server upgrade required", e);
         } catch (ClassNotFoundException e) {
             newSocket.close();
             throw new IOException("protocol error during handshake", e);

@@ -5,6 +5,7 @@ package onitama.core.duel;
  */
 public enum EndReason {
     ELIMINATION,
+    SCORE,
     FORFEIT,
     DRAW
 }

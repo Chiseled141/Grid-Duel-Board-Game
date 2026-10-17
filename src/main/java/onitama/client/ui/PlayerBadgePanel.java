@@ -14,7 +14,8 @@ public final class PlayerBadgePanel extends JComponent {
     private final boolean own;
     private String name = "";
     private PlayerColor color = PlayerColor.BLUE;
-    private int mana, cap = 5, reserved, alive = 6;
+    private int mana, cap = 5, reserved, alive = 7;
+    private int score, target = 8;
     private boolean active, paused, initialized;
     private float flash;
     private long flashStart;
@@ -52,6 +53,12 @@ public final class PlayerBadgePanel extends JComponent {
         repaint();
     }
 
+    /** Shows public progress toward the match's score target. */
+    public void updateScore(int score, int target) {
+        this.score = score; this.target = target;
+        repaint();
+    }
+
     /** Stops transient feedback on lifecycle changes. */
     public void cancelAnimation() { timer.stop(); flash = 0; repaint(); }
 
@@ -82,7 +89,9 @@ public final class PlayerBadgePanel extends JComponent {
             g.setColor(active && !paused ? accent : new Color(108, 87, 59));
             g.drawString(state, getWidth() - 14 - g.getFontMetrics().stringWidth(state), 69);
             g.setColor(new Color(156, 129, 84, 110));
-            g.drawLine(14, 80, getWidth() - 14, 80);
+            g.drawLine(14, 88, getWidth() - 14, 88);
+            g.setColor(accent); g.setFont(Theme.bold(10));
+            g.drawString("SCORE  " + score + " / " + target, 14, 83);
             g.setFont(Theme.bold(9));
             g.setColor(Theme.INK);
             g.drawString("MANA", 14, 101);

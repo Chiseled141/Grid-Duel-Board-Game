@@ -26,7 +26,7 @@ import javax.swing.Timer;
 /**
  * Responsive 7x7 board canvas for Grid Duel.
  * Drawn from the viewer's side (own home row at the bottom).
- * Six identical pieces per side; no temple arch or Master distinctions.
+ * Seven identical pieces per side; no temple arch or Master distinctions.
  */
 public final class BoardPanel extends JComponent {
 
@@ -35,6 +35,7 @@ public final class BoardPanel extends JComponent {
     private static final double GRID_SHARE = 0.96;
 
     private List<PlacedPiece> pieces = List.of();
+    private onitama.core.duel.ObjectiveLayout objectives;
     private PlayerColor viewColor = PlayerColor.BLUE;
     private Square selectedSquare;
     private List<Square> targets = List.of();
@@ -89,6 +90,7 @@ public final class BoardPanel extends JComponent {
                 }
             }
         });
+        javax.swing.ToolTipManager.sharedInstance().registerComponent(this);
         addMouseMotionListener(new MouseMotionAdapter() {
             @Override
             public void mouseMoved(MouseEvent event) {
@@ -128,9 +130,11 @@ public final class BoardPanel extends JComponent {
     public void setView(PlayerView view) {
         if (view == null) {
             this.pieces = List.of();
+            this.objectives = null;
             this.viewColor = PlayerColor.BLUE;
         } else {
             this.pieces = view.pieces();
+            this.objectives = view.objectives();
             this.viewColor = view.viewer();
         }
         repaint();
@@ -355,6 +359,7 @@ public final class BoardPanel extends JComponent {
         computeGeometry();
 
         paintBoard(g);
+        paintObjectives(g);
 
         if (lastMoveFrom != null) {
             overlay(g, lastMoveFrom);
@@ -397,6 +402,46 @@ public final class BoardPanel extends JComponent {
         }
 
         g.dispose();
+    }
+
+    private void paintObjectives(Graphics2D g) {
+        if (objectives == null) return;
+        for (Square square : objectives.scoring()) paintObjective(g, square, true);
+        for (Square square : objectives.mana()) paintObjective(g, square, false);
+    }
+
+    private void paintObjective(Graphics2D parent, Square square, boolean score) {
+        Graphics2D g = (Graphics2D) parent.create();
+        try {
+            int px = displayX(square.x()) * cell + originX;
+            int py = displayY(square.y()) * cell + originY;
+            g.clipRect(px + 1, py + 1, cell - 2, cell - 2);
+            Color accent = score ? new Color(216, 164, 59) : new Color(58, 145, 177);
+            // Tint the stone itself; the original tile texture remains visible underneath.
+            g.setPaint(new java.awt.GradientPaint(px, py,
+                    new Color(accent.getRed(), accent.getGreen(), accent.getBlue(), 115),
+                    px, py + cell, new Color(accent.getRed(), accent.getGreen(), accent.getBlue(), 60)));
+            g.fillRect(px + 1, py + 1, cell - 2, cell - 2);
+            int edge = Math.max(2, cell / 24);
+            for (int inset = edge + 3; inset >= edge; inset--) {
+                int alpha = inset == edge ? 220 : 35;
+                g.setColor(new Color(accent.getRed(), accent.getGreen(), accent.getBlue(), alpha));
+                g.setStroke(new BasicStroke(inset == edge ? 1.5f : 2f));
+                g.drawRect(px + inset, py + inset, cell - 2 * inset - 1, cell - 2 * inset - 1);
+            }
+        } finally { g.dispose(); }
+    }
+
+    /** Objective explanations follow canonical squares even when the board is flipped. */
+    @Override public String getToolTipText(MouseEvent event) {
+        Square square = squareAt(event.getX(), event.getY());
+        if (objectives != null && square != null) {
+            if (objectives.scoring().contains(square))
+                return "Score square: +1 point at your turn start while occupied. Each gold square scores separately.";
+            if (objectives.mana().contains(square))
+                return "Mana square: +1 bonus mana at your turn start while occupied, within the mana cap.";
+        }
+        return super.getToolTipText(event);
     }
 
     /** Oak frame, brass corner fittings and worn limestone/slate playing squares. */

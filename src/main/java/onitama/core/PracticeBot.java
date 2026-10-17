@@ -94,7 +94,13 @@ public final class PracticeBot {
             return captures.get(random.nextInt(captures.size()));
         }
 
-        return legal.get(random.nextInt(legal.size()));
+        if (difficulty == Difficulty.ROOKIE && random.nextInt(100) < 25)
+            return legal.get(random.nextInt(legal.size()));
+        Collections.shuffle(legal = new ArrayList<>(legal), random);
+        GameAction.MovePiece best = legal.stream().max(java.util.Comparator.comparingInt(
+                move -> movementValue(view, move))).orElseThrow();
+        // Keeping a defender on an objective can be better than spending the movement.
+        return movementValue(view, best) <= 0 ? new GameAction.SkipMovement() : best;
     }
 
     private static GameAction chooseSkill(PlayerView view, Difficulty difficulty, Random random) {
@@ -112,10 +118,12 @@ public final class PracticeBot {
             candidates.addAll(targets);
         }
         if (candidates.isEmpty()) return new GameAction.EndTurn();
+        candidates.removeIf(cast -> skillValue(view, cast) <= 0);
+        if (candidates.isEmpty()) return new GameAction.EndTurn();
         if (difficulty == Difficulty.ROOKIE) return candidates.get(random.nextInt(candidates.size()));
         // Stronger opponents prioritize eliminations and complete multi-target effects.
         Collections.shuffle(candidates, random);
-        return candidates.stream().max(java.util.Comparator.comparingInt(PracticeBot::skillValue)).orElseThrow();
+        return candidates.stream().max(java.util.Comparator.comparingInt(cast -> skillValue(view, cast))).orElseThrow();
     }
 
     private static void searchSkill(PlayerView view, String instanceId, SelectionDraft draft,
@@ -143,13 +151,36 @@ public final class PracticeBot {
         for (var child : next) searchSkill(view, instanceId, child, visited, results, random);
     }
 
-    private static int skillValue(GameAction.CastSkill cast) {
+    private static int movementValue(PlayerView view, GameAction.MovePiece move) {
+        return relocationValue(view, move.pieceId(), move.to());
+    }
+
+    private static int relocationValue(PlayerView view, int pieceId, Square to) {
+        Square from = view.pieces().stream().filter(p -> p.piece().id() == pieceId)
+                .map(PlacedPiece::square).findFirst().orElse(to);
+        int approach = distanceToScore(view, from) - distanceToScore(view, to);
+        return objectiveValue(view, to) - objectiveValue(view, from) + approach * 3;
+    }
+
+    private static int distanceToScore(PlayerView view, Square square) {
+        return view.objectives().scoring().stream().mapToInt(goal ->
+                Math.abs(square.x() - goal.x()) + Math.abs(square.y() - goal.y())).min().orElse(0);
+    }
+
+    private static int objectiveValue(PlayerView view, Square square) {
+        if (view.objectives().scoring().contains(square)) return 60;
+        int mana = view.viewer() == PlayerColor.BLUE ? view.blueMana() : view.redMana();
+        return view.objectives().mana().contains(square) ? (mana < view.rules().manaCap() ? 24 : 6) : 0;
+    }
+
+    private static int skillValue(PlayerView view, GameAction.CastSkill cast) {
         SkillTargets target = cast.targets();
         if (target instanceof SkillTargets.Attack attack) return 100 * attack.enemyIds().size();
         if (target instanceof SkillTargets.Enemy) return 100;
-        if (target instanceof SkillTargets.MoveGroup group) return 10 + group.moves().size();
-        if (target instanceof SkillTargets.Rally rally) return 10 + rally.moves().size();
+        if (target instanceof SkillTargets.MoveGroup group) return 10 + group.moves().size() + group.moves().stream().mapToInt(move -> relocationValue(view, move.pieceId(), move.to())).sum();
+        if (target instanceof SkillTargets.Rally rally) return 10 + rally.moves().size() + rally.moves().stream().mapToInt(move -> relocationValue(view, move.pieceId(), move.to())).sum();
         if (target instanceof SkillTargets.ShiftEnemies shifted) return 10 + shifted.enemyIds().size();
+        if (target instanceof SkillTargets.Relocate move) return 10 + relocationValue(view, move.pieceId(), move.to());
         if (target instanceof SkillTargets.None) return 1;
         return 10;
     }

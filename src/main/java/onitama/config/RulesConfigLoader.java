@@ -70,7 +70,8 @@ public final class RulesConfigLoader {
                 "mana.initial",
                 "mana.income",
                 "mana.cap",
-                "turn.limit"
+                "turn.limit",
+                "score.target"
         ));
         for (String id : RulesConfig.CANONICAL_SKILL_IDS) {
             set.add("skill." + id + ".name");
@@ -246,7 +247,7 @@ public final class RulesConfigLoader {
         List<Card> movementCards = CardDeck.catalog();
         try {
             return new RulesConfig(rulesVersion, movementHandSize, skillHandSize,
-                    initialMana, manaIncome, manaCap, turnLimit, movementCards, skillDefs);
+                    initialMana, manaIncome, manaCap, turnLimit, movementCards, skillDefs, parseInt(props, "score.target"));
         } catch (IllegalArgumentException e) {
             throw new ConfigException("rulesConfig", null, e.getMessage(), e);
         }

@@ -44,10 +44,10 @@ final class ScriptedClient implements AutoCloseable {
 
     void handshake() {
         onitama.net.ErrorMessage greeting = expect(onitama.net.ErrorMessage.class);
-        if (!"GRID_DUEL_PROTOCOL:2".equals(greeting.text())) {
-            fail("expected GRID_DUEL_PROTOCOL:2 greeting, got " + greeting.text());
+        if (!"GRID_DUEL_PROTOCOL:4".equals(greeting.text())) {
+            fail("expected GRID_DUEL_PROTOCOL:4 greeting, got " + greeting.text());
         }
-        send(new onitama.net.ProtocolHello(2));
+        send(new onitama.net.ProtocolHello(4));
         expect(onitama.net.ProtocolReady.class);
     }
 

@@ -218,7 +218,7 @@ class DeckLifecycleTest {
                     skill.manaCost(), copies, skill.parameters(), skill.descriptionTemplate(), skill.artworkPath()));
         }
         RulesConfig config = new RulesConfig(
-                "grid-duel-v1", 2, 3, 2, 1, 5, 60, CardDeck.catalog(), customSkills);
+                "grid-duel-v3", 2, 3, 2, 1, 5, 60, CardDeck.catalog(), customSkills);
         GameState state = RulesEngine.newGame(config, 1L);
         Set<String> expected = Set.of("sidestep#1", "sidestep#2", "sidestep#3", "sidestep#4", "dash#1", "dash#2");
         assertEquals(0, state.skillDeck().size());

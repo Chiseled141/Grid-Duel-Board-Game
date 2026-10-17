@@ -92,27 +92,27 @@ public final class ClientHandler implements Runnable {
             in.setObjectInputFilter(Message.WIRE_FILTER);
 
             // Step 3 §8: Server sends greeting first
-            send(new ErrorMessage("GRID_DUEL_PROTOCOL:2"));
+            send(new ErrorMessage("GRID_DUEL_PROTOCOL:4"));
             Object firstRaw;
             try {
                 firstRaw = in.readObject();
             } catch (SocketTimeoutException e) {
                 LOG.info(() -> describe() + " timed out during protocol handshake");
-                send(new ErrorMessage("handshake timeout: GRID_DUEL_PROTOCOL:2 required"));
+                send(new ErrorMessage("handshake timeout: GRID_DUEL_PROTOCOL:4 required"));
                 return;
             }
             if (!(firstRaw instanceof ProtocolHello hello)) {
                 LOG.warning(() -> describe() + " sent pre-handshake message: "
                         + (firstRaw == null ? "null" : firstRaw.getClass().getSimpleName()));
-                send(new ErrorMessage("protocol handshake required: GRID_DUEL_PROTOCOL:2"));
+                send(new ErrorMessage("protocol handshake required: GRID_DUEL_PROTOCOL:4"));
                 return;
             }
-            if (hello.version() != 2) {
+            if (hello.version() != 4) {
                 LOG.warning(() -> describe() + " unsupported protocol version: " + hello.version());
-                send(new ErrorMessage("incompatible protocol version: expected 2, got " + hello.version()));
+                send(new ErrorMessage("incompatible protocol version: expected 4, got " + hello.version()));
                 return;
             }
-            send(new ProtocolReady(2));
+            send(new ProtocolReady(4));
 
             // Restore standard silence limit after handshake
             socket.setSoTimeout(server.config().silenceSeconds() * 1000);

@@ -44,6 +44,9 @@ public final class Board {
         board.set(new Square(5, 6), new Piece(10, PlayerColor.RED));
         board.set(new Square(6, 6), new Piece(11, PlayerColor.RED));
 
+        // Keep existing stable IDs; the seventh piece fills each former center gap.
+        board.set(new Square(3, 0), new Piece(12, PlayerColor.BLUE));
+        board.set(new Square(3, 6), new Piece(13, PlayerColor.RED));
         return board;
     }
 

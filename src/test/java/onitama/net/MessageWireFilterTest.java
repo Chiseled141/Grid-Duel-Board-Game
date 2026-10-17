@@ -50,8 +50,8 @@ class MessageWireFilterTest {
         assertDeserializes(new GameOver(null, EndReason.DRAW, 1000, 1000));
         assertDeserializes(new LoginResponse(true, null,
                 new UserProfile("alice", 1016, 3, 1), "token"));
-        assertDeserializes(new ProtocolHello(2));
-        assertDeserializes(new ProtocolReady(2));
+        assertDeserializes(new ProtocolHello(4));
+        assertDeserializes(new ProtocolReady(4));
         assertDeserializes(new ChatRequest("match-1", "Hello 👋"));
         assertDeserializes(new ChatMessage("match-1", "alice", "Good luck!"));
     }

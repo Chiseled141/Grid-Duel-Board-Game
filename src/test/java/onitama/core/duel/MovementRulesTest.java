@@ -44,8 +44,8 @@ class MovementRulesTest {
         RulesConfig config = DuelTestFixture.defaultRulesConfig();
         GameState state = RulesEngine.newGame(config, 42L);
 
-        // Place a Blue piece at (5, 4) and give Blue Tiger (0, 2) -> destination (5, 6)
-        state.board().move(new Square(0, 0), new Square(5, 4));
+        // Place a Blue piece at (5, 3) and give Blue Tiger (0, 3) -> destination (5, 6)
+        state.board().move(new Square(0, 0), new Square(5, 3));
         state.mutableMovementHand(PlayerColor.BLUE).clear();
         state.mutableMovementHand(PlayerColor.BLUE).add("tiger");
         state.mutableMovementHand(PlayerColor.BLUE).add("crab");
@@ -104,13 +104,13 @@ class MovementRulesTest {
         // Place a piece at (0, 1) directly in front of piece 0 at (0, 0)
         state.board().move(new Square(1, 0), new Square(0, 1));
 
-        // Piece 0 at (0, 0) moves to (0, 2) using Tiger, jumping over (0, 1)
-        GameAction.MovePiece jump = new GameAction.MovePiece("tiger", 0, new Square(0, 2));
+        // Piece 0 at (0, 0) moves to (0, 3) using Tiger, jumping over (0, 1)
+        GameAction.MovePiece jump = new GameAction.MovePiece("tiger", 0, new Square(0, 3));
         ActionResult result = RulesEngine.apply(state, PlayerColor.BLUE, jump);
 
         assertTrue(result instanceof ActionResult.Accepted, "Jumping over intervening piece is legal");
         GameState next = ((ActionResult.Accepted) result).nextState();
-        assertEquals(new Square(0, 2), next.board().findPiece(0));
+        assertEquals(new Square(0, 3), next.board().findPiece(0));
         assertNotNull(next.board().pieceAt(0, 1)); // Intervening piece remains intact
     }
 
@@ -143,7 +143,7 @@ class MovementRulesTest {
 
         assertEquals(0, next.board().pieceAt(0, 1).id());
         assertNull(next.board().findPiece(6)); // Red piece 6 captured
-        assertEquals(5, next.board().countPieces(PlayerColor.RED));
+        assertEquals(6, next.board().countPieces(PlayerColor.RED));
 
         // Verify PublicEvents contains PieceMoved and PieceEliminated
         List<PublicEvent> events = ((ActionResult.Accepted) captureResult).events();

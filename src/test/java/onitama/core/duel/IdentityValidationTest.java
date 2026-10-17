@@ -14,13 +14,13 @@ class IdentityValidationTest {
 
     @Test
     void pieceIdsMustMatchTheirStartingSide() {
-        for (int id = 0; id < 12; id++) {
+        for (int id = 0; id < 14; id++) {
             int candidate = id;
-            PlayerColor owner = id < 6 ? PlayerColor.BLUE : PlayerColor.RED;
+            PlayerColor owner = id < 6 || id == 12 ? PlayerColor.BLUE : PlayerColor.RED;
             assertDoesNotThrow(() -> new Piece(candidate, owner));
             assertThrows(IllegalArgumentException.class, () -> new Piece(candidate, owner.opponent()));
         }
-        for (int id : new int[] {-1, 12, 99, Integer.MAX_VALUE}) {
+        for (int id : new int[] {-1, 14, 99, Integer.MAX_VALUE}) {
             for (PlayerColor color : PlayerColor.values()) {
                 assertThrows(IllegalArgumentException.class, () -> new Piece(id, color));
             }

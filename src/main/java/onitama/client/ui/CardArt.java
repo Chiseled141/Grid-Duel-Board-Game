@@ -127,8 +127,11 @@ public final class CardArt {
             g.setColor(Theme.INK); centered(g, key.name().toUpperCase(), 100, 34);
             heraldry(g, Math.max(0, IDS.indexOf(key.id())) % 4, 26, 52, 22, side);
             g.setColor(new Color(91, 69, 43)); g.setFont(Theme.bold(9)); g.drawString("MOVEMENT", 58, 65);
-            int cell = 25, left = 37, top = 79;
-            for (int row = 0; row < 5; row++) for (int col = 0; col < 5; col++) {
+            int radius = Math.max(2, key.offsets().stream()
+                    .mapToInt(offset -> Math.max(Math.abs(offset.dx()), Math.abs(offset.dy()))).max().orElse(2));
+            int size = radius * 2 + 1;
+            int cell = 125 / size, left = (200 - cell * size) / 2, top = 79;
+            for (int row = 0; row < size; row++) for (int col = 0; col < size; col++) {
                 g.setColor((row + col) % 2 == 0 ? new Color(232, 217, 182) : new Color(211, 192, 152));
                 g.fillRect(left + col * cell, top + row * cell, cell - 1, cell - 1);
                 g.setColor(new Color(75, 52, 34)); g.setStroke(new BasicStroke(1));
@@ -136,13 +139,13 @@ public final class CardArt {
             }
             for (Offset offset : key.offsets()) {
                 int direction = key.color() == key.viewer() ? 1 : -1;
-                int col = 2 + direction * offset.dx(), row = 2 - direction * offset.dy();
-                if (col < 0 || col >= 5 || row < 0 || row >= 5) continue;
+                int col = radius + direction * offset.dx(), row = radius - direction * offset.dy();
+                if (col < 0 || col >= size || row < 0 || row >= size) continue;
                 g.setColor(side);
                 g.fillRoundRect(left + col * cell + 2, top + row * cell + 2, cell - 5, cell - 5, 3, 3);
-                g.setColor(Theme.CREAM); g.fillOval(left + col * cell + 9, top + row * cell + 9, 6, 6);
+                g.setColor(Theme.CREAM); g.fillOval(left + col * cell + cell / 2 - 3, top + row * cell + cell / 2 - 3, 6, 6);
             }
-            heraldry(g, 1, left + 2 * cell + 5, top + 2 * cell + 4, 15, new Color(70, 55, 37));
+            heraldry(g, 1, left + radius * cell + (cell - 15) / 2, top + radius * cell + (cell - 15) / 2, 15, new Color(70, 55, 37));
             g.setColor(new Color(102, 80, 48)); g.setFont(Theme.bold(8));
             centered(g, "EXACT LANDING SQUARES", 100, 220); g.drawLine(20, 228, 180, 228);
         } finally { g.dispose(); }
