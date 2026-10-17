@@ -332,6 +332,32 @@ class ClientModelTest {
     }
 
     @Test
+    void matchEntryHoldsTheOpeningBotUntilThePlayerEnters() throws Exception {
+        long seed = 0;
+        while (RulesEngine.newGame(rules, seed).turn() != PlayerColor.RED) seed++;
+        final long redSeed = seed;
+        javax.swing.SwingUtilities.invokeAndWait(() -> {
+            model.setMatchEntryPending(true);
+            model.startPracticeMatch(onitama.core.Difficulty.ROOKIE, redSeed);
+            model.stepBot(); assertEquals(0, model.view().revision());
+        });
+        Thread.sleep(800);
+        var acted = new java.util.concurrent.CountDownLatch(1);
+        try {
+            javax.swing.SwingUtilities.invokeAndWait(() -> {
+                assertEquals(0, model.view().revision(), "bot must wait behind loading");
+                model.addListener(new ClientModelListener() {
+                    @Override public void onMatchChanged() {
+                        if (model.view() != null && model.view().revision() > 0) acted.countDown();
+                    }
+                });
+                model.setMatchEntryPending(false);
+            });
+            assertTrue(acted.await(3, java.util.concurrent.TimeUnit.SECONDS));
+        } finally { javax.swing.SwingUtilities.invokeAndWait(model::resign); }
+    }
+
+    @Test
     void reconnectResendsOriginalUnacknowledgedRequestUntilReceipt() {
         GameState game = RulesEngine.newGame(rules, 42L);
         var view = RulesEngine.viewFor(game, game.turn());

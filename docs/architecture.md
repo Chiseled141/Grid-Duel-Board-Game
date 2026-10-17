@@ -384,3 +384,28 @@ Player badges display scores; translucent gold/blue tile highlights and hover de
 Bots value center defense and useful mana occupation without hidden-state access.
 Tiger/Lance has forward range 3; Frog/Rabbit flank jumps have sideways range 3.
 Their relative diagrams expand to 7×7, while other patterns stay at 5×5.
+
+### Match loading and entry
+
+Login and the main menu open directly. When ClientModel enters GAME (practice,
+online, rematch or reconnect), ClientFrame displays LoadingPanel until the
+player presses Enter Match. Loading uses the actual match's immutable rules
+snapshot. A SwingWorker prepares the three approved scenes (castle passage,
+campaign map, fortress courtyard), match backdrop, movement/skill faces and piece
+styles. The bottom percentage counts completed preparation steps, without a fake
+wait. The button appears only after completion. An error offers Retry.
+
+A random scene loads first; visible scenes rotate every nine seconds and hints
+every seven. Font-metric wrapping keeps all hint words visible. Reduced motion
+keeps the chosen scene still. MenuMusic continues through the loading screen and
+pauses only when Enter Match reveals the board; the floating mute icon remains
+available during loading. The workshop preview is not bundled.
+
+The entry screen is a presentation gate, not a server phase. Live network updates
+continue to update the match model. Local practice bot turns are held until entry;
+match result dialogs are deferred until the board is shown. Leaving/disconnecting
+cancels preparation and timers; stale callbacks cannot enter another screen.
+
+Return to Match bypasses loading via the explicit onMatchResumed observer callback;
+other observers receive the normal GAME notification through its default method.
+Fresh practice/online matches and rematches retain their loading screen.

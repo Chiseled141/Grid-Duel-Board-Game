@@ -38,6 +38,8 @@ public final class ClientFrame extends JFrame {
     private final ClientSettings settings;
     private final MenuMusic menuMusic = new MenuMusic();
     private Screen visibleScreen = Screen.LOGIN;
+    private LoadingPanel loadingPanel;
+    private final GamePanel gamePanel;
     private final CardLayout screens = new CardLayout();
     private final JPanel content = new JPanel(screens);
     private javax.swing.JToggleButton soundToggle;
@@ -67,7 +69,7 @@ public final class ClientFrame extends JFrame {
         LoginPanel loginPanel = new LoginPanel(model, settings);
         LobbyPanel lobbyPanel = new LobbyPanel(model, settings, this::openLeaderboard, this::closeAndSave,
                 this::showHelpOverlay, this::showAboutOverlay);
-        GamePanel gamePanel = new GamePanel(model, settings);
+        gamePanel = new GamePanel(model, settings);
         LeaderboardPanel leaderboardPanel = new LeaderboardPanel(model, settings, () -> model.leaveToLobby());
 
         content.add(loginPanel, Screen.LOGIN.name());
@@ -81,6 +83,15 @@ public final class ClientFrame extends JFrame {
             @Override
             public void onScreenChanged(Screen screen) {
                 showScreen(screen);
+            }
+
+            @Override
+            public void onMatchResumed() {
+                closeLoading();
+                visibleScreen = Screen.GAME;
+                renderScreen();
+                model.setMatchEntryPending(false);
+                gamePanel.setEntryPending(false);
             }
 
             @Override
@@ -272,20 +283,51 @@ public final class ClientFrame extends JFrame {
 
     private void showScreen(Screen screen) {
         visibleScreen = screen;
-        soundToggle.setVisible(screen != Screen.GAME);
+        if (screen == Screen.GAME) {
+            if (loadingPanel == null) {
+                model.setMatchEntryPending(true);
+                gamePanel.setEntryPending(true);
+                loadingPanel = new LoadingPanel(settings, model.rules(), this::enterFromLoading);
+                content.add(loadingPanel, "LOADING");
+            }
+        } else {
+            closeLoading();
+            model.setMatchEntryPending(false);
+            gamePanel.setEntryPending(false);
+        }
+        renderScreen();
+    }
+
+    private void renderScreen() {
+        boolean loading = loadingPanel != null;
+        soundToggle.setVisible(loading || visibleScreen != Screen.GAME);
         updateMenuMusic();
-        screens.show(content, screen.name());
+        screens.show(content, loading ? "LOADING" : visibleScreen.name());
         setTitle(WINDOW_TITLE + (model.roomCode() != null
                 ? " - match " + model.roomCode() : ""));
     }
 
+    private void enterFromLoading() {
+        if (loadingPanel == null || !loadingPanel.isReady() || model.screen() != Screen.GAME) return;
+        closeLoading();
+        renderScreen();
+        model.setMatchEntryPending(false);
+        gamePanel.setEntryPending(false);
+    }
+
+    private void closeLoading() {
+        if (loadingPanel == null) return;
+        loadingPanel.close(); content.remove(loadingPanel); loadingPanel = null;
+    }
+
     private void updateMenuMusic() {
-        menuMusic.setPlaying(settings.soundEnabled() && visibleScreen != Screen.GAME, settings.menuTheme());
+        menuMusic.setPlaying(settings.soundEnabled() && (loadingPanel != null || visibleScreen != Screen.GAME), settings.menuTheme());
     }
 
     /** Releases the menu audio even when the frame is disposed without using Exit. */
     @Override
     public void dispose() {
+        closeLoading();
         menuMusic.close();
         super.dispose();
     }
