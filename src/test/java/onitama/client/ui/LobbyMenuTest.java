@@ -14,8 +14,32 @@ import javax.swing.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 class LobbyMenuTest {
+    @Test void petalTimerOnlyRunsOnTheVisibleHomeMenuAndHonorsReducedMotion() throws Exception {
+        SwingUtilities.invokeAndWait(() -> {
+            var ui = ui(); var frame = new JFrame(); frame.add(ui.panel); frame.setSize(1280, 720);
+            try {
+                frame.setVisible(true);
+                var field = LobbyPanel.class.getDeclaredField("petalTimer"); field.setAccessible(true);
+                Timer timer = (Timer) field.get(ui.panel);
+                assertTrue(timer.isRunning());
+                button(ui, "Settings").doClick(); assertFalse(timer.isRunning());
+                button(ui, "Back").doClick(); assertTrue(timer.isRunning());
+                ui.model.setReducedMotion(true); assertFalse(timer.isRunning());
+                ui.model.setReducedMotion(false); assertTrue(timer.isRunning());
+                button(ui, "Play").doClick(); assertFalse(timer.isRunning());
+                button(ui, "Back").doClick(); assertTrue(timer.isRunning());
+                ui.model.requestLeaderboard(); assertFalse(timer.isRunning());
+                ui.model.leaveToLobby(); assertTrue(timer.isRunning());
+                frame.setVisible(false); assertFalse(timer.isRunning());
+                frame.setVisible(true); assertTrue(timer.isRunning());
+                frame.dispose(); assertFalse(timer.isRunning());
+            } catch (ReflectiveOperationException exception) { throw new AssertionError(exception); }
+            finally { frame.dispose(); }
+        });
+    }
+
     private record Ui(ClientModel model, ClientSettings settings, LobbyPanel panel,
-                      List<Message> sent, AtomicInteger saved, AtomicInteger quit, AtomicInteger help, AtomicInteger about) { }
+                      List<Message> sent, AtomicInteger saved, AtomicInteger quit) { }
 
     private Ui ui() {
         List<Message> sent = new ArrayList<>();
@@ -27,15 +51,12 @@ class LobbyMenuTest {
         var settings = new ClientSettings();
         var saved = new AtomicInteger();
         var quit = new AtomicInteger();
-        var help = new AtomicInteger();
-        var about = new AtomicInteger();
-        var panel = new LobbyPanel(model, settings, () -> { }, quit::incrementAndGet, saved::incrementAndGet,
-                help::incrementAndGet, about::incrementAndGet);
+        var panel = new LobbyPanel(model, settings, () -> { }, quit::incrementAndGet, saved::incrementAndGet);
         model.handleMessage(new LoginResponse(true, null, new UserProfile("alice", 1000, 0, 0), null));
         sent.clear();
         panel.setSize(1280, 660);
         layout(panel);
-        return new Ui(model, settings, panel, sent, saved, quit, help, about);
+        return new Ui(model, settings, panel, sent, saved, quit);
     }
 
     private void layout(Container parent) {
@@ -56,11 +77,29 @@ class LobbyMenuTest {
         return find(ui.panel, JButton.class).stream().filter(b -> b.getText().equals(text)).findFirst().orElseThrow();
     }
 
+    private void answerQuit(Ui ui, String answer) {
+        var answered = new java.util.concurrent.atomic.AtomicBoolean();
+        long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(3);
+        Timer timer = new Timer(20, null);
+        timer.addActionListener(event -> {
+            for (Window window : Window.getWindows()) if (window instanceof JDialog dialog && dialog.isShowing()) {
+                if (System.nanoTime() > deadline) { dialog.dispose(); timer.stop(); return; }
+                if (!dialog.getTitle().equals("Quit game")) continue;
+                for (JButton candidate : find(dialog, JButton.class)) if (candidate.getText().equalsIgnoreCase(answer)) {
+                    answered.set(true); timer.stop(); candidate.doClick(); return;
+                }
+            }
+        });
+        timer.start();
+        try { button(ui, "Quit game").doClick(); } finally { timer.stop(); }
+        assertTrue(answered.get(), "quit confirmation must appear before closing");
+    }
+
     @Test void homeShowsOnlyPrimaryActionsAndLeavesBackgroundExposed() throws Exception {
         SwingUtilities.invokeAndWait(() -> {
             var ui = ui();
             var texts = find(ui.panel, JButton.class).stream().filter(Component::isVisible).map(JButton::getText).toList();
-            assertEquals(List.of("Play", "Settings", "Quit game", "Leaderboard", "How to Play", "About"), texts);
+            assertEquals(List.of("Play", "Settings", "Leaderboard", "Quit game"), texts);
             JPanel surface = find(ui.panel, JPanel.class).stream().filter(p -> "mainMenuSurface".equals(p.getName())).findFirst().orElseThrow();
             assertTrue(surface.getWidth() <= 340);
             assertTrue(surface.getHeight() < 450);
@@ -69,17 +108,18 @@ class LobbyMenuTest {
             assertEquals("alice", profile.getText());
             assertTrue(profile.getFont().getSize2D() >= 20, "account name is more prominent than the small links");
             var profilePoint = SwingUtilities.convertPoint(profile, 0, 0, ui.panel);
-            var quitPoint = SwingUtilities.convertPoint(button(ui, "Quit game"), 0, 0, ui.panel);
-            var leaderboardPoint = SwingUtilities.convertPoint(button(ui, "Leaderboard"), 0, 0, ui.panel);
-            assertTrue(profilePoint.y > quitPoint.y + button(ui, "Quit game").getHeight());
-            assertTrue(profilePoint.y + profile.getHeight() <= leaderboardPoint.y);
-            assertTrue(profile.getHeight() >= profile.getFontMetrics(profile.getFont()).getHeight(),
-                    "the compact account caption must not be clipped");
-            button(ui, "How to Play").doClick();
-            button(ui, "About").doClick();
-            assertEquals(1, ui.help.get()); assertEquals(1, ui.about.get());
-            button(ui, "Quit game").doClick();
-            assertEquals(1, ui.quit.get());
+            assertTrue(profilePoint.y < 60, "account name belongs beside the sound icon");
+            assertTrue(profilePoint.x > ui.panel.getWidth() / 2);
+            assertTrue(profilePoint.x + profile.getWidth() <= ui.panel.getWidth() - 76);
+            assertTrue(profile.getHeight() >= profile.getFontMetrics(profile.getFont()).getHeight());
+            assertTrue(texts.stream().noneMatch(text -> text.equals("How to Play") || text.equals("About")));
+            var elo = find(ui.panel, JLabel.class).stream().filter(label -> "menuPlayerElo".equals(label.getName())).findFirst().orElseThrow();
+            assertEquals("ELO 1000", elo.getText());
+            var eloPoint = SwingUtilities.convertPoint(elo, 0, 0, ui.panel);
+            assertTrue(eloPoint.x >= profilePoint.x + profile.getWidth());
+            assertTrue(eloPoint.y < 60);
+            answerQuit(ui, "No"); assertEquals(0, ui.quit.get());
+            answerQuit(ui, "Quit game"); assertEquals(1, ui.quit.get());
             assertTrue(ui.sent.isEmpty());
         });
     }
@@ -95,10 +135,10 @@ class LobbyMenuTest {
             assertEquals(List.of(new CreateMatchRequest()), ui.sent);
             ui.model.handleMessage(new MatchCreated("ABCDE"));
             assertTrue(find(ui.panel, JLabel.class).stream().anyMatch(l -> l.getText().equals("ABCDE")));
-            button(ui, "‹ Back").doClick();
+            button(ui, "Back").doClick();
             button(ui, "Create match").doClick();
             assertEquals(1, ui.sent.size());
-            button(ui, "‹ Back").doClick();
+            button(ui, "Back").doClick();
             button(ui, "Join a game").doClick();
             assertTrue(ui.sent.get(1) instanceof ListMatchesRequest);
             var field = find(ui.panel, JTextField.class).get(0);
@@ -108,12 +148,139 @@ class LobbyMenuTest {
             assertTrue(button(ui, "Join").isEnabled());
             field.postActionEvent();
             assertEquals(new JoinMatchRequest("ABCD2"), ui.sent.get(2));
-            button(ui, "‹ Back").doClick();
+            button(ui, "Back").doClick();
             button(ui, "Practice").doClick();
             button(ui, "Rookie").doClick();
             assertTrue(ui.model.isPracticeMode());
             assertEquals(Screen.GAME, ui.model.screen());
             ui.model.resign();
+        });
+    }
+
+    @Test void findMatchCanBeCancelledAndBackNavigationLeavesTheQueue() throws Exception {
+        SwingUtilities.invokeAndWait(() -> {
+            var ui = ui(); button(ui, "Play").doClick();
+            button(ui, "Find match").doClick();
+            assertTrue(ui.model.isFindingMatch());
+            assertEquals(List.of(new FindMatchRequest(true)), ui.sent);
+            ui.model.handleMessage(new MatchmakingStatus(true, null));
+            button(ui, "Cancel search").doClick();
+            assertTrue(ui.model.isFindingMatch(), "wait for server cancellation acknowledgement");
+            assertEquals(new FindMatchRequest(false), ui.sent.get(1));
+            ui.model.handleMessage(new MatchmakingStatus(false, null));
+            assertFalse(ui.model.isFindingMatch());
+            button(ui, "Search again").doClick();
+            assertTrue(ui.model.isFindingMatch());
+            button(ui, "Back").doClick();
+            assertEquals(new FindMatchRequest(false), ui.sent.get(ui.sent.size() - 1));
+            assertFalse(button(ui, "Create match").isEnabled());
+            ui.model.handleMessage(new MatchmakingStatus(false, null));
+            assertTrue(button(ui, "Create match").isEnabled());
+            assertFalse(ui.model.isFindingMatch());
+        });
+    }
+
+    @Test void lateSearchAcknowledgementCannotReopenSearchAfterMatchStartOrParking() throws Exception {
+        SwingUtilities.invokeAndWait(() -> {
+            var ui = ui(); button(ui, "Play").doClick(); button(ui, "Find match").doClick();
+            var game = onitama.core.duel.RulesEngine.newGame(onitama.config.RulesConfigLoader.load(null), 42);
+            var view = onitama.core.duel.RulesEngine.viewFor(game, onitama.core.PlayerColor.BLUE);
+            ui.model.handleMatchSync(new MatchSync("auto", "ROOM1", view, false, 1));
+            ui.model.handleMessage(new MatchmakingStatus(true, null));
+            assertEquals(Screen.GAME, ui.model.screen()); assertFalse(ui.model.isFindingMatch());
+            ui.model.leaveToLobby();
+            ui.model.handleMessage(new MatchmakingStatus(true, null));
+            assertTrue(ui.model.hasParkedMatch()); assertFalse(ui.model.isFindingMatch());
+        });
+    }
+
+    private void menuKey(Ui ui, String pageName, String key) {
+        JPanel page = find(ui.panel, JPanel.class).stream().filter(panel -> pageName.equals(panel.getName())).findFirst().orElseThrow();
+        Object id = page.getInputMap(JComponent.WHEN_ANCESTOR_OF_FOCUSED_COMPONENT).get(KeyStroke.getKeyStroke(key));
+        assertNotNull(id, "key must be installed on the visible button-only page");
+        page.getActionMap().get(id).actionPerformed(new java.awt.event.ActionEvent(page, 0, key));
+    }
+
+    private void selected(Ui ui, String text) {
+        var actions = find(ui.panel, JButton.class).stream().filter(button -> Boolean.TRUE.equals(button.getClientProperty(MenuNavigation.ACTIVE))).toList();
+        assertEquals(1, actions.size(), "mouse and keyboard share one highlight");
+        assertEquals(text, actions.get(0).getText());
+    }
+
+    @Test void mouseAndDirectionalKeysShareSelectionAndActivatePlayAndPractice() throws Exception {
+        SwingUtilities.invokeAndWait(() -> {
+            var ui = ui(); selected(ui, "Play");
+            assertEquals(34f, button(ui, "Play").getFont().getSize2D());
+            JButton settings = button(ui, "Settings");
+            settings.dispatchEvent(new java.awt.event.MouseEvent(settings, java.awt.event.MouseEvent.MOUSE_ENTERED,
+                    System.currentTimeMillis(), 0, 5, 5, 0, false));
+            selected(ui, "Settings");
+            assertEquals(34f, settings.getFont().getSize2D());
+            assertEquals(25f, button(ui, "Play").getFont().getSize2D());
+            menuKey(ui, "menu-home", "S"); selected(ui, "Leaderboard");
+            menuKey(ui, "menu-home", "W"); selected(ui, "Settings");
+            menuKey(ui, "menu-home", "LEFT"); selected(ui, "Play");
+            menuKey(ui, "menu-home", "ENTER"); selected(ui, "Find match");
+            assertFalse(button(ui, "Find match").isSelected(), "Find match has no permanent highlight");
+            JButton highlighted = button(ui, "Find match"); highlighted.setSize(330, 56);
+            var painted = new java.awt.image.BufferedImage(330, 56, java.awt.image.BufferedImage.TYPE_INT_RGB);
+            var graphics = painted.createGraphics(); highlighted.paint(graphics); graphics.dispose();
+            int readableDetail = 0;
+            for (int y = 31; y < 45; y++) for (int x = 14; x < 270; x++)
+                if (new Color(painted.getRGB(x, y)).getRed() < 140) readableDetail++;
+            assertTrue(readableDetail > 30, "description must use dark text on the gold selection");
+            menuKey(ui, "menu-play", "DOWN"); selected(ui, "Create match");
+            menuKey(ui, "menu-play", "D"); selected(ui, "Join a game");
+            menuKey(ui, "menu-play", "RIGHT"); selected(ui, "Practice");
+            menuKey(ui, "menu-play", "ENTER"); selected(ui, "Rookie");
+            menuKey(ui, "menu-practice", "DOWN"); selected(ui, "Senior");
+            menuKey(ui, "menu-practice", "A"); selected(ui, "Rookie");
+            menuKey(ui, "menu-practice", "ESCAPE"); selected(ui, "Find match");
+            menuKey(ui, "menu-play", "ESCAPE"); selected(ui, "Play");
+            menuKey(ui, "menu-home", "UP"); selected(ui, "Quit game"); // hidden Resume is skipped
+            menuKey(ui, "menu-home", "DOWN"); menuKey(ui, "menu-home", "ENTER");
+            button(ui, "Practice").doClick();
+            menuKey(ui, "menu-practice", "ENTER");
+            assertTrue(ui.model.isPracticeMode()); assertEquals(Screen.GAME, ui.model.screen());
+            ui.model.resign();
+        });
+    }
+
+    @Test void navigationSkipsDisabledActionsAndNeverCapturesRoomCodeTyping() throws Exception {
+        SwingUtilities.invokeAndWait(() -> {
+            var ui = ui(); button(ui, "Play").doClick(); button(ui, "Find match").doClick();
+            button(ui, "Back").doClick(); // Cancellation still awaiting its acknowledgement.
+            selected(ui, "Back"); menuKey(ui, "menu-play", "DOWN"); selected(ui, "Back");
+            ui.model.handleMessage(new MatchmakingStatus(false, null));
+            menuKey(ui, "menu-play", "S"); selected(ui, "Find match");
+            button(ui, "Join a game").doClick();
+            JPanel joinPage = find(ui.panel, JPanel.class).stream().filter(panel -> "menu-join-a-game".equals(panel.getName())).findFirst().orElseThrow();
+            assertNull(joinPage.getInputMap(JComponent.WHEN_ANCESTOR_OF_FOCUSED_COMPONENT).get(KeyStroke.getKeyStroke("W")));
+            var field = find(ui.panel, JTextField.class).get(0); field.setText("WASD2");
+            assertEquals("WASD2", field.getText());
+        });
+    }
+
+    @Test void escapeAndBackspaceReturnFromRoomAndSettingsPagesWithoutBreakingEditing() throws Exception {
+        SwingUtilities.invokeAndWait(() -> {
+            var ui = ui(); button(ui, "Play").doClick();
+            button(ui, "Create match").doClick();
+            ui.model.handleMessage(new MatchCreated("ABCDE"));
+            menuKey(ui, "menu-create-match", "BACK_SPACE");
+            assertNotNull(button(ui, "Find match"));
+            button(ui, "Join a game").doClick();
+            var field = find(ui.panel, JTextField.class).get(0);
+            field.setText("ABCDE"); field.setCaretPosition(5);
+            Object delete = field.getInputMap(JComponent.WHEN_FOCUSED).get(KeyStroke.getKeyStroke("BACK_SPACE"));
+            assertNotNull(delete);
+            field.getActionMap().get(delete).actionPerformed(new java.awt.event.ActionEvent(field, 0, "delete"));
+            assertEquals("ABCD", field.getText());
+            assertNotNull(button(ui, "Join"));
+            menuKey(ui, "menu-join-a-game", "ESCAPE");
+            menuKey(ui, "menu-play", "BACK_SPACE");
+            button(ui, "Settings").doClick();
+            menuKey(ui, "menu-settings", "BACK_SPACE");
+            assertNotNull(button(ui, "Play"));
         });
     }
 
@@ -129,7 +296,7 @@ class LobbyMenuTest {
                 assertTrue(button(ui, "Heraldic shields").isSelected());
                 assertFalse(button(ui, "Steel helms").isSelected());
                 assertTrue(ui.sent.isEmpty());
-                button(ui, "‹ Back").doClick();
+                button(ui, "Back").doClick();
                 assertNotNull(button(ui, "Play"));
             } finally { BoardPanel.setDefaultPieceStyle(1); }
         });
@@ -201,7 +368,7 @@ class LobbyMenuTest {
             assertEquals("FGHJK", find(ui.panel, JTextField.class).get(0).getText());
             ui.model.handleMessage(new ListMatchesResponse(List.of()));
             assertFalse(scroll.isVisible(), "browser collapses again when last room disappears");
-            button(ui, "‹ Back").doClick();
+            button(ui, "Back").doClick();
             button(ui, "Practice").doClick();
             button(ui, "Rookie").doClick();
             ui.model.leaveToLobby();
@@ -211,7 +378,7 @@ class LobbyMenuTest {
             assertFalse(button(ui, "Create match").isEnabled());
             assertFalse(button(ui, "Join a game").isEnabled());
             assertFalse(button(ui, "Practice").isEnabled());
-            button(ui, "‹ Back").doClick();
+            button(ui, "Back").doClick();
             button(ui, "Resume match").doClick();
             assertEquals(Screen.GAME, ui.model.screen());
             ui.model.resign();

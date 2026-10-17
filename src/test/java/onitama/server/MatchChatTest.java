@@ -106,6 +106,8 @@ class MatchChatTest {
         var sync = match(blue, red);
         red.send(new RegisterRequest("different", "password123"));
         red.expectLoginOk();
+        blue.expect(OpponentLeft.class);
+        assertTrue(blue.expect(MatchSync.class).paused());
         blue.send(new ChatRequest(sync.matchId(), "private"));
         blue.expect(ErrorMessage.class);
         red.send(new Ping(24));

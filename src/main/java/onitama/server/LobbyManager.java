@@ -10,9 +10,9 @@ import java.util.concurrent.ConcurrentMap;
 
 /**
  * The lobby: open matches waiting for a second player, keyed by 5-character
- * room code. All operations are single atomic operations on a
- * {@link ConcurrentHashMap}, so two clients racing to join the same room
- * cannot both succeed — exactly one wins the atomic remove.
+ * room code, plus an authenticated FIFO search queue. Room storage uses a
+ * {@link ConcurrentHashMap}; cross-room/queue admission is coordinated by
+ * this object's monitor before either handler is assigned to a session.
  */
 public final class LobbyManager {
 
@@ -21,6 +21,7 @@ public final class LobbyManager {
     private static final int CODE_LENGTH = 5;
 
     private final ConcurrentMap<String, ClientHandler> lobbies = new ConcurrentHashMap<>();
+    private final java.util.LinkedHashSet<ClientHandler> waiting = new java.util.LinkedHashSet<>();
     private final SecureRandom random = new SecureRandom();
 
     /**
@@ -72,8 +73,35 @@ public final class LobbyManager {
         lobbies.values().removeIf(handler -> handler == host);
     }
 
+    /** Finds the oldest available opponent, or keeps this handler waiting once. */
+    synchronized ClientHandler findOpponent(ClientHandler joiner) {
+        if (waiting.contains(joiner)) return null;
+        removeHostedLobby(joiner);
+        var iterator = waiting.iterator();
+        while (iterator.hasNext()) {
+            ClientHandler candidate = iterator.next();
+            iterator.remove();
+            if (!candidate.availableForMatchmaking() || inActiveMatch(candidate)
+                    || candidate.username().equals(joiner.username())) continue;
+            return candidate;
+        }
+        waiting.add(joiner);
+        return null;
+    }
+
+    /** True while the handler has a cancellable waiting entry. */
+    synchronized boolean isSearching(ClientHandler handler) {
+        return waiting.contains(handler);
+    }
+
+    /** Removes only an unpaired search; never cancels an already started match. */
+    synchronized void cancelSearch(ClientHandler handler) {
+        waiting.remove(handler);
+    }
+
     /** Closes every lobby; used during server shutdown. */
-    public void clear() {
+    public synchronized void clear() {
+        waiting.clear();
         lobbies.clear();
     }
 

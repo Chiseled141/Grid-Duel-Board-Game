@@ -26,6 +26,8 @@ import onitama.net.ActionRequest;
 import onitama.net.ChatRequest;
 import onitama.net.ChatMessage;
 import onitama.net.CreateMatchRequest;
+import onitama.net.FindMatchRequest;
+import onitama.net.MatchmakingStatus;
 import onitama.net.ErrorMessage;
 import onitama.net.GameOver;
 import onitama.net.GameUpdate;
@@ -80,6 +82,7 @@ public final class ClientModel {
     private List<MatchSummary> openMatches = List.of();
     private List<UserProfile> leaderboard = List.of();
     private String pendingRoomCode;
+    private boolean findingMatch;
 
     // Match state
     private MatchSync currentSync;
@@ -174,6 +177,29 @@ public final class ClientModel {
                         "Cannot reach server " + host + ":" + port + " (" + e.getMessage() + ")"));
             }
         }, "onitama-connect").start();
+    }
+
+    /** Joins the server queue once; an existing match must be resumed first. */
+    public void findMatch() {
+        if (findingMatch) return;
+        if (me == null || screen != Screen.LOBBY || hasParkedMatch() || !connection.isConnected()) {
+            fire(listener -> listener.onError("Connect to the server and finish your current match first."));
+            return;
+        }
+        findingMatch = true;
+        pendingRoomCode = null;
+        fire(ClientModelListener::onLobbyChanged);
+        connection.send(new FindMatchRequest(true));
+    }
+
+    /** Cancellation takes effect when the server acknowledges it. */
+    public void cancelFindMatch() {
+        if (findingMatch) connection.send(new FindMatchRequest(false));
+    }
+
+    /** True while a search or its cancellation is awaiting the server. */
+    public boolean isFindingMatch() {
+        return findingMatch;
     }
 
     public void createMatch() {
@@ -505,6 +531,10 @@ public final class ClientModel {
     public void handleMessage(Message message) {
         if (message instanceof LoginResponse response) {
             handleLoginResponse(response);
+        } else if (message instanceof MatchmakingStatus status) {
+            findingMatch = status.searching() && screen == Screen.LOBBY && !hasParkedMatch();
+            fire(ClientModelListener::onLobbyChanged);
+            if (status.error() != null) fire(listener -> listener.onError(status.error()));
         } else if (message instanceof MatchCreated created) {
             pendingRoomCode = created.roomCode();
             fire(listener -> listener.onMatchCreated(created.roomCode()));
@@ -544,6 +574,7 @@ public final class ClientModel {
     }
 
     public void handleMatchSync(MatchSync sync) {
+        findingMatch = false;
         boolean sameMatch = currentSync != null && currentSync.matchId().equals(sync.matchId());
         if (sameMatch && sync.view().revision() < currentSync.view().revision()) {
             return;
@@ -662,6 +693,8 @@ public final class ClientModel {
     }
 
     public void handleConnectionLost() {
+        findingMatch = false;
+        fire(ClientModelListener::onLobbyChanged);
         String token = reconnectToken;
         if (token != null) {
             fire(ClientModelListener::onConnectionLost);
@@ -701,6 +734,7 @@ public final class ClientModel {
 
     private void handleLoginResponse(LoginResponse response) {
         if (response.ok()) {
+            findingMatch = false;
             clearMatchState();
             me = response.profile();
             reconnectToken = response.reconnectToken();
@@ -717,7 +751,7 @@ public final class ClientModel {
 
     // Seeded entry point keeps practice startup reproducible in regression tests.
     void startPracticeMatch(Difficulty difficulty, long seed) {
-        if (hasParkedMatch()) {
+        if (hasParkedMatch() || findingMatch) {
             fire(listener -> listener.onError(
                     "You have an ongoing match — return to it first."));
             return;
