@@ -5,6 +5,8 @@ import onitama.db.AuthenticationException;
 import onitama.net.ActionRequest;
 import onitama.net.ChatRequest;
 import onitama.net.CreateMatchRequest;
+import onitama.net.FindMatchRequest;
+import onitama.net.MatchmakingStatus;
 import onitama.net.ErrorMessage;
 import onitama.net.JoinMatchRequest;
 import onitama.net.LeaderboardRequest;
@@ -66,6 +68,7 @@ public final class ClientHandler implements Runnable {
     private final Map<Class<?>, Consumer<Message>> handlers = Map.ofEntries(
             Map.entry(RegisterRequest.class, m -> handleRegister((RegisterRequest) m)),
             Map.entry(LoginRequest.class, m -> handleLogin((LoginRequest) m)),
+            Map.entry(FindMatchRequest.class, m -> handleFindMatch((FindMatchRequest) m)),
             Map.entry(CreateMatchRequest.class, m -> handleCreateMatch((CreateMatchRequest) m)),
             Map.entry(JoinMatchRequest.class, m -> handleJoinMatch((JoinMatchRequest) m)),
             Map.entry(ListMatchesRequest.class, m -> handleListMatches((ListMatchesRequest) m)),
@@ -160,6 +163,7 @@ public final class ClientHandler implements Runnable {
     // ------------------------------------------------------------------
 
     private void handleRegister(RegisterRequest request) {
+        cancelSearchBeforeAuthentication();
         try {
             UserProfile profile = server.userDao().register(request.username(), request.password());
             completeLogin(profile);
@@ -169,6 +173,7 @@ public final class ClientHandler implements Runnable {
     }
 
     private void handleLogin(LoginRequest request) {
+        cancelSearchBeforeAuthentication();
         try {
             UserProfile profile = server.userDao().login(request.username(), request.password());
             completeLogin(profile);
@@ -177,38 +182,108 @@ public final class ClientHandler implements Runnable {
         }
     }
 
+    private void cancelSearchBeforeAuthentication() {
+        boolean searching;
+        synchronized (server.lobby()) {
+            searching = server.lobby().isSearching(this);
+            server.lobby().cancelSearch(this);
+        }
+        if (searching) send(new MatchmakingStatus(false, null));
+    }
+
     private void completeLogin(UserProfile profile) {
-        username = profile.username();
-        match = null;
-        color = null;
+        synchronized (server.lobby()) {
+            server.lobby().cancelSearch(this);
+            server.lobby().removeHostedLobby(this);
+            // A room join may have reserved this handler before authentication began.
+            // Notify that session so its peer receives a pause/forfeit, not a silent orphan.
+            if (match != null) match.onDisconnect(this);
+            if (username != null) server.registry().detach(this);
+            if (reconnectToken != null) server.registry().clearToken(reconnectToken);
+            username = profile.username();
+            match = null;
+            color = null;
+        }
         reconnectToken = server.registry().attach(this);
         send(new LoginResponse(true, null, profile, reconnectToken));
         LOG.info(() -> "user '" + username + "' logged in");
     }
 
     private void handleCreateMatch(CreateMatchRequest request) {
-        if (notAuthenticated() || busyInMatch()) {
-            return;
+        String error;
+        String code = null;
+        synchronized (server.lobby()) {
+            error = lobbyAdmissionError();
+            if (error == null) code = server.lobby().createLobby(this);
         }
-        String roomCode = server.lobby().createLobby(this);
-        send(new MatchCreated(roomCode));
+        send(error == null ? new MatchCreated(code) : new ErrorMessage(error));
     }
 
     private void handleJoinMatch(JoinMatchRequest request) {
-        if (notAuthenticated() || busyInMatch()) {
-            return;
+        String error;
+        MatchSession session = null;
+        synchronized (server.lobby()) {
+            error = lobbyAdmissionError();
+            if (error == null) {
+                String code = request.roomCode() == null ? "" : request.roomCode().trim().toUpperCase(java.util.Locale.ROOT);
+                ClientHandler host = server.lobby().takeLobby(code, this);
+                if (host == null) error = "room not found: " + code;
+                else {
+                    server.lobby().removeHostedLobby(this);
+                    session = prepareMatch(code, host);
+                }
+            }
         }
-        String roomCode = request.roomCode() == null ? "" : request.roomCode().trim().toUpperCase();
-        ClientHandler host = server.lobby().takeLobby(roomCode, this);
-        if (host == null) {
-            send(new ErrorMessage("room not found: " + roomCode));
-            return;
+        if (session != null) session.start();
+        else send(new ErrorMessage(error));
+    }
+
+    private void handleFindMatch(FindMatchRequest request) {
+        MatchmakingStatus status;
+        MatchSession session = null;
+        ClientHandler opponent = null;
+        synchronized (server.lobby()) {
+            if (username == null) {
+                status = new MatchmakingStatus(false, "Please log in first.");
+            } else if (!request.searching()) {
+                server.lobby().cancelSearch(this);
+                status = new MatchmakingStatus(false, null);
+            } else if (!availableForMatchmaking() || match != null && match.isActive()) {
+                status = new MatchmakingStatus(false, "You are already in a match or disconnected.");
+            } else {
+                // Leaving a finished game also withdraws any old rematch invitation.
+                if (match != null) match.onDisconnect(this);
+                match = null;
+                color = null;
+                opponent = server.lobby().findOpponent(this);
+                if (opponent == null) status = new MatchmakingStatus(true, null);
+                else {
+                    String code = server.lobby().createLobby(opponent);
+                    server.lobby().takeLobby(code, this);
+                    session = prepareMatch(code, opponent);
+                    status = new MatchmakingStatus(false, null);
+                }
+            }
         }
-        // The joiner's own hosted lobby (if any) is now stale — close it.
-        server.lobby().removeHostedLobby(this);
+        // A slow socket must not hold the shared lobby admission monitor.
+        send(status);
+        if (session != null) {
+            opponent.send(new MatchmakingStatus(false, null));
+            session.start();
+        }
+    }
+
+    private MatchSession prepareMatch(String roomCode, ClientHandler host) {
         MatchSession session = new MatchSession(server, roomCode, host, this);
         server.registerLiveMatch(session);
-        session.start();
+        return session;
+    }
+
+    private String lobbyAdmissionError() {
+        if (username == null) return "please log in first";
+        if (match != null && match.isActive()) return "you are already in a match";
+        if (server.lobby().isSearching(this)) return "Cancel Find match before opening another game.";
+        return null;
     }
 
     private void handleListMatches(ListMatchesRequest request) {
@@ -248,16 +323,20 @@ public final class ClientHandler implements Runnable {
             send(new ErrorMessage("unknown or expired reconnect token"));
             return;
         }
-        // Adopt the identity and, if one exists, the parked match of the old handler.
-        username = previous.username();
-        reconnectToken = token;
-        match = previous.match;
-        color = previous.color;
-        // Re-claim the account (kicks any second login that happened in
-        // between) and keep the old token working for this handler.
+        // Snapshot identity and match only after removing waiting entries. Pairing
+        // either reserves the match first, or sees the old connection closed.
+        synchronized (server.lobby()) {
+            server.lobby().cancelSearch(this);
+            server.lobby().cancelSearch(previous);
+            server.lobby().removeHostedLobby(previous);
+            username = previous.username();
+            reconnectToken = token;
+            match = previous.match;
+            color = previous.color;
+            previous.closeSocket();
+        }
         server.registry().attach(this);
         server.registry().rebind(token, this);
-        previous.closeSocket();
 
         MatchSession session = match;
         if (session != null && color != null) {
@@ -317,12 +396,14 @@ public final class ClientHandler implements Runnable {
     }
 
     private void onDisconnected() {
-        MatchSession session = match;
-        if (session != null) {
-            session.onDisconnect(this);
+        MatchSession session;
+        synchronized (server.lobby()) {
+            server.lobby().cancelSearch(this);
+            server.lobby().removeHostedLobby(this);
+            session = match;
         }
+        if (session != null) session.onDisconnect(this);
         server.registry().detach(this);
-        server.lobby().removeHostedLobby(this);
         if (username != null) {
             LOG.info(() -> "user '" + username + "' disconnected");
         }
@@ -336,20 +417,16 @@ public final class ClientHandler implements Runnable {
         return false;
     }
 
-    private boolean busyInMatch() {
-        if (match != null && match.isActive()) {
-            send(new ErrorMessage("you are already in a match"));
-            return true;
-        }
-        return false;
-    }
-
     private String describe() {
         return username == null ? "unauthenticated " + socket.getRemoteSocketAddress()
                 : "user '" + username + "'";
     }
 
     // Package-private state accessors used by the registries and match code.
+
+    boolean availableForMatchmaking() {
+        return username != null && !socket.isClosed();
+    }
 
     String username() {
         return username;

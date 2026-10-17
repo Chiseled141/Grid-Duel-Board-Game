@@ -19,8 +19,6 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
     private final ClientSettings settings;
     private final Runnable openLeaderboard;
     private final Runnable quitGame;
-    private final Runnable openHelp;
-    private final Runnable openAbout;
     private final Runnable saveSettings;
     private final JPanel surface = new JPanel(new BorderLayout()) {
         @Override public Dimension getPreferredSize() {
@@ -37,7 +35,7 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
     private final JTextField joinField = new JTextField() {
         @Override protected void paintComponent(Graphics graphics) {
             Graphics2D g = UiKit.nice(graphics);
-            g.setColor(new Color(13, 25, 27, 100));
+            g.setColor(new Color(20, 27, 26, 240));
             g.fillRoundRect(0, 0, getWidth(), getHeight(), 8, 8);
             g.setColor(isFocusOwner() ? new Color(255, 211, 133) : new Color(235, 228, 211, 120));
             g.drawLine(12, getHeight() - 2, getWidth() - 12, getHeight() - 2);
@@ -46,7 +44,7 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
             if (getText().isEmpty() && !isFocusOwner()) {
                 g = UiKit.nice(graphics);
                 g.setFont(Theme.normal(14f));
-                g.setColor(new Color(235, 228, 211, 185));
+                g.setColor(new Color(255, 238, 200));
                 g.drawString("Enter room code", 13, (getHeight() - g.getFontMetrics().getHeight()) / 2
                         + g.getFontMetrics().getAscent());
                 g.dispose();
@@ -56,33 +54,44 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
     private final DefaultListModel<MatchSummary> roomRows = new DefaultListModel<>();
     private final JList<MatchSummary> rooms = new JList<>(roomRows);
     private final JScrollPane roomScroll = new JScrollPane(rooms);
-    private final JButton join = new MenuAction("Join", this::joinRoom, true);
-    private final JButton create = new MenuAction("Create match", this::createRoom, false);
-    private final JButton practice = new MenuAction("Practice", () -> showPage("practice"), false);
-    private final JButton browse = new MenuAction("Join a game", () -> showPage("join"), false);
+    private final JButton join = MenuSettingsOption.route("Join", "Open the room entered above.", this::joinRoom);
+    private final JButton create = MenuSettingsOption.route("Create match", "Invite a friend with a room code.", this::createRoom);
+    private final JButton practice = MenuSettingsOption.route("Practice", "Play against the practice bot.", () -> showPage("practice"));
+    private final JButton browse = MenuSettingsOption.route("Join a game", "Enter a code or choose an open room.", () -> showPage("join"));
+    private final JButton find = MenuSettingsOption.route("Find match", "Search for another online player.", this::findMatch);
+    private final JLabel searchStatus = caption("Searching for an opponent…");
+    private final JLabel searchDetail = caption("You can cancel while you wait.");
+    private final JButton searchAgain = MenuSettingsOption.route("Search again", "Look for another online player.", this::findMatch);
+    private final JButton cancelSearch = MenuSettingsOption.route("Cancel search", "Stop looking for an opponent.", this::cancelFindMatch);
     private final JButton resume;
     private final JButton[] cardControls = new JButton[2];
     private final JButton[] styles = new JButton[3];
     private final java.util.Map<String, JPanel> pages = new java.util.LinkedHashMap<>();
+    private final java.util.Map<String, MenuNavigation> navigation = new java.util.HashMap<>();
     private String currentPage = "home";
     private boolean creatingRoom;
     private final Timer refreshTimer;
+    private final java.util.List<JButton> petalTargets = new java.util.ArrayList<>();
+    private long petalStartedAt;
+    private final Timer petalTimer = new Timer(40, event -> {
+        updatePetals();
+        repaint();
+    });
 
     /** Builds the menu; Quit uses the frame's normal save-and-close path. */
-    public LobbyPanel(ClientModel model, ClientSettings settings, Runnable openLeaderboard, Runnable quitGame,
-                      Runnable openHelp, Runnable openAbout) {
+    public LobbyPanel(ClientModel model, ClientSettings settings, Runnable openLeaderboard, Runnable quitGame) {
         this(model, settings, openLeaderboard, quitGame, () -> {
             Thread writer = new Thread(() -> {
                 synchronized (settings) { settings.save(); }
             }, "grid-duel-save-settings");
             writer.setDaemon(true);
             writer.start();
-        }, openHelp, openAbout);
+        });
     }
 
     // Inject persistence in UI tests so selecting a style never writes real user preferences.
     LobbyPanel(ClientModel model, ClientSettings settings, Runnable openLeaderboard,
-               Runnable quitGame, Runnable saveSettings, Runnable openHelp, Runnable openAbout) {
+               Runnable quitGame, Runnable saveSettings) {
         super(model, Screen.LOBBY, settings);
         this.model = model;
         this.resume = new MenuAction("Resume match", model::returnToParkedMatch, true);
@@ -90,8 +99,6 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
         this.settings = settings;
         this.openLeaderboard = openLeaderboard;
         this.quitGame = quitGame;
-        this.openHelp = openHelp;
-        this.openAbout = openAbout;
         this.saveSettings = saveSettings;
         setLayout(new GridBagLayout());
         setBorder(BorderFactory.createEmptyBorder(32, 32, 32, 48));
@@ -99,16 +106,33 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
         surface.setName("mainMenuSurface");
         surface.setBorder(BorderFactory.createEmptyBorder(8, 0, 8, 0));
         var anchor = new GridBagConstraints();
+        anchor.gridx = 0; anchor.gridy = 0;
         anchor.weightx = 1;
         anchor.weighty = 1;
         anchor.anchor = GridBagConstraints.LINE_END;
         add(surface, anchor);
+        profile.setFont(Theme.cardTitle(21f));
+        profile.setName("menuPlayerName");
+        add(profile, anchor);
+        rating.setName("menuPlayerElo");
+        rating.setFont(Theme.normal(13f));
+        add(rating, anchor);
         pages.put("home", buildHome());
         pages.put("play", buildPlay());
         pages.put("create", buildCreate());
         pages.put("join", buildJoin());
         pages.put("practice", buildPractice());
+        pages.put("find", buildFindMatch());
         pages.put("settings", buildSettings());
+        for (String name : java.util.List.of("home", "play", "practice")) {
+            JPanel menu = pages.get(name);
+            var buttons = new java.util.ArrayList<JButton>();
+            for (Component child : menu.getComponents()) if (child instanceof JButton button) {
+                buttons.add(button);
+                if (name.equals("home")) button.putClientProperty(MenuNavigation.HOME, Boolean.TRUE);
+            }
+            navigation.put(name, new MenuNavigation(menu, buttons, name.equals("home") ? 0 : 1));
+        }
         model.addListener(new ClientModelListener() {
             @Override public void onScreenChanged(Screen screen) {
                 if (screen == Screen.LOBBY) {
@@ -119,6 +143,7 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
                 updatePolling();
             }
             @Override public void onLobbyChanged() { refreshState(); }
+            @Override public void onMatchChanged() { updatePetals(); }
             @Override public void onMatchCreated(String code) {
                 creatingRoom = false;
                 refreshState();
@@ -137,36 +162,110 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
         showPage("home");
     }
 
+    @Override public void doLayout() {
+        super.doLayout();
+        int ratingWidth = rating.getPreferredSize().width;
+        int width = Math.min(profile.getPreferredSize().width, Math.max(0, getWidth() - 122 - ratingWidth));
+        // Align the account pair with the floating sound button without a header bar.
+        int right = getWidth() - 76;
+        rating.setBounds(Math.max(0, right - ratingWidth), 14, ratingWidth, 40);
+        profile.setBounds(Math.max(0, right - ratingWidth - 12 - width), 14, width, 40);
+    }
+
     private JPanel buildHome() {
         JPanel page = page(null, null, null);
-        line(page, new MenuAction("Play", () -> showPage("play"), true));
-        line(page, new MenuAction("Settings", () -> showPage("settings"), false));
-        line(page, new MenuAction("Quit game", quitGame, false));
+        JButton play = new MenuAction("Play", () -> showPage("play"), true);
+        JButton preferences = new MenuAction("Settings", () -> showPage("settings"), false);
+        JButton quit = new MenuAction("Quit game", this::confirmQuit, false);
+        petalTargets.add(play); petalTargets.add(preferences); petalTargets.add(quit);
+        line(page, play);
+        line(page, preferences);
+        line(page, new MenuAction("Leaderboard", openLeaderboard, false));
+        line(page, quit);
         page.add(Box.createVerticalStrut(14));
-        JPanel footer = new JPanel();
-        footer.setLayout(new BoxLayout(footer, BoxLayout.Y_AXIS));
-        footer.setOpaque(false);
-        footer.setBorder(BorderFactory.createEmptyBorder(10, 0, 0, 0));
-        profile.setFont(Theme.cardTitle(21f));
-        profile.setName("menuPlayerName");
-        rating.setName("menuPlayerRating");
-        line(footer, profile);
-        line(footer, rating);
-        footer.add(Box.createVerticalStrut(5));
-        line(footer, smallButton("Leaderboard", openLeaderboard));
-        line(footer, smallButton("How to Play", openHelp));
-        line(footer, smallButton("About", openAbout));
-        line(page, footer);
         line(page, resume);
         return page;
     }
 
+    private void confirmQuit() {
+        if (UiKit.confirmDialog(this, "Quit game", "Are you sure you want to quit?",
+                "Quit game", UiKit.Pill.GOLD)) quitGame.run();
+    }
+
     private JPanel buildPlay() {
         JPanel page = page("Play", "Choose your next match.", "home");
+        line(page, find);
+        page.add(Box.createVerticalStrut(8));
         line(page, create);
+        page.add(Box.createVerticalStrut(8));
         line(page, browse);
+        page.add(Box.createVerticalStrut(8));
         line(page, practice);
         return page;
+    }
+
+    private void findMatch() {
+        showPage("find");
+        model.findMatch();
+    }
+
+    private void cancelFindMatch() {
+        model.cancelFindMatch();
+    }
+
+    private JPanel buildFindMatch() {
+        JPanel page = page("Find match", null, "play");
+        JPanel status = new JPanel() {
+            @Override protected void paintComponent(Graphics graphics) {
+                Graphics2D g = UiKit.nice(graphics);
+                g.setColor(new Color(20, 27, 26, 235));
+                g.fillRoundRect(0, 0, getWidth(), getHeight(), 10, 10);
+                g.setColor(new Color(255, 238, 200, 95));
+                g.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 10, 10);
+                g.dispose();
+            }
+        };
+        status.setName("matchSearchStatus");
+        status.setOpaque(false);
+        status.setLayout(new BoxLayout(status, BoxLayout.Y_AXIS));
+        status.setBorder(BorderFactory.createEmptyBorder(18, 18, 18, 18));
+        status.setPreferredSize(new Dimension(330, 154));
+        line(status, settingLabel("ONLINE MATCHMAKING"));
+        status.add(Box.createVerticalStrut(10));
+        searchStatus.setFont(Theme.bold(20f));
+        searchStatus.setForeground(new Color(255, 246, 224));
+        searchDetail.setFont(Theme.normal(13f));
+        line(status, searchStatus);
+        status.add(Box.createVerticalStrut(5));
+        line(status, searchDetail);
+        JLabel serverHint = caption("Players on this server can join you.");
+        serverHint.setFont(Theme.normal(12f));
+        line(status, serverHint);
+        line(page, status);
+        page.add(Box.createVerticalStrut(12));
+        cancelSearch.setSelected(true);
+        cancelSearch.setFont(Theme.bold(17f));
+        searchAgain.setSelected(true);
+        searchAgain.setFont(Theme.bold(17f));
+        line(page, cancelSearch);
+        line(page, searchAgain);
+        return page;
+    }
+
+    private static JPanel roomSurface() {
+        JPanel panel = new JPanel() {
+            @Override protected void paintComponent(Graphics graphics) {
+                var g = UiKit.nice(graphics);
+                g.setColor(new Color(20, 27, 26, 235));
+                g.fillRoundRect(0, 0, getWidth(), getHeight(), 10, 10);
+                g.setColor(new Color(255, 238, 200, 95));
+                g.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 10, 10);
+                g.dispose();
+            }
+        };
+        panel.setOpaque(false);
+        panel.setBorder(BorderFactory.createEmptyBorder(16, 18, 16, 18));
+        return panel;
     }
 
     private JPanel buildCreate() {
@@ -174,13 +273,23 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
         roomCode.setFont(Theme.display(34f));
         roomCode.setHorizontalAlignment(SwingConstants.CENTER);
         roomCode.setPreferredSize(new Dimension(280, 64));
-        line(page, roomCode);
-        line(page, roomStatus);
-        line(page, smallButton("Copy code", () -> {
+        JPanel codePanel = roomSurface();
+        codePanel.setLayout(new BoxLayout(codePanel, BoxLayout.Y_AXIS));
+        line(codePanel, settingLabel("YOUR ROOM CODE"));
+        codePanel.add(Box.createVerticalStrut(8));
+        line(codePanel, roomCode);
+        codePanel.add(Box.createVerticalStrut(10));
+        roomStatus.setFont(Theme.normal(14f));
+        line(codePanel, roomStatus);
+        line(page, codePanel);
+        page.add(Box.createVerticalStrut(12));
+        JButton copy = MenuSettingsOption.route("Copy code", "Share this code with a friend.", () -> {
             String code = model.pendingRoomCode();
             if (code != null) Toolkit.getDefaultToolkit().getSystemClipboard()
                     .setContents(new StringSelection(code), null);
-        }));
+        });
+        copy.setSelected(true);
+        line(page, copy);
         return page;
     }
 
@@ -203,11 +312,14 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
             @Override public void changedUpdate(DocumentEvent event) { refreshAvailability(); }
         });
         line(page, joinField);
-        join.setFont(Theme.normal(23f));
-        join.setPreferredSize(new Dimension(292, 48));
+        page.add(Box.createVerticalStrut(8));
+        join.setSelected(true);
         line(page, join);
         page.add(Box.createVerticalStrut(16));
-        line(page, caption("OPEN GAMES"));
+        JPanel browser = roomSurface();
+        browser.setLayout(new BoxLayout(browser, BoxLayout.Y_AXIS));
+        line(browser, settingLabel("OPEN GAMES"));
+        browser.add(Box.createVerticalStrut(8));
         rooms.setName("openRooms");
         rooms.setOpaque(false);
         rooms.setForeground(Theme.CREAM);
@@ -231,7 +343,7 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
                 setText(room.roomCode() + "  ·  " + room.hostUsername());
                 setOpaque(false);
                 setForeground(selected || focus ? new Color(255, 211, 133) : Theme.CREAM);
-                setBackground(selected ? new Color(99, 77, 39, 180) : new Color(13, 25, 27, 100));
+                setBackground(selected ? new Color(99, 77, 39, 240) : new Color(29, 36, 33, 245));
                 setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
                 return this;
             }
@@ -265,9 +377,12 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
                 return button;
             }
         });
-        line(page, noRooms);
-        line(page, roomScroll);
-        line(page, smallButton("Refresh games", model::refreshMatches));
+        noRooms.setFont(Theme.normal(14f));
+        line(browser, noRooms);
+        line(browser, roomScroll);
+        line(page, browser);
+        page.add(Box.createVerticalStrut(10));
+        line(page, MenuSettingsOption.route("Refresh games", "Check for rooms waiting for a player.", model::refreshMatches));
         return page;
     }
 
@@ -279,50 +394,78 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
                 case SENIOR -> "Senior";
                 case LEGEND -> "Legend";
             };
-            line(page, new MenuAction(label, () -> model.startPracticeMatch(difficulty), false));
+            String detail = switch (difficulty) {
+                case ROOKIE -> "A gentler opponent to learn against.";
+                case SENIOR -> "More pressure and tactical choices.";
+                case LEGEND -> "The toughest practice opponent.";
+            };
+            line(page, MenuSettingsOption.route(label, detail, () -> model.startPracticeMatch(difficulty)));
+            if (difficulty != Difficulty.LEGEND) page.add(Box.createVerticalStrut(8));
         }
         return page;
     }
 
     private JPanel buildSettings() {
-        JPanel page = page("Settings", "Piece style", "home");
+        JPanel page = page("Settings", null, "home");
+        line(page, settingLabel("PIECE STYLE"));
+        page.add(Box.createVerticalStrut(7));
+        JPanel previews = new JPanel(new GridLayout(1, 3, 8, 0));
+        previews.setOpaque(false);
+        previews.setPreferredSize(new Dimension(330, 104));
         String[] names = {"Steel helms", "Heraldic shields", "Carved pawns"};
         for (int i = 0; i < names.length; i++) {
             int style = i + 1;
-            styles[i] = new MenuAction(names[i], () -> {
+            styles[i] = MenuSettingsOption.piece(names[i], style, () -> {
                 synchronized (settings) { settings.setPieceStyle(style); }
                 BoardPanel.setDefaultPieceStyle(style);
                 updateStyles();
                 saveSettings.run();
-            }, false);
-            line(page, styles[i]);
+            });
+            previews.add(styles[i]);
         }
-        page.add(Box.createVerticalStrut(10));
-        line(page, caption("Card selection"));
+        line(page, previews);
+        page.add(Box.createVerticalStrut(20));
+        line(page, settingLabel("CARD SELECTION"));
+        page.add(Box.createVerticalStrut(7));
         String[] controls = {"Click or slide up", "Slide up only"};
         for (int i = 0; i < controls.length; i++) {
             boolean click = i == 0;
-            cardControls[i] = new MenuAction(controls[i], () -> {
+            cardControls[i] = MenuSettingsOption.choice(controls[i],
+                    click ? "Click a card or drag it upward." : "Select only with an upward drag.", () -> {
                 synchronized (settings) { settings.setClickToSelectCards(click); }
                 updateCardControls();
                 saveSettings.run();
-            }, false);
+            });
             line(page, cardControls[i]);
+            if (i == 0) page.add(Box.createVerticalStrut(6));
         }
-        page.add(Box.createVerticalStrut(10));
-        JButton motion = smallButton("Reduced motion: " + (settings.reducedMotion() ? "On" : "Off"), () -> { });
+        page.add(Box.createVerticalStrut(20));
+        line(page, settingLabel("ANIMATION"));
+        page.add(Box.createVerticalStrut(7));
+        JButton motion = MenuSettingsOption.motion();
+        motion.setSelected(settings.reducedMotion());
+        motion.setText("Reduced motion: " + (settings.reducedMotion() ? "On" : "Off"));
         motion.setName("reducedMotion");
         motion.addActionListener(event -> {
             settings.setReducedMotion(!settings.reducedMotion());
             model.setReducedMotion(settings.reducedMotion());
             motion.setText("Reduced motion: " + (settings.reducedMotion() ? "On" : "Off"));
+            motion.setSelected(settings.reducedMotion());
             saveSettings.run();
         });
         line(page, motion);
-        line(page, caption("Saved automatically"));
+        page.add(Box.createVerticalStrut(12));
+        line(page, caption("Changes saved automatically"));
         updateCardControls();
         updateStyles();
         return page;
+    }
+
+    private static JLabel settingLabel(String text) {
+        JLabel label = caption(text);
+        label.setFont(Theme.normal(11f));
+        label.setForeground(new Color(240, 219, 180));
+        return label;
     }
 
     private void updateCardControls() {
@@ -336,7 +479,13 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
         page.setOpaque(false);
         page.setLayout(new BoxLayout(page, BoxLayout.Y_AXIS));
         if (back != null) {
-            line(page, smallButton("‹ Back", () -> showPage(back)));
+            JButton backButton = smallButton("Back", () -> showPage(back));
+            line(page, backButton);
+            for (String key : java.util.List.of("ESCAPE", "BACK_SPACE"))
+                page.getInputMap(JComponent.WHEN_ANCESTOR_OF_FOCUSED_COMPONENT).put(KeyStroke.getKeyStroke(key), "menu.back");
+            page.getActionMap().put("menu.back", new AbstractAction() {
+                @Override public void actionPerformed(java.awt.event.ActionEvent event) { backButton.doClick(0); }
+            });
             page.add(Box.createVerticalStrut(8));
         }
         if (title != null) {
@@ -354,8 +503,9 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
             @Override protected void paintComponent(Graphics graphics) {
                 Graphics2D g = UiKit.nice(graphics);
                 g.setFont(getFont());
-                int x = getInsets().left;
-                int y = getInsets().top + g.getFontMetrics().getAscent();
+                int x = getHorizontalAlignment() == SwingConstants.CENTER
+                        ? (getWidth() - g.getFontMetrics().stringWidth(getText())) / 2 : getInsets().left;
+                int y = (getHeight() - g.getFontMetrics().getHeight()) / 2 + g.getFontMetrics().getAscent();
                 drawMenuText(g, getText(), x, y, getForeground());
                 g.dispose();
             }
@@ -382,11 +532,29 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
     }
 
     private void showPage(String name) {
+        if (currentPage.equals("find") && !name.equals("find") && model.isFindingMatch())
+            model.cancelFindMatch();
         currentPage = name;
         surface.removeAll();
         surface.add(pages.get(name), BorderLayout.CENTER);
         if (name.equals("join")) model.refreshMatches();
         refreshAvailability();
+        MenuNavigation controls = navigation.get(name);
+        if (controls != null) {
+            controls.reset();
+            SwingUtilities.invokeLater(() -> {
+                if (currentPage.equals(name) && model.screen() == Screen.LOBBY) controls.focusSelection();
+            });
+        } else {
+            SwingUtilities.invokeLater(() -> {
+                if (!currentPage.equals(name) || model.screen() != Screen.LOBBY) return;
+                if (name.equals("join")) joinField.requestFocusInWindow();
+                else for (Component child : pages.get(name).getComponents())
+                    if (child instanceof JButton button && button.isEnabled() && button.isVisible()) {
+                        button.requestFocusInWindow(); break;
+                    }
+            });
+        }
         updatePolling();
         revalidate();
         repaint();
@@ -409,17 +577,25 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
 
     private void refreshAvailability() {
         boolean parked = model.hasParkedMatch();
-        create.setEnabled(!parked && !creatingRoom);
-        browse.setEnabled(!parked);
-        practice.setEnabled(!parked);
-        join.setEnabled(!parked && joinField.getText().trim().toUpperCase(java.util.Locale.ROOT).matches("[A-Z2-9]{5}"));
+        boolean searching = model.isFindingMatch();
+        find.setEnabled(!parked && !searching && !creatingRoom);
+        searchStatus.setText(searching ? "Searching for a player…" : "Search stopped");
+        searchDetail.setText(searching ? "You can cancel while you wait." : "Ready when you are.");
+        cancelSearch.setVisible(searching);
+        searchAgain.setVisible(!searching);
+        searchAgain.setEnabled(!parked);
+        create.setEnabled(!parked && !searching && !creatingRoom);
+        browse.setEnabled(!parked && !searching);
+        practice.setEnabled(!parked && !searching);
+        join.setEnabled(!parked && !searching && joinField.getText().trim().toUpperCase(java.util.Locale.ROOT).matches("[A-Z2-9]{5}"));
         resume.setVisible(parked);
+        navigation.values().forEach(MenuNavigation::refresh);
     }
 
     private void refreshState() {
         if (model.me() != null) {
             profile.setText(model.me().username());
-            profile.setToolTipText(model.me().username());
+            profile.setToolTipText(model.me().username() + " · ELO " + model.me().elo());
             rating.setText("ELO " + model.me().elo());
         }
         String code = model.pendingRoomCode();
@@ -444,11 +620,30 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
     private void updatePolling() {
         if (isShowing() && model.screen() == Screen.LOBBY && currentPage.equals("join")) refreshTimer.start();
         else refreshTimer.stop();
+        updatePetals();
+    }
+
+    private void updatePetals() {
+        boolean active = isShowing() && model.screen() == Screen.LOBBY
+                && currentPage.equals("home") && !model.reducedMotion();
+        if (active && !petalTimer.isRunning()) {
+            petalStartedAt = System.nanoTime();
+            petalTimer.start();
+        } else if (!active) {
+            petalTimer.stop(); petalStartedAt = 0;
+        }
     }
 
     @Override public void removeNotify() {
         refreshTimer.stop();
+        petalTimer.stop(); petalStartedAt = 0;
         super.removeNotify();
+    }
+
+    @Override protected void paintChildren(Graphics graphics) {
+        super.paintChildren(graphics);
+        if (petalTimer.isRunning()) MenuPetals.paint(graphics, this, petalTargets,
+                (System.nanoTime() - petalStartedAt) / 1_000_000_000.0);
     }
 
     @Override protected void paintComponent(Graphics graphics) {
@@ -458,7 +653,7 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
             // An edge-to-edge scrim follows the scenery, without creating a menu box.
             float left = getWidth() * .48f;
             g.setPaint(new GradientPaint(left, 0, new Color(16, 23, 25, 0),
-                    getWidth(), 0, new Color(16, 23, 25, 160)));
+                    getWidth(), 0, new Color(16, 23, 25, 180)));
             g.fillRect((int) left, 0, getWidth() - (int) left, getHeight());
         } finally { g.dispose(); }
     }
@@ -471,11 +666,8 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
     }
 
     private static final class MenuAction extends JButton {
-        private final boolean primary;
-
         MenuAction(String text, Runnable action, boolean primary) {
             super(text);
-            this.primary = primary;
             setPreferredSize(new Dimension(330, primary ? 65 : 53));
             setBorder(BorderFactory.createEmptyBorder(8, 0, 8, 0));
             setHorizontalAlignment(SwingConstants.LEFT);
@@ -491,20 +683,17 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
         @Override protected void paintComponent(Graphics graphics) {
             Graphics2D g = UiKit.nice(graphics);
             try {
-                boolean highlight = isEnabled() && (getModel().isRollover() || isFocusOwner());
+                boolean managed = Boolean.TRUE.equals(getClientProperty(MenuNavigation.MANAGED));
+                boolean highlight = isEnabled() && (managed
+                        ? Boolean.TRUE.equals(getClientProperty(MenuNavigation.ACTIVE))
+                        : getModel().isRollover() || isFocusOwner() || isSelected());
+                g.setFont(highlight && !managed ? Theme.bold(getFont().getSize2D()) : getFont());
+                FontMetrics metrics = g.getFontMetrics();
+                int x = getInsets().left;
+                int y = (getHeight() - metrics.getHeight()) / 2 + metrics.getAscent();
                 Color color = !isEnabled() ? new Color(173, 175, 169)
-                        : highlight || isSelected() ? new Color(255, 211, 133)
-                        : primary ? new Color(255, 232, 184) : new Color(255, 248, 232);
-                g.setFont(getFont());
-                int x = getInsets().left + (highlight ? 5 : 0);
-                int y = (getHeight() - g.getFontMetrics().getHeight()) / 2 + g.getFontMetrics().getAscent();
+                        : highlight ? new Color(255, 216, 143) : new Color(255, 248, 232);
                 drawMenuText(g, getText(), x, y, color);
-                if (highlight || isSelected()) {
-                    g.setColor(color);
-                    int width = Math.min(g.getFontMetrics().stringWidth(getText()), getWidth() - x - 4);
-                    g.setStroke(new BasicStroke(1.2f));
-                    g.drawLine(x, y + 6, x + width, y + 6);
-                }
             } finally { g.dispose(); }
         }
     }

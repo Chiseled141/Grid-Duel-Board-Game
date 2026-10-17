@@ -334,3 +334,15 @@ Maintain one atomic transaction for match insert + both rating/W/L updates; keep
 Required edge-case evidence: illegal second target leaves first untouched and RNG unchanged; end turn then retransmit does not grant mana twice; repeated Foresight begin cannot preview twice; resolution with an invented/duplicate ID rejects; reconnect restores pending reservation and expected sequence; opponent view contains no hidden card identities even after serialization; 60th-turn elimination beats draw; configured duplicate skill instances dispose independently; existing DB history loads unchanged. Tests run on localhost/temp DBs with `mvn test`; clean verify for final release.
 
 No runtime work is claimed complete by this document. These contracts now let later tasks use one vocabulary and one target format. Any necessary contract change must update this document and its dependent task briefs together.
+
+## Find match extension (2026-10-17)
+
+Version 4 additionally allows FindMatchRequest(boolean searching) and
+MatchmakingStatus(boolean searching, String error), nullable error. The server
+acknowledges searches/cancellation, owns FIFO ordering and claims both handlers
+under the lobby monitor before starting the existing MatchSession executor.
+A false status precedes initial MatchSync for both paired clients; an earlier
+search acknowledgement can arrive late from another handler and must be ignored
+once the client is in a match. No socket writes hold the lobby monitor. No queue
+state is restored after disconnect; reconnect to an already formed match uses
+the existing token/MatchSync path. All gameplay contracts remain unchanged.

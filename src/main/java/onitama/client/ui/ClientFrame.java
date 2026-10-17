@@ -67,8 +67,7 @@ public final class ClientFrame extends JFrame {
         BoardPanel.setDefaultPieceStyle(settings.pieceStyle());
 
         LoginPanel loginPanel = new LoginPanel(model, settings);
-        LobbyPanel lobbyPanel = new LobbyPanel(model, settings, this::openLeaderboard, this::closeAndSave,
-                this::showHelpOverlay, this::showAboutOverlay);
+        LobbyPanel lobbyPanel = new LobbyPanel(model, settings, this::openLeaderboard, this::closeAndSave);
         gamePanel = new GamePanel(model, settings);
         LeaderboardPanel leaderboardPanel = new LeaderboardPanel(model, settings, () -> model.leaveToLobby());
 
@@ -154,7 +153,6 @@ public final class ClientFrame extends JFrame {
      * pills (How to Play / Cards / Controls) switching a CardLayout, and a
      * drawn close button. Modal; ESC or the ✕ closes it.
      */
-    private void showHelpOverlay() { showHelpOverlay(this, model.rules()); }
 
     /** Opens the shared live-rule help from either the lobby or an in-match control. */
     static void showHelpOverlay(java.awt.Window owner, onitama.core.duel.RulesConfig rules) {
@@ -211,34 +209,6 @@ public final class ClientFrame extends JFrame {
         return page;
     }
 
-    /** The themed About dialog: the same cream surface family as Help. */
-    private void showAboutOverlay() {
-        UiKit.DialogSurface surface = new UiKit.DialogSurface(Theme.CREAM, 18);
-        surface.setLayout(new BorderLayout(0, 12));
-        surface.setBorder(BorderFactory.createEmptyBorder(20, 24, 20 + Theme.SHADOW_OFFSET, 24));
-        javax.swing.JDialog dialog = UiKit.undecoratedDialog(this, surface, 430, 220);
-
-        JPanel header = new JPanel(new BorderLayout(8, 0));
-        header.setOpaque(false);
-        javax.swing.JLabel title = new javax.swing.JLabel("ABOUT");
-        title.setFont(Theme.display(18f));
-        title.setForeground(Theme.INK);
-        header.add(title, BorderLayout.WEST);
-        header.add(UiKit.closeButton(dialog::dispose), BorderLayout.EAST);
-        surface.add(header, BorderLayout.NORTH);
-
-        JLabel body = new JLabel("<html><div style='width:350px'>"
-                + "Grid Duel — a 7x7 strategy game with movement and skill cards. "
-                + "Movement inspired by Onitama by Shimpei Sato."
-                + "<br><br>Java Software Development final project.</div></html>");
-        body.setFont(Theme.normal(12f));
-        body.setForeground(Theme.INK);
-        body.setVerticalAlignment(javax.swing.SwingConstants.TOP);
-        surface.add(body, BorderLayout.CENTER);
-
-        UiKit.playAppearTween(surface);
-        dialog.setVisible(true);
-    }
 
     /** The three help tabs' copy (§Help overlay). */
     static String helpTabText(String tab, onitama.core.duel.RulesConfig rules) {

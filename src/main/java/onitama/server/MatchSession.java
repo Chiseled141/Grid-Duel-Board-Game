@@ -127,7 +127,7 @@ public final class MatchSession {
     public void submitAction(ClientHandler sender, ActionRequest request) {
         submit(() -> {
             PlayerColor actor = colorOf(sender);
-            if (actor == null || players.get(actor) != sender) {
+            if (actor == null || !ownsHandler(actor)) {
                 sender.send(new ErrorMessage("you are not an active player in this match"));
                 return;
             }
@@ -237,26 +237,31 @@ public final class MatchSession {
     public void submitRematch(ClientHandler sender) {
         submit(() -> {
             PlayerColor color = colorOf(sender);
-            if (color == null) {
-                return;
+            String rejection = null;
+            boolean restart = false;
+            synchronized (server.lobby()) {
+                if (color == null || players.values().stream().anyMatch(player -> player.currentMatch() != this)) {
+                    rejection = "A player has left this match. Find another opponent.";
+                } else if (!finished) {
+                    rejection = "the game is still running";
+                } else {
+                    if (color == PlayerColor.BLUE) blueWantsRematch = true;
+                    else redWantsRematch = true;
+                    restart = blueWantsRematch && redWantsRematch;
+                    if (restart) {
+                        blueWantsRematch = false;
+                        redWantsRematch = false;
+                        disconnected.clear();
+                        // Reserve the handlers before a competing lobby admission can claim them.
+                        finished = false;
+                        gameOver = null;
+                    }
+                }
             }
-            if (!finished) {
-                sender.send(new ErrorMessage("the game is still running"));
-                return;
-            }
-            if (color == PlayerColor.BLUE) {
-                blueWantsRematch = true;
-            } else {
-                redWantsRematch = true;
-            }
-            players.get(color.opponent()).send(new RematchAccept());
-            if (blueWantsRematch && redWantsRematch) {
-                blueWantsRematch = false;
-                redWantsRematch = false;
-                disconnected.clear();
-                finished = false;
-                gameOver = null;
-                beginNewGame();
+            if (rejection != null) sender.send(new ErrorMessage(rejection));
+            else {
+                sendTo(color.opponent(), new RematchAccept());
+                if (restart) beginNewGame();
             }
         });
     }
@@ -278,9 +283,8 @@ public final class MatchSession {
             }
             paused = true;
             int graceSeconds = server.config().graceSeconds();
-            ClientHandler opponentHandler = players.get(color.opponent());
-            opponentHandler.send(new OpponentLeft(graceSeconds));
-            opponentHandler.send(createSync(color.opponent()));
+            sendTo(color.opponent(), new OpponentLeft(graceSeconds));
+            sendTo(color.opponent(), createSync(color.opponent()));
 
             forfeitTimer = server.timers().schedule(
                     () -> submit(() -> {
@@ -302,6 +306,8 @@ public final class MatchSession {
      */
     public void onReconnect(ClientHandler newHandler, PlayerColor color) {
         submit(() -> {
+            String expected = color == PlayerColor.BLUE ? blueUsername : redUsername;
+            if (newHandler.currentMatch() != this || !expected.equals(newHandler.username())) return;
             players.put(color, newHandler);
             disconnected.remove(color);
             if (forfeitTimer != null) {
@@ -316,7 +322,7 @@ public final class MatchSession {
             } else {
                 newHandler.send(createSync(color));
                 if (!paused) {
-                    players.get(color.opponent()).send(createSync(color.opponent()));
+                    sendTo(color.opponent(), createSync(color.opponent()));
                 }
             }
         });
@@ -345,7 +351,7 @@ public final class MatchSession {
     private void announceMatchStart() {
         for (Map.Entry<PlayerColor, ClientHandler> entry : players.entrySet()) {
             PlayerColor color = entry.getKey();
-            entry.getValue().send(createSync(color));
+            sendTo(color, createSync(color));
         }
     }
 
@@ -353,7 +359,7 @@ public final class MatchSession {
         for (Map.Entry<PlayerColor, ClientHandler> entry : players.entrySet()) {
             PlayerColor color = entry.getKey();
             MatchSync sync = createSync(color);
-            entry.getValue().send(new GameUpdate(sync, events));
+            sendTo(color, new GameUpdate(sync, events));
         }
     }
 
@@ -364,7 +370,18 @@ public final class MatchSession {
     }
 
     private void broadcast(Message message) {
-        players.values().forEach(handler -> handler.send(message));
+        for (PlayerColor color : PlayerColor.values()) sendTo(color, message);
+    }
+
+    private boolean ownsHandler(PlayerColor color) {
+        ClientHandler handler = players.get(color);
+        String expected = color == PlayerColor.BLUE ? blueUsername : redUsername;
+        return handler.currentMatch() == this && expected.equals(handler.username());
+    }
+
+    private void sendTo(PlayerColor color, Message message) {
+        // A finished or abandoned session must never send into a new account/match.
+        if (ownsHandler(color)) players.get(color).send(message);
     }
 
     private void finish(PlayerColor winner, EndReason way) {
@@ -408,8 +425,9 @@ public final class MatchSession {
     }
 
     private void releaseTokens() {
-        for (ClientHandler handler : players.values()) {
-            String token = handler.reconnectToken();
+        for (PlayerColor color : PlayerColor.values()) {
+            if (!ownsHandler(color)) continue;
+            String token = players.get(color).reconnectToken();
             if (token != null) {
                 server.registry().clearToken(token);
             }

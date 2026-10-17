@@ -52,6 +52,10 @@ class MessageWireFilterTest {
                 new UserProfile("alice", 1016, 3, 1), "token"));
         assertDeserializes(new ProtocolHello(4));
         assertDeserializes(new ProtocolReady(4));
+        assertDeserializes(new onitama.net.FindMatchRequest(true));
+        assertDeserializes(new onitama.net.FindMatchRequest(false));
+        assertDeserializes(new onitama.net.MatchmakingStatus(true, null));
+        assertDeserializes(new onitama.net.MatchmakingStatus(false, "Please log in first."));
         assertDeserializes(new ChatRequest("match-1", "Hello 👋"));
         assertDeserializes(new ChatMessage("match-1", "alice", "Good luck!"));
     }

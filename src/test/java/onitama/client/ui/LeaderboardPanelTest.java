@@ -22,6 +22,15 @@ class LeaderboardPanelTest {
         }
         return null;
     }
+    private JButton backButton(Container parent) {
+        for (var child : parent.getComponents()) {
+            if (child instanceof JButton button && "Back to menu".equals(button.getText())) return button;
+            if (child instanceof Container container) {
+                var found = backButton(container); if (found != null) return found;
+            }
+        }
+        return null;
+    }
     private void layout(Container parent) {
         parent.doLayout();
         for (var child : parent.getComponents()) if (child instanceof Container container) layout(container);
@@ -72,7 +81,7 @@ class LeaderboardPanelTest {
                     assertTrue(sheet.getY() + sheet.getHeight() <= size.height);
                     assertTrue(table.getColumnModel().getColumn(1).getWidth() >= 180);
                 }
-                find(panel, JButton.class).doClick(); assertEquals(1, back.get());
+                backButton(panel).doClick(); assertEquals(1, back.get());
                 model.leaveToLobby(); assertFalse(panel.animationEnabled());
                 model.handleMessage(new LeaderboardResponse(List.of()));
                 assertEquals(0, table.getRowCount());

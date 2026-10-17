@@ -41,7 +41,25 @@ bots remain a load-test tool with CSV output. SQLite stores users and matches.
 `mvn package` builds `target/onitama.jar`; `onitama.Main` dispatches `server`,
 `client`, `bots`, or `demo`. Existing shell/batch launch scripts remain supported.
 Out of scope: web/mobile clients, HTTP/WebSocket, spectators, replay
-recording, cloud automation, and matchmaking beyond room codes.
+recording and cloud automation. Elo-based matchmaking and cross-server queues remain out of scope.
+
+### Find match (2026-10-17)
+
+Play offers an optional server-owned FIFO queue for authenticated players on the
+same local server. FindMatchRequest(searching) joins or cancels it;
+MatchmakingStatus(searching, error) acknowledges the current search (nullable error).
+Duplicate joins are idempotent. Two available distinct accounts are claimed once,
+removed from the queue and any hosted rooms, then enter the normal MatchSession
+and receive recipient-specific MatchSync views. No fake bot opponent or ETA.
+Cancellation/disconnect/account changes remove a waiting entry. Authentication
+cancels search before its database work; changing a reserved identity notifies the
+old session's disconnect path. Old sessions neither send into a new account/match
+nor clear its reconnect token. A pairing that
+wins the cancellation race is already a live match and follows normal match rules.
+Active matches cannot queue; queued players must cancel before creating/joining
+rooms. Lobby admission and pairing share one short monitor; gameplay stays on the
+per-match executor. Add these records to the version-4 sealed wire allowlist;
+update server and client together. Existing room and practice routes remain.
 
 ### Played-card history (2026-10-16)
 

@@ -13,6 +13,29 @@ import java.awt.image.BufferedImage;
 import static org.junit.jupiter.api.Assertions.*;
 
 class BattlefieldMenuPanelTest {
+    @Test void additionalGrassAndFlowerBedsHaveLocalMotionInTheBundledLoop() throws Exception {
+        var resource = getClass().getResource("/assets/" + MenuTheme.GOLDEN_FIELDS.clip());
+        try (var stream = resource.openStream(); var input = ImageIO.createImageInputStream(stream)) {
+            var reader = ImageIO.getImageReadersByFormatName("gif").next();
+            try {
+                reader.setInput(input);
+                var first = reader.read(0); var later = reader.read(67);
+                assertTrue(changed(first, later, new Rectangle(735, 520, 44, 30)) > 30,
+                        "existing grass blades beside the middle-distance rock now sway");
+                assertTrue(changed(first, later, new Rectangle(350, 575, 75, 55)) > 30,
+                        "previously stationary flowers in the lower meadow now sway");
+            } finally { reader.dispose(); }
+        }
+    }
+
+    private int changed(BufferedImage first, BufferedImage later, Rectangle bounds) {
+        int count = 0;
+        for (int y = bounds.y; y < bounds.y + bounds.height; y++)
+            for (int x = bounds.x; x < bounds.x + bounds.width; x++)
+                if (first.getRGB(x, y) != later.getRGB(x, y)) count++;
+        return count;
+    }
+
     private ClientModel model() {
         return new ClientModel(new ServerConnection() {
             public void send(Message message) { }
@@ -149,7 +172,7 @@ class BattlefieldMenuPanelTest {
             var model = model();
             var settings = new ClientSettings();
             assertNoOldTitle(new LoginPanel(model, settings));
-            assertNoOldTitle(new LobbyPanel(model, settings, () -> { }, () -> { }, () -> { }, () -> { }));
+            assertNoOldTitle(new LobbyPanel(model, settings, () -> { }, () -> { }));
         });
     }
 }

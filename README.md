@@ -42,7 +42,12 @@ In the game window:
 - **Register** an account, or **Login** if you already have one.
 - Choose **Play → Practice** to play against a bot.
 - For two players, open another client with the same command, log in with a
-  different account, and create/join a room from **Play**.
+  different account, and choose **Play → Find match** in both clients to pair
+  automatically, or create/join a room from **Play**. Find match waits for another
+  player on the same server; **Cancel search** stops waiting.
+- In the main menu, Play and Practice, use the mouse or **arrow keys / WASD**
+  to choose an action, **Enter** to open it, and **Esc / Backspace** to go back. Backspace still
+  deletes text when editing a room code.
 - When a new match finishes loading, press **Enter Match**. **Return to Match**
   opens an ongoing match immediately.
 

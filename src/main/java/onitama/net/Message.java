@@ -16,7 +16,7 @@ import java.io.Serializable;
  */
 public sealed interface Message extends Serializable
         permits RegisterRequest, LoginRequest, LoginResponse,
-        CreateMatchRequest, MatchCreated, JoinMatchRequest,
+        CreateMatchRequest, MatchCreated, JoinMatchRequest, FindMatchRequest, MatchmakingStatus,
         ListMatchesRequest, ListMatchesResponse,
         GameOver, RematchRequest, RematchAccept,
         OpponentLeft, ReconnectRequest, LeaderboardRequest, LeaderboardResponse,
@@ -34,6 +34,8 @@ public sealed interface Message extends Serializable
                     + "onitama.net.LoginRequest;"
                     + "onitama.net.LoginResponse;"
                     + "onitama.net.CreateMatchRequest;"
+                    + "onitama.net.FindMatchRequest;"
+                    + "onitama.net.MatchmakingStatus;"
                     + "onitama.net.MatchCreated;"
                     + "onitama.net.JoinMatchRequest;"
                     + "onitama.net.ListMatchesRequest;"

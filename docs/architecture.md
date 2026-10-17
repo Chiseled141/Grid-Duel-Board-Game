@@ -11,7 +11,7 @@ onitama.core.duel         active 7×7 engine, skill effects, targeting, immutabl
 onitama.config            RulesConfigLoader, ConfigException, SkillText
 onitama.net               sealed Message + version-2 action/view records
 onitama.server            GameServer (accept loop), ClientHandler (dispatch table),
-                          LobbyManager (room codes), SessionRegistry, MatchSession
+                          LobbyManager (room codes and FIFO search queue), SessionRegistry, MatchSession
                           (per-match executor), MatchResult, MatchPersistence, ServerConfig
 onitama.db                Database (monitor-guarded Connection), UserDao/MatchDao
                           interfaces, SqliteUserDao/SqliteMatchDao, PasswordHasher (PBKDF2)
@@ -29,7 +29,10 @@ Resources: `src/main/resources/{fonts/outfit-*.ttf, assets/*}`, `scripts/*.sh|ba
 ## Thread & concurrency
 
 - Accept thread → fixed pool for `ClientHandler` → `MatchSession` owns one `ExecutorService(1)`; match state is thread-confined.
-- `SessionRegistry`/`LobbyManager` → `ConcurrentHashMap`. Single-writer per socket.
+- `SessionRegistry`/`LobbyManager` → `ConcurrentHashMap`. FIFO search uses a linked
+  waiting set guarded by the lobby admission monitor, shared with room claims and
+  rematch reservation. Both handler assignments happen before releasing it; socket
+  writes remain outside. Gameplay stays on each match executor. Single-writer per socket.
 - `Database` single `Connection` synchronized — SQLite serializes writes by design; not a bottleneck at this scale.
 
 ## Gameplay and protocol
@@ -165,7 +168,7 @@ Strategy (Card offsets + RulesEngine), Observer (ClientModel→panels), sealed M
 
 ## Menu music (implemented)
 
-`client.MenuMusic` loads `/audio/menu-music.wav` using the JDK audio Clip API on
+`client.MenuMusic` loads `/audio/golden-fields.wav` using the JDK audio Clip API on
 one daemon worker. ClientFrame plays it in login, lobby and leaderboard, pauses
 it on the game screen, and closes it on disposal. The existing persisted sound
 toggle mutes/resumes it. Audio device failures log once and leave the game usable.
@@ -224,6 +227,23 @@ clouds, seeds and wind wisps. Flower cutouts also cover the center and right mea
 the original left-side blooms keep their existing sway strength and timing.
 The small flag cloths and the subsequently added faded linen strip are removed.
 The nearby weathered pole remains bare. The main mast is lightly weathered.
+
+The menu loop also moves 32 individually traced grass blades. Each narrow mask
+selects existing source pixels; no grass shapes or density are added. Source
+pixels belong to only one blade, vacated pixels reveal neighboring foliage, and
+unrotated reassembly is verified pixel-for-pixel before rendering. Horizontal
+row deformation tapers to zero at the root, with separate periodic phases. The
+existing flower/flag/cloud/two-mill timing remains unchanged.
+
+A small, low-contrast village sits between the two original mills on the far ridge.
+Its transparent generated cottage strip is retained in battlefield-animation/distant-village.png;
+the compositor downsamples its alpha bounds before placing it at source (1157,557).
+The extra third mill was removed at the user's request. Additional cream/gold flower
+cutouts cover the foreground meadow, excluding props and existing grass selections.
+They use gentler sway than the original 47 flowers, whose timing and strength remain
+unchanged. Offline reconstruction checks ensure the added cutouts restore source
+pixels exactly. Exported inventories document every source selection. Only the
+prerecorded GIF/still are played at runtime; the source clean plate is unchanged.
 Output remains 1280x720 at encoded 25 fps. This encoding is
 not a promise of sustained full-window decoder performance.
 
@@ -244,16 +264,32 @@ handoffs/medieval-reskin.md for authored assets, cleanup and verification.
 
 ClientFrame has no Game/Help menu bar or header strip. A transparent music icon
 floats at the upper right of menu screens, without reserving layout height.
-How to Play and About sit below the account and Leaderboard links; their existing
-dialogs remain. Reduced motion is available in Settings, and Quit retains the
+How to Play remains available inside a match; About and the home help links are removed. Reduced motion is available in Settings, and Quit retains the
 normal save-and-close path.
 
 LobbyPanel shows a compact column of unboxed text actions directly over the
-animated scenery. Home contains Play, Settings and Quit game, a small
-account caption and leaderboard link, and Resume match when a match is parked.
+animated scenery. Home contains Play, Settings, Leaderboard and Quit game in
+that order, plus Resume match when a match is parked. The player's name floats
+at the top right beside a smaller Elo label and the sound icon. Quit game opens
+a confirmation; No or Escape returns to the menu, and confirmation uses the normal
+save-and-close path.
+How to Play and About are removed from the home menu; in-match Help remains.
 Only the medieval battlefield remains; the retired theme picker is removed.
-Play opens Create match, Join a game and Practice; each uses a focused page with
-Back navigation. Creation retains its pending code across page changes and does
+Play opens Find match, Create match, Join a game and Practice. Compact action rows
+with descriptions distinguish these routes without crowding the main menu.
+Find match joins the authenticated local server's FIFO queue. Its waiting status
+uses a dark outlined surface, larger cream type and a filled cream Cancel search
+action; Back also cancels. A slightly stronger right-edge scrim improves menu
+contrast while preserving the landscape. Duplicate joins do not add entries.
+Room/practice actions stay disabled until cancellation is acknowledged. A paired
+MatchSync uses the existing match-loading screen, with no fake wait or bot fallback.
+Disconnect, login changes and leaving a finished game clean up waiting/rematch
+state; the server reserves both handlers atomically against room/rematch races.
+Practice has described difficulty rows; Create places the code and waiting status
+inside a dark outlined surface with a cream Copy code action. Join uses a dark
+code field, cream Join action and dark outlined open-room browser, with a full
+Refresh action. Disabled actions remain readable while visually muted.
+Each route uses focused pages with Back navigation. Creation retains its pending code across page changes and does
 not submit another create request when returning. The room browser uses typed
 MatchSummary values and polls only while its page is showing. Its empty scroll
 area collapses completely when no rooms exist. Room rows use translucent dark
@@ -261,16 +297,36 @@ surfaces, ivory text and gold selection; the viewport stays transparent. The roo
 code input has a matching translucent fill, gold focus underline, ivory entry text
 and a placeholder, with a named accessible label and the same Enter/validation rules. Practice keeps
 Rookie/Senior/Legend choices. Settings owns the three piece styles; updates apply
-immediately and persistence runs on a worker. ClientSettings.save serializes file
+immediately and persistence runs on a worker. Settings uses three compact preview
+tiles for piece styles, two radio-style rows with short descriptions for card
+selection, and a dedicated reduced-motion switch. Cream fill and check/radio
+marks distinguish selected options from translucent dark inactive controls;
+keyboard focus retains a visible cream border. These settings controls are
+separate from the main menu's flag highlights. ClientSettings.save serializes file
 writes against the frame's preference saves. Quit delegates to closeAndSave.
 
-The cream panel, button fills, borders and navigation icons are removed. Warm ivory
-labels, champagne Play text and pale gold hover/selected underlines work across
-the battlefield scene. A soft right-edge dark scrim and text shadows preserve legibility
-without a boxed surface. The account caption and leaderboard stack to avoid
-truncation. Focus and selected states stay visible; menu pages retain their routing.
+The home menu stays unboxed in every state: one active action uses larger bold
+Outfit type and brighter gold lettering, with no surrounding banner or underline.
+Mouse entry/movement, Tab focus and directional keys share one selection. Home,
+Play and Practice accept arrows or WASD, Enter to activate, and Escape or Backspace to go Back
+on subpages. Back keys also work in Settings, room/search pages and Leaderboard;
+a focused room-code field keeps Backspace for text deletion. Disabled/hidden actions are skipped. Page-scoped ancestor bindings
+never capture room-code typing or keys in another screen/dialog. Play/Practice
+route cards use a gold fill only for the active choice; Find match is no longer
+permanently highlighted. Settings preference controls keep their existing style. Navigation actions omit
+chevrons, including the plain Back label; color and weight indicate selection.
+A soft right-edge dark scrim and text shadows preserve legibility. The account
+name and Elo remain beside the sound icon without a header bar. Focus and selected
+states stay visible; menu pages retain their routing.
 The earlier procedural mist/leaves and canopy mesh have been superseded by the
-prerecorded clip described above. Only media playback runs in the menu.
+prerecorded clip described above. The home menu additionally paints three small
+petals above its existing controls: a sparse 36-second cycle starts with seven
+quiet seconds, then each petal approaches a letter, rests for 2.5 seconds and
+lifts away. MenuPetals derives anchors from the actual glyph bounds, including
+the active font size. No components or hit-testing overlays are added. LobbyPanel owns
+a 40 ms EDT timer only while the home page is showing and reduced motion is off;
+hiding, navigating, leaving the lobby or removing the panel stops and clears it.
+The authored background GIF and still remain unchanged.
 
 ### Physical hand interaction and scene music
 
@@ -319,9 +375,12 @@ Draw replacements travel over 600ms with smooth acceleration/deceleration (forme
 ### Leaderboard and skill-only public displays
 
 LeaderboardPanel shares BattlefieldMenuPanel and ClientSettings with the main
-menu. Its parchment ledger uses brass rules, serif titles, literal player names,
-Elo/wins/losses and a highlighted local row. Empty/populated transitions retain
-the same sheet. ClientModel.requestLeaderboard routes to Screen.LEADERBOARD so
+menu. Its cream Outfit heading and compact charcoal table match the new menus.
+Alternating dark rows, gold top-three ranks, bold Elo and a warm local-row marker
+keep literal player names and win/loss totals readable. Selection uses cream with
+dark type; a cream return action and own-rank summary sit below. The dark scrollbar
+and empty state share the table surface. Height adapts to the data, with scrolling
+for longer lists. ClientModel.requestLeaderboard routes to Screen.LEADERBOARD so
 visibility, animation and reduced-motion gates follow the actual screen.
 Only accepted SkillCommitted events enter the two skill-play areas. Movement
 keeps its board animation/last-position feedback and replacement draws, without
@@ -336,9 +395,9 @@ uses only permitted PlayerView information. Rookie varies legal casts; stronger
 levels favor eliminations and fuller multi-target effects. Unaffordable/untargetable
 skills are retained; Mana Surge is saved at full mana. Foresight still resolves
 its committed private preview. Practice and load bots use the same policy.
-Home places a 21pt serif username below Play/Settings/Quit, with a separate small
-Elo line, followed by Leaderboard and How to Play. Resume remains available below
-the footer when a match is parked.
+Home places a 21pt serif username and smaller Elo value at the top right beside
+sound. Play / Settings / Leaderboard / Quit game form the main action stack;
+Resume remains available below when a match is parked.
 
 ### Opponent draw origin
 
