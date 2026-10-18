@@ -7,5 +7,6 @@ public enum Screen {
     LOGIN,
     LOBBY,
     GAME,
+    ATLAS,
     LEADERBOARD
 }
