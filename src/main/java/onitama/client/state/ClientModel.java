@@ -214,6 +214,16 @@ public final class ClientModel {
         connection.send(new ListMatchesRequest());
     }
 
+    /** Opens the local historical atlas without a server request. */
+    public void openAtlas() {
+        setScreen(Screen.ATLAS);
+    }
+
+    /** Leaves the local atlas without altering a parked match or querying the server. */
+    public void closeAtlas() {
+        if (screen == Screen.ATLAS) setScreen(Screen.LOBBY);
+    }
+
     public void requestLeaderboard() {
         setScreen(Screen.LEADERBOARD);
         connection.send(new LeaderboardRequest());

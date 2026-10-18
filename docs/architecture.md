@@ -478,3 +478,14 @@ cancels preparation and timers; stale callbacks cannot enter another screen.
 Return to Match bypasses loading via the explicit onMatchResumed observer callback;
 other observers receive the normal GAME notification through its default method.
 Fresh practice/online matches and rematches retain their loading screen.
+
+### Historical atlas menu
+
+The home Atlas action opens local Screen.ATLAS through ClientModel.openAtlas,
+without a leaderboard request. AtlasPanel provides an illustrated map viewport
+and seven faction inspectors; artwork loading is off the EDT and interaction
+stays on the EDT. Native-coordinate hit areas share the viewport transform with
+painting, with bounded pan and 1–4× zoom. Faction buttons provide a keyboard
+alternative to geographic picking. See docs/handoffs/historical-atlas.md for
+source provenance and the reference map's historical limitations. Gameplay,
+protocol and persistence are unchanged; the old ranking API remains supported.

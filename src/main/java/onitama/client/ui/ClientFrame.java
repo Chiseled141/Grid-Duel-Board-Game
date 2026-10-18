@@ -67,14 +67,14 @@ public final class ClientFrame extends JFrame {
         BoardPanel.setDefaultPieceStyle(settings.pieceStyle());
 
         LoginPanel loginPanel = new LoginPanel(model, settings);
-        LobbyPanel lobbyPanel = new LobbyPanel(model, settings, this::openLeaderboard, this::closeAndSave);
+        LobbyPanel lobbyPanel = new LobbyPanel(model, settings, model::openAtlas, this::closeAndSave);
         gamePanel = new GamePanel(model, settings);
-        LeaderboardPanel leaderboardPanel = new LeaderboardPanel(model, settings, () -> model.leaveToLobby());
+        AtlasPanel atlasPanel = new AtlasPanel(model::closeAtlas);
 
         content.add(loginPanel, Screen.LOGIN.name());
         content.add(lobbyPanel, Screen.LOBBY.name());
         content.add(gamePanel, Screen.GAME.name());
-        content.add(leaderboardPanel, Screen.LEADERBOARD.name());
+        content.add(atlasPanel, Screen.ATLAS.name());
         add(buildScene());
         showScreen(Screen.LOGIN);
 
@@ -300,10 +300,6 @@ public final class ClientFrame extends JFrame {
         closeLoading();
         menuMusic.close();
         super.dispose();
-    }
-
-    private void openLeaderboard() {
-        model.requestLeaderboard();
     }
 
     private void closeAndSave() {

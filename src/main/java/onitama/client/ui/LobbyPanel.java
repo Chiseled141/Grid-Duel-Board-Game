@@ -17,7 +17,7 @@ import javax.swing.event.DocumentListener;
 public final class LobbyPanel extends BattlefieldMenuPanel {
     private final ClientModel model;
     private final ClientSettings settings;
-    private final Runnable openLeaderboard;
+    private final Runnable openAtlas;
     private final Runnable quitGame;
     private final Runnable saveSettings;
     private final JPanel surface = new JPanel(new BorderLayout()) {
@@ -79,8 +79,8 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
     });
 
     /** Builds the menu; Quit uses the frame's normal save-and-close path. */
-    public LobbyPanel(ClientModel model, ClientSettings settings, Runnable openLeaderboard, Runnable quitGame) {
-        this(model, settings, openLeaderboard, quitGame, () -> {
+    public LobbyPanel(ClientModel model, ClientSettings settings, Runnable openAtlas, Runnable quitGame) {
+        this(model, settings, openAtlas, quitGame, () -> {
             Thread writer = new Thread(() -> {
                 synchronized (settings) { settings.save(); }
             }, "grid-duel-save-settings");
@@ -90,14 +90,14 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
     }
 
     // Inject persistence in UI tests so selecting a style never writes real user preferences.
-    LobbyPanel(ClientModel model, ClientSettings settings, Runnable openLeaderboard,
+    LobbyPanel(ClientModel model, ClientSettings settings, Runnable openAtlas,
                Runnable quitGame, Runnable saveSettings) {
         super(model, Screen.LOBBY, settings);
         this.model = model;
         this.resume = new MenuAction("Resume match", model::returnToParkedMatch, true);
         this.refreshTimer = new Timer(5000, event -> model.refreshMatches());
         this.settings = settings;
-        this.openLeaderboard = openLeaderboard;
+        this.openAtlas = openAtlas;
         this.quitGame = quitGame;
         this.saveSettings = saveSettings;
         setLayout(new GridBagLayout());
@@ -184,7 +184,7 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
         petalTargets.add(play); petalTargets.add(preferences); petalTargets.add(quit);
         line(page, play);
         line(page, preferences);
-        line(page, new MenuAction("Leaderboard", openLeaderboard, false));
+        line(page, new MenuAction("Atlas", openAtlas, false));
         line(page, quit);
         page.add(Box.createVerticalStrut(14));
         line(page, resume);
