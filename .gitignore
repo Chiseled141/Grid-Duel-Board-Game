@@ -1,4 +1,5 @@
 target/
+*.class
 data/
 results/
 *.db

@@ -1,0 +1,11 @@
+package deckduel.core.duel;
+
+/**
+ * Reason for match termination.
+ */
+public enum EndReason {
+    ELIMINATION,
+    SCORE,
+    FORFEIT,
+    DRAW
+}
