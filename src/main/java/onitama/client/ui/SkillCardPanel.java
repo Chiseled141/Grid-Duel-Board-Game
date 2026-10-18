@@ -173,7 +173,8 @@ public final class SkillCardPanel extends JComponent {
 
     @Override
     protected void paintComponent(Graphics graphics) {
-        if (DeckDrawOverlay.isMasked(this) || CardPlayOverlay.isMasked(this)) return;
+        if (Boolean.TRUE.equals(getClientProperty("openingHidden"))
+                || DeckDrawOverlay.isMasked(this) || CardPlayOverlay.isMasked(this)) return;
         Graphics2D g = UiKit.nice(graphics);
         int lift = selected ? 5 : (int) (hoverProgress * 4);
         int x = 5, y = 8 - lift, w = getWidth() - 12, h = getHeight() - 16;

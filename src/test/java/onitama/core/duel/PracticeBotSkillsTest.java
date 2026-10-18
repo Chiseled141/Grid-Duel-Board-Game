@@ -11,7 +11,7 @@ import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
-/** Real engine acceptance for all 24 skills, both player orientations and bot levels. */
+/** Real engine acceptance for all 30 skills, both player orientations and bot levels. */
 class PracticeBotSkillsTest {
     static Stream<Arguments> skills() {
         return RulesConfigLoader.load(null).skills().stream().flatMap(skill ->
@@ -38,6 +38,11 @@ class PracticeBotSkillsTest {
         }
         game.mutableSkillHand(actor).clear();
         game.mutableSkillHand(actor).add(new CardInstance(skill + "#1", skill));
+        if (skill.equals("barter") || skill.equals("refocus")) {
+            game.mutableSkillDeck().removeIf(c -> c.definitionId().equals("mana-surge"));
+            game.mutableSkillHand(actor.opponent()).removeIf(c -> c.definitionId().equals("mana-surge"));
+            game.mutableSkillHand(actor).add(new CardInstance("mana-surge#1", "mana-surge"));
+        }
         int mana = skill.equals("mana-surge") ? 3 : 5;
         game.setBlueMana(mana); game.setRedMana(mana);
         game.setTurn(actor); game.setPhase(TurnPhase.SKILL);

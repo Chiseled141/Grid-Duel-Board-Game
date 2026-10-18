@@ -218,14 +218,12 @@ public final class ClientFrame extends JFrame {
         int initial = rules == null ? 2 : rules.initialMana();
         int skills = rules == null ? 3 : rules.skillHandSize();
         return switch (tab) {
-            case "Cards" -> "<b>THE CARDS</b><br><br>Start with two movement cards and "
-                    + skills + " skill cards. Both players share a 16-card movement deck and a "
-                    + "24-card skill deck. Movement hands are public; opponent skills stay hidden."
-                    + "<br><br>A used movement card returns to the deck, which is shuffled before "
-                    + "drawing its replacement. The same card may return immediately."
-                    + "<br><br>A successfully cast skill is spent permanently. Draw a replacement "
-                    + "if the skill deck has cards. Skipping does not draw a card.";
-            case "Controls" -> "<b>CONTROLS</b><br><br>Select a movement card, a friendly piece, "
+            case "Cards" -> "<b>THE CARDS</b><br><br>Start with " + skills
+                    + " skill cards from a shared skill deck. Opponent skills stay hidden except when Espionage reveals them privately."
+                    + "<br><br>A successfully cast skill is spent permanently. Draw a replacement if available; Pilfer steals instead."
+                    + "<br><br>Hold up to 6 cards. Any additional draw is torn and permanently destroyed. Only its owner sees its face."
+                    + "<br><br>Draw Two draws extra cards. Refocus permanently discards your other skills, then draws that many. Skipping draws nothing.";
+            case "Controls" -> "<b>CONTROLS</b><br><br>Select a friendly piece, "
                     + "then a highlighted destination. Use Skip Movement to go straight to skills."
                     + "<br><br>Select a skill and follow its targeting instructions. Resolve any "
                     + "Foresight choice before continuing. Hover cards for their full descriptions."
@@ -234,7 +232,7 @@ public final class ClientFrame extends JFrame {
                     + "Eliminate every opposing piece or reach " + (rules == null ? 8 : rules.scoreToWin()) + " points to win. Earn 1 point per enemy eliminated. Hold either gold-highlighted square until your next turn starts for +1 point each. Two mirrored gold-highlighted squares are chosen on the middle row for each match. Otherwise, " + limit
                     + " completed player turns end in a draw. Elimination takes priority."
                     + "<br><br>Turn order: optional movement, optional one skill, then End Turn. "
-                    + "Movement jumps; landing on an enemy eliminates it. Friendly landing is illegal."
+                    + "Move 1 square horizontally or vertically; landing on an enemy eliminates it. Friendly landing is illegal."
                     + "<br><br>Start with " + initial + " mana. Gain " + gain
                     + " at each own-turn start, including the first, up to " + cap + "."
                     + " Occupy either blue-highlighted square on the adjacent central rows for +1 bonus mana at your turn start; the same cap applies.";

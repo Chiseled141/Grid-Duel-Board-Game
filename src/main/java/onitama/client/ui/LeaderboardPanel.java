@@ -39,9 +39,15 @@ public final class LeaderboardPanel extends BattlefieldMenuPanel {
         setLayout(null);
         ledger = new JPanel(new BorderLayout(0, 18));
         ledger.setName("rankingLedger"); ledger.setOpaque(false);
-        JPanel heading = new JPanel(new BorderLayout(0, 6)); heading.setOpaque(false);
-        heading.add(menuLabel("Leaderboard", 32, true), BorderLayout.NORTH);
-        heading.add(summary, BorderLayout.SOUTH);
+        JPanel heading = new JPanel(); heading.setOpaque(false);
+        heading.setLayout(new BoxLayout(heading, BoxLayout.Y_AXIS));
+        JButton back = LobbyPanel.smallButton("Back", backAction);
+        back.setName("leaderboardBack");
+        back.setMaximumSize(back.getPreferredSize());
+        back.setAlignmentX(Component.LEFT_ALIGNMENT);
+        heading.add(back); heading.add(Box.createVerticalStrut(12));
+        heading.add(menuLabel("Leaderboard", 32, true));
+        heading.add(Box.createVerticalStrut(6)); heading.add(summary);
         ledger.add(heading, BorderLayout.NORTH);
         JTable table = new JTable(rows);
         table.setName("leaderboardTable");
@@ -110,14 +116,12 @@ public final class LeaderboardPanel extends BattlefieldMenuPanel {
         views.add(scroll, "table"); views.add(empty, "empty");
         ledger.add(views, BorderLayout.CENTER);
         JPanel footer = new JPanel(new BorderLayout(16, 0)); footer.setOpaque(false);
-        JButton back = MenuSettingsOption.route("Back to menu", "Return to the main menu.", backAction);
-        back.setSelected(true); back.setPreferredSize(new Dimension(210, 56));
         for (String key : java.util.List.of("ESCAPE", "BACK_SPACE"))
             getInputMap(JComponent.WHEN_ANCESTOR_OF_FOCUSED_COMPONENT).put(KeyStroke.getKeyStroke(key), "menu.back");
         getActionMap().put("menu.back", new AbstractAction() {
             @Override public void actionPerformed(java.awt.event.ActionEvent event) { backAction.run(); }
         });
-        footer.add(back, BorderLayout.WEST); footer.add(ownRank, BorderLayout.EAST);
+        footer.add(ownRank, BorderLayout.EAST);
         ledger.add(footer, BorderLayout.SOUTH); add(ledger);
         model.addListener(new ClientModelListener() {
             @Override public void onLeaderboardChanged() { refresh(); }
@@ -157,7 +161,7 @@ public final class LeaderboardPanel extends BattlefieldMenuPanel {
     @Override public void doLayout() {
         int width = Math.max(1, Math.min(720, getWidth() - 64));
         int visibleRows = Math.max(3, Math.min(rows.getRowCount(), 8));
-        int height = Math.max(1, Math.min(190 + visibleRows * 48, getHeight() - 112));
+        int height = Math.max(1, Math.min(222 + visibleRows * 48, getHeight() - 112));
         ledger.setBounds(Math.max(0, getWidth() - width - 40), Math.max(0, (getHeight() - height) / 2), width, height);
     }
 

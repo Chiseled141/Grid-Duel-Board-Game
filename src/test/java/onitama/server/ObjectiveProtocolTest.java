@@ -17,14 +17,14 @@ class ObjectiveProtocolTest {
 
     @Test void centerRewardsAreOnceOnlyAcrossRetryAndReconnectAndScoreVictoryPersists() throws Exception {
         var base = RulesConfigLoader.load(null);
-        var rules = new RulesConfig(base.rulesVersion(), 2, 3, 2, 1, 5, 60,
+        var rules = new RulesConfig(base.rulesVersion(), 0, 3, 2, 1, 5, 60,
                 base.movementCards(), base.skills(), 2);
         long seed = 0;
         while (true) {
             var candidate = RulesEngine.newGame(rules, seed);
-            if (candidate.turn() == PlayerColor.BLUE && candidate.blueMovementHand().contains("tiger")) break;
+            if (candidate.turn() == PlayerColor.BLUE) break;
             seed++;
-            assertTrue(seed < 1000, "find a deterministic opening with Lance");
+            assertTrue(seed < 1000, "find a deterministic Blue opening");
         }
         final long openingSeed = seed;
         Random deals = new Random(1) {
@@ -46,17 +46,26 @@ class ObjectiveProtocolTest {
                 blue.send(new CreateMatchRequest());
                 String room = blue.expect(MatchCreated.class).roomCode();
                 red.send(new JoinMatchRequest(room));
-                var sync = blue.expect(MatchSync.class); red.expect(MatchSync.class);
+                var sync = blue.expect(MatchSync.class); var redSync = red.expect(MatchSync.class);
+                sync = ScriptedClient.keepOpening(blue, red, sync, redSync)[0];
                 assertEquals(14, sync.view().pieces().size());
                 assertEquals(2, sync.view().rules().scoreToWin());
                 var scoringSquare = sync.view().objectives().scoring().get(0);
                 int mover = sync.view().pieces().stream().filter(piece -> piece.square().y() == 0
                         && piece.square().x() == scoringSquare.x()).findFirst().orElseThrow().piece().id();
                 var layout = sync.view().objectives();
-                sync = act(blue, red, sync, 1, new GameAction.MovePiece("tiger", mover, scoringSquare));
+                long blueSequence = 2, redSequence = 2;
+                for (int rank = 1; rank <= 3; rank++) {
+                    sync = act(blue, red, sync, blueSequence++, new GameAction.MovePiece(mover,
+                            new onitama.core.Square(scoringSquare.x(), rank)));
+                    if (rank < 3) {
+                        sync = act(blue, red, sync, blueSequence++, new GameAction.EndTurn());
+                        sync = act(red, blue, sync, redSequence++, new GameAction.EndTurn());
+                    }
+                }
                 assertEquals(0, sync.view().blueScore(), "landing alone earns no point");
-                sync = act(blue, red, sync, 2, new GameAction.EndTurn());
-                var request = new ActionRequest(sync.matchId(), 1, sync.view().revision(), new GameAction.EndTurn());
+                sync = act(blue, red, sync, blueSequence++, new GameAction.EndTurn());
+                var request = new ActionRequest(sync.matchId(), redSequence++, sync.view().revision(), new GameAction.EndTurn());
                 red.send(request);
                 var firstReward = red.expect(GameUpdate.class);
                 var receipt = red.expect(ActionReply.class);
@@ -73,8 +82,8 @@ class ObjectiveProtocolTest {
                 assertEquals(1, sync.view().blueScore(), "reconnect must not repeat the reward");
                 assertEquals(layout, sync.view().objectives(), "reconnect retains the match layout");
                 assertEquals(receipt.current().view().blueMana(), sync.view().blueMana());
-                sync = act(blue, red, sync, 3, new GameAction.EndTurn());
-                red.send(new ActionRequest(sync.matchId(), 2, sync.view().revision(), new GameAction.EndTurn()));
+                sync = act(blue, red, sync, blueSequence++, new GameAction.EndTurn());
+                red.send(new ActionRequest(sync.matchId(), redSequence++, sync.view().revision(), new GameAction.EndTurn()));
                 var win = red.expect(GameUpdate.class); red.expect(ActionReply.class);
                 var blueWin = blue.expect(GameUpdate.class);
                 assertEquals(2, win.current().view().blueScore());

@@ -406,9 +406,9 @@ class AllSkillsTest {
         GameState next = ((ActionResult.Accepted) res).nextState();
 
         assertEquals(1, next.blueMana()); // 2 - 1
-        assertEquals(2, next.blueMovementHand().size());
+        assertTrue(next.blueMovementHand().isEmpty());
         assertEquals(TurnPhase.END, next.phase());
-        assertEquals(12, next.movementDeck().size()); // 16 total - 2 Red - 2 Blue = 12 deck
+        assertTrue(next.movementDeck().isEmpty()); // 16 total - 2 Red - 2 Blue = 12 deck
     }
 
     @Test

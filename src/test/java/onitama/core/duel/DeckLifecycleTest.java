@@ -14,6 +14,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -26,20 +27,13 @@ class DeckLifecycleTest {
         RulesConfig config = DuelTestFixture.defaultRulesConfig();
         GameState state = RulesEngine.newGame(config, 42L);
 
-        assertEquals(2, state.blueMovementHand().size());
-        assertEquals(2, state.redMovementHand().size());
-        assertEquals(12, state.movementDeck().size());
-
-        Set<String> allMovement = new HashSet<>();
-        allMovement.addAll(state.blueMovementHand());
-        allMovement.addAll(state.redMovementHand());
-        allMovement.addAll(state.movementDeck());
-        assertEquals(16, allMovement.size());
-        assertEquals(RulesConfig.EXPECTED_MOVEMENT_IDS, allMovement);
+        assertTrue(state.blueMovementHand().isEmpty());
+        assertTrue(state.redMovementHand().isEmpty());
+        assertTrue(state.movementDeck().isEmpty());
 
         assertEquals(3, state.blueSkillHand().size());
         assertEquals(3, state.redSkillHand().size());
-        assertEquals(18, state.skillDeck().size());
+        assertEquals(24, state.skillDeck().size());
         assertEquals(0, state.spentSkills().size());
 
         Set<String> allSkills = new HashSet<>();
@@ -47,7 +41,7 @@ class DeckLifecycleTest {
         state.redSkillHand().forEach(c -> allSkills.add(c.instanceId()));
         state.skillDeck().forEach(c -> allSkills.add(c.instanceId()));
         state.spentSkills().forEach(c -> allSkills.add(c.instanceId()));
-        assertEquals(24, allSkills.size());
+        assertEquals(30, allSkills.size());
     }
 
     @Test
@@ -93,61 +87,30 @@ class DeckLifecycleTest {
     }
 
     @Test
-    @DisplayName("Movement card recycling preserves two-card hand size and all 16 cards")
-    void movementCardRecycling() {
-        RulesConfig config = DuelTestFixture.defaultRulesConfig();
-        GameState state = RulesEngine.newGame(config, 100L);
-        PlayerColor actor = state.turn();
-
-        PlayerView view = RulesEngine.viewFor(state, actor);
-        List<GameAction.MovePiece> legalMoves = Targeting.legalMoves(view);
-        assertFalse(legalMoves.isEmpty());
-
-        GameAction.MovePiece move = legalMoves.get(0);
-        ActionResult result = RulesEngine.apply(state, actor, move);
-        assertTrue(result instanceof ActionResult.Accepted);
-        GameState next = ((ActionResult.Accepted) result).nextState();
-
-        List<String> nextHand = actor == PlayerColor.BLUE ? next.blueMovementHand() : next.redMovementHand();
-        assertEquals(2, nextHand.size());
-        assertEquals(12, next.movementDeck().size());
-
-        // Conservation check
-        Set<String> allCards = new HashSet<>();
-        allCards.addAll(next.blueMovementHand());
-        allCards.addAll(next.redMovementHand());
-        allCards.addAll(next.movementDeck());
-        assertEquals(16, allCards.size());
+    @DisplayName("Basic movement neither draws cards nor consumes random state")
+    void movementDoesNotTouchDecksOrRng() {
+        var state = RulesEngine.newGame(DuelTestFixture.defaultRulesConfig(), 100);
+        var move = Targeting.legalMoves(RulesEngine.viewFor(state, state.turn())).get(0);
+        var accepted = (ActionResult.Accepted) RulesEngine.apply(state, state.turn(), move);
+        var next = accepted.nextState();
+        assertEquals(state.randomState().state(), next.randomState().state());
+        assertEquals(state.skillDeck(), next.skillDeck());
+        assertEquals(state.blueSkillHand(), next.blueSkillHand());
+        assertEquals(state.redSkillHand(), next.redSkillHand());
+        assertTrue(next.movementDeck().isEmpty());
+        assertEquals(1, accepted.events().size());
+        assertInstanceOf(PublicEvent.PieceMoved.class, accepted.events().get(0));
     }
 
     @Test
-    @DisplayName("A played movement card can be redrawn immediately when shuffled to index 0")
-    void immediateRedrawPossible() {
-        RulesConfig config = DuelTestFixture.defaultRulesConfig();
-
-        // Search for a seed where the played card is redrawn immediately
-        boolean redrawn = false;
-        for (long seed = 0; seed < 200; seed++) {
-            GameState state = RulesEngine.newGame(config, seed);
-            PlayerColor actor = state.turn();
-            PlayerView view = RulesEngine.viewFor(state, actor);
-            List<GameAction.MovePiece> legalMoves = Targeting.legalMoves(view);
-            if (legalMoves.isEmpty()) continue;
-
-            GameAction.MovePiece move = legalMoves.get(0);
-            ActionResult res = RulesEngine.apply(state, actor, move);
-            if (res instanceof ActionResult.Accepted accepted) {
-                GameState next = accepted.nextState();
-                List<String> nextHand = actor == PlayerColor.BLUE ? next.blueMovementHand() : next.redMovementHand();
-                if (nextHand.contains(move.movementCardId())) {
-                    redrawn = true;
-                    // Proves return -> shuffle -> draw immediately returned the same card
-                    assertTrue(nextHand.contains(move.movementCardId()));
-                    break;
-                }
-            }
-        }
-        assertTrue(redrawn, "Expected at least one seed among 200 to redraw the played card immediately");
+    @DisplayName("Skipping movement never draws or grants extra mana")
+    void skippingKeepsResources() {
+        var state = RulesEngine.newGame(DuelTestFixture.defaultRulesConfig(), 42);
+        var accepted = (ActionResult.Accepted) RulesEngine.apply(state, state.turn(), new GameAction.SkipMovement());
+        assertEquals(state.skillDeck(), accepted.nextState().skillDeck());
+        assertEquals(state.blueMana(), accepted.nextState().blueMana());
+        assertEquals(state.redMana(), accepted.nextState().redMana());
+        assertEquals(TurnPhase.SKILL, accepted.nextState().phase());
     }
 
     @Test
@@ -160,19 +123,19 @@ class DeckLifecycleTest {
         state.consumeHeldSkill(PlayerColor.BLUE, toSpend.instanceId());
 
         assertEquals(3, state.blueSkillHand().size());
-        assertEquals(17, state.skillDeck().size());
+        assertEquals(23, state.skillDeck().size());
         assertEquals(1, state.spentSkills().size());
         assertEquals(toSpend, state.spentSkills().get(0));
         assertFalse(state.blueSkillHand().contains(toSpend));
 
         // Consume remaining 17 cards from deck to exhaust it
-        for (int i = 0; i < 17; i++) {
+        for (int i = 0; i < 23; i++) {
             CardInstance c = state.blueSkillHand().get(0);
             state.consumeHeldSkill(PlayerColor.BLUE, c.instanceId());
         }
         assertEquals(0, state.skillDeck().size());
         assertEquals(3, state.blueSkillHand().size());
-        assertEquals(18, state.spentSkills().size());
+        assertEquals(24, state.spentSkills().size());
 
         // Deck is now empty: next consumption should shrink hand
         CardInstance nextToSpend = state.blueSkillHand().get(0);
@@ -180,7 +143,7 @@ class DeckLifecycleTest {
 
         assertEquals(2, state.blueSkillHand().size()); // hand shrank
         assertEquals(0, state.skillDeck().size());     // spent pile never refills deck
-        assertEquals(19, state.spentSkills().size());
+        assertEquals(25, state.spentSkills().size());
     }
 
     @Test
@@ -200,7 +163,7 @@ class DeckLifecycleTest {
 
         // No mutation occurred
         assertEquals(3, state.blueSkillHand().size());
-        assertEquals(18, state.skillDeck().size());
+        assertEquals(24, state.skillDeck().size());
         assertEquals(0, state.spentSkills().size());
     }
 
@@ -218,7 +181,7 @@ class DeckLifecycleTest {
                     skill.manaCost(), copies, skill.parameters(), skill.descriptionTemplate(), skill.artworkPath()));
         }
         RulesConfig config = new RulesConfig(
-                "grid-duel-v3", 2, 3, 2, 1, 5, 60, CardDeck.catalog(), customSkills);
+                "grid-duel-v4", 0, 3, 2, 1, 5, 60, List.of(), customSkills);
         GameState state = RulesEngine.newGame(config, 1L);
         Set<String> expected = Set.of("sidestep#1", "sidestep#2", "sidestep#3", "sidestep#4", "dash#1", "dash#2");
         assertEquals(0, state.skillDeck().size());

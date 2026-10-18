@@ -112,12 +112,14 @@ public final class Main {
         long seed = Long.parseLong(options.getOrDefault("seed", "42"));
         Path configOverride = options.containsKey("config") ? Path.of(options.get("config")) : null;
         RulesConfig rules = RulesConfigLoader.load(configOverride);
-        GameState state = RulesEngine.newGame(rules, seed);
+        GameState state = RulesEngine.newOpeningGame(rules, seed);
+        for (PlayerColor color : PlayerColor.values()) {
+            state = ((onitama.core.duel.ActionResult.Accepted) RulesEngine.apply(state, color,
+                    new GameAction.ConfirmOpening(List.of()))).nextState();
+        }
         System.out.println("Grid Duel 7x7 Demo (Rules version: " + rules.rulesVersion() + ")");
         System.out.println("First to move: " + state.turn());
-        System.out.println("Blue movement: " + cardNames(state.blueMovementHand()));
         System.out.println("Blue skills:   " + skillNames(rules, state.blueSkillHand()));
-        System.out.println("Red movement:  " + cardNames(state.redMovementHand()));
         System.out.println("Red skills:    " + skillNames(rules, state.redSkillHand()));
         System.out.println("Mana: Blue=" + state.blueMana() + ", Red=" + state.redMana());
         System.out.println();
@@ -127,13 +129,8 @@ public final class Main {
         List<GameAction.MovePiece> legal = Targeting.legalMoves(moverView);
         System.out.println(legal.size() + " legal movement moves for " + state.turn() + ":");
         for (GameAction.MovePiece move : legal) {
-            System.out.printf("  card=%-10s piece#%-2d -> %s%n",
-                    move.movementCardId(), move.pieceId(), move.to());
+            LOG.info(() -> "  piece#" + move.pieceId() + " -> " + move.to());
         }
-    }
-
-    private static String cardNames(List<String> cards) {
-        return String.join(", ", cards);
     }
 
     private static String skillNames(RulesConfig rules, List<CardInstance> cards) {

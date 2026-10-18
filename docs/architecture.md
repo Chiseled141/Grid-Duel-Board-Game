@@ -1,5 +1,17 @@
 # Architecture — Onitama Online
 
+## Current rules override (2026-10-18)
+
+See [free movement migration](handoffs/free-movement.md) and the authoritative
+spec's adopted update. grid-duel-v4 / protocol 6 replace movement cards with one
+optional orthogonal step and add hand-control skills. Thirty skill definitions,
+six-card hand cap. PlayerView appends revealedEnemySkills (caster-only until End
+Turn) and ownBurnedDraws (drawer-only, current accepted action). Overflow draws
+enter a host-private destroyed zone and publish only CardBurned(actor). MovePiece
+is (pieceId, to). Reserved movement fields are always empty/zero in live views.
+Older movement-card/deck descriptions below are historical and superseded.
+
+
 ## Package map
 
 ```
@@ -276,7 +288,8 @@ surface and leaves the authored background animation unchanged. The subtitle use
 its original 15-pixel serif styling and offset shadow, without a glyph outline.
 
 LobbyPanel shows a compact column of unboxed text actions directly over the
-animated scenery. Home contains Play, Settings, Leaderboard and Quit game in
+animated scenery. The home action column sits 16 logical pixels below its centered
+position, limited by available bottom space. Home contains Play, Settings, Leaderboard and Quit game in
 that order, plus Resume match when a match is parked. The player's name floats
 at the top right as transparent text: bold Outfit username and a smaller gold
 Elo label. The sound icon also floats directly over the scenery, with no fill
@@ -388,7 +401,12 @@ LeaderboardPanel shares BattlefieldMenuPanel and ClientSettings with the main
 menu. Its cream Outfit heading and compact charcoal table match the new menus.
 Alternating dark rows, gold top-three ranks, bold Elo and a warm local-row marker
 keep literal player names and win/loss totals readable. Selection uses cream with
-dark type; a cream return action and own-rank summary sit below. The dark scrollbar
+dark type; a compact Back action sits above the heading, turns gold on
+hover/focus with a fine gold outline and stronger dark fill, and retains
+Escape/Backspace navigation. Other submenu Back controls share this compact
+90×36 treatment, with a faint ivory border and dark fill at rest so Back remains
+recognizable as a button. The own-rank summary sits
+below the table. The dark scrollbar
 and empty state share the table surface. Height adapts to the data, with scrolling
 for longer lists. ClientModel.requestLeaderboard routes to Screen.LEADERBOARD so
 visibility, animation and reduced-motion gates follow the actual screen.
@@ -459,8 +477,8 @@ Their relative diagrams expand to 7×7, while other patterns stay at 5×5.
 Login and the main menu open directly. When ClientModel enters GAME (practice,
 online, rematch or reconnect), ClientFrame displays LoadingPanel until the
 player presses Enter Match. Loading uses the actual match's immutable rules
-snapshot. A SwingWorker prepares the three approved scenes (castle passage,
-campaign map, fortress courtyard), match backdrop, movement/skill faces and piece
+snapshot. A SwingWorker prepares the four painterly medieval scenes (siege, stone bridge,
+war camp, war council), match backdrop, movement/skill faces and piece
 styles. The bottom percentage counts completed preparation steps, without a fake
 wait. The button appears only after completion. An error offers Retry.
 
@@ -478,6 +496,29 @@ cancels preparation and timers; stale callbacks cannot enter another screen.
 Return to Match bypasses loading via the explicit onMatchResumed observer callback;
 other observers receive the normal GAME notification through its default method.
 Fresh practice/online matches and rematches retain their loading screen.
+
+### Opening hand selection
+
+Protocol 5 introduces the pure OPENING phase and private confirmation flags.
+Live server/practice/demo routes start with newOpeningGame. Each actor marks skills
+locally, then sends one sequenced ConfirmOpening action. Replacements occupy the
+same slots, draw before returns, preserve card conservation, and spend no mana.
+Only both confirmations grant the starter's first-turn mana. Bots confirm their
+own permitted view; practice uses the same engine. OpeningHandPanel covers the
+match after its entry loading screen, with separate per-card Replace/Undo controls
+and Confirm/Keep all. DeckDrawOverlay supplies initial deal, accepted outgoing
+returns, replacement draws and final hand flights; hand faces are masked while
+in preview. Navigation/loading/reconnect cancel visual work without submitting
+choices. Reduced motion skips travel; returning to a parked match restores choice
+readiness without a fresh deal. Existing gameplay fixtures explicitly keep both
+opening hands before exercising in-turn protocol behavior.
+
+Practice gameplay is additionally held while OpeningHandPanel is visible,
+including accepted replacement returns, draws and final hand flights. The bot may
+confirm its own opening choice during this hold, but normal movement/skills wait
+until the preview closes. Loading and opening presentation gates are independent;
+reset/navigation release the visual hold without advancing gameplay in the lobby.
+Player badges do not show an active turn during OPENING.
 
 ### Historical atlas menu
 

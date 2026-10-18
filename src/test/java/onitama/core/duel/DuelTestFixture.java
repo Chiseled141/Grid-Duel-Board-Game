@@ -148,7 +148,7 @@ public final class DuelTestFixture {
         skills.add(new SkillDefinition(
                 "refocus", "REFOCUS", SkillCategory.RESOURCE, 1, 1,
                 Map.of(),
-                "Return both movement cards to the movement deck. Shuffle, then draw 2 movement cards.",
+                "Permanently discard your other held skills, then draw that many skills.",
                 "assets/skills/refocus.png"));
 
         skills.add(new SkillDefinition(
@@ -163,6 +163,8 @@ public final class DuelTestFixture {
                 "Choose a friendly piece. Send an adjacent enemy to an empty square on that enemy's starting row. Adjacency is horizontal or vertical.",
                 "assets/skills/banish.png"));
 
+        var defaults = onitama.config.RulesConfigLoader.load(null);
+        for (String id : List.of("steal", "spy", "draw-two", "sabotage", "barter", "siphon")) skills.add(defaults.skill(id));
         return List.copyOf(skills);
     }
 
@@ -171,14 +173,13 @@ public final class DuelTestFixture {
      */
     public static RulesConfig defaultRulesConfig() {
         return new RulesConfig(
-                "grid-duel-v3",
-                2,
+                "grid-duel-v4", 0,
                 3,
                 2,
                 1,
                 5,
                 60,
-                CardDeck.catalog(),
+                List.of(),
                 defaultSkillDefinitions());
     }
 
@@ -187,28 +188,18 @@ public final class DuelTestFixture {
      */
     public static RulesConfig rulesConfigWithTurnLimit(int turnLimit) {
         return new RulesConfig(
-                "grid-duel-v3",
-                2,
+                "grid-duel-v4", 0,
                 3,
                 2,
                 1,
                 5,
                 turnLimit,
-                CardDeck.catalog(),
+                List.of(),
                 defaultSkillDefinitions());
     }
     /** Builds a movement fixture while conserving all 16 cards across hands and deck. */
     static GameState withMovementCards(onitama.core.PlayerColor actor, String first, String second) {
         GameState state = onitama.core.duel.RulesEngine.newGame(defaultRulesConfig(), 42L);
-        List<String> remaining = new ArrayList<>(CardDeck.catalog().stream().map(onitama.core.Card::id).toList());
-        remaining.remove(first);
-        remaining.remove(second);
-        state.mutableMovementHand(actor).clear();
-        state.mutableMovementHand(actor).addAll(List.of(first, second));
-        state.mutableMovementHand(actor.opponent()).clear();
-        state.mutableMovementHand(actor.opponent()).addAll(remaining.subList(0, 2));
-        state.mutableMovementDeck().clear();
-        state.mutableMovementDeck().addAll(remaining.subList(2, remaining.size()));
         state.setTurn(actor);
         return state;
     }

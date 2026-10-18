@@ -24,16 +24,16 @@ class RulesConfigLoaderTest {
     void loadBundledDefaults() {
         RulesConfig config = RulesConfigLoader.load(null);
         assertNotNull(config);
-        assertEquals("grid-duel-v3", config.rulesVersion());
-        assertEquals(2, config.movementHandSize());
+        assertEquals("grid-duel-v4", config.rulesVersion());
+        assertEquals(0, config.movementHandSize());
         assertEquals(3, config.skillHandSize());
         assertEquals(2, config.initialMana());
         assertEquals(1, config.manaPerTurn());
         assertEquals(5, config.manaCap());
         assertEquals(60, config.turnLimit());
         assertEquals(8, config.scoreToWin());
-        assertEquals(16, config.movementCards().size());
-        assertEquals(24, config.skills().size());
+        assertEquals(0, config.movementCards().size());
+        assertEquals(30, config.skills().size());
 
         // Check rendered text for Sidestep
         SkillDefinition sidestep = config.skills().stream()

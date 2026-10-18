@@ -78,9 +78,9 @@ class TurnAndVictoryTest {
         assertEquals(state.redMovementHand(), next.redMovementHand());
 
         // Moving after SkipMovement is rejected with WRONG_PHASE
-        String card = actor == PlayerColor.BLUE ? next.blueMovementHand().get(0) : next.redMovementHand().get(0);
+
         ActionResult moveResult = RulesEngine.apply(next, actor,
-                new GameAction.MovePiece(card, actor == PlayerColor.BLUE ? 0 : 6, new Square(0, 2)));
+                new GameAction.MovePiece(actor == PlayerColor.BLUE ? 0 : 6, new Square(0, 2)));
         assertTrue(moveResult instanceof ActionResult.Rejected);
         assertEquals(ActionError.WRONG_PHASE, ((ActionResult.Rejected) moveResult).error());
     }
@@ -166,7 +166,7 @@ class TurnAndVictoryTest {
         elimMatch.setCompletedTurns(59);
         elimMatch.setRevision(current.revision());
 
-        GameAction.MovePiece winMove = new GameAction.MovePiece("ox", attackerId, dest);
+        GameAction.MovePiece winMove = new GameAction.MovePiece(attackerId, dest);
         ActionResult winResult = RulesEngine.apply(elimMatch, active, winMove);
         assertTrue(winResult instanceof ActionResult.Accepted);
         GameState winState = ((ActionResult.Accepted) winResult).nextState();
@@ -177,18 +177,13 @@ class TurnAndVictoryTest {
         assertEquals(active, winState.outcome().winner());
         assertEquals(60, winState.startedTurns());
         assertEquals(59, winState.completedTurns()); // Not 60!
-        assertEquals(2, winState.blueMovementHand().size());
-        assertEquals(2, winState.redMovementHand().size());
-        assertEquals(12, winState.movementDeck().size());
-        var allCards = new java.util.HashSet<>(winState.movementDeck());
-        allCards.addAll(winState.blueMovementHand());
-        allCards.addAll(winState.redMovementHand());
-        assertEquals(RulesConfig.EXPECTED_MOVEMENT_IDS, allCards);
+        assertTrue(winState.blueMovementHand().isEmpty());
+        assertTrue(winState.redMovementHand().isEmpty());
+        assertTrue(winState.movementDeck().isEmpty());
         assertEquals(elimMatch.blueMana(), winState.blueMana());
         assertEquals(elimMatch.redMana(), winState.redMana());
         assertEquals(elimMatch.revision() + 1, winState.revision());
-        assertEquals(List.of(new PublicEvent.MovementPlayed(active, "ox"),
-                new PublicEvent.PieceMoved(attackerId, new Square(3, 3), dest),
+        assertEquals(List.of(new PublicEvent.PieceMoved(attackerId, new Square(3, 3), dest),
                 new PublicEvent.PieceEliminated(enemyId, dest),
                 new PublicEvent.MatchEnded(winState.outcome())),
                 ((ActionResult.Accepted) winResult).events());

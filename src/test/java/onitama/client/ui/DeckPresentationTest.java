@@ -86,33 +86,16 @@ class DeckPresentationTest {
         var transition = DeckPresentationFixtures.movement(actor, same);
         withTransition(transition, viewer, ui -> {
             assertEquals(transition.after(viewer), ui.model.view());
-            assertEquals(1, flights(ui).size());
-            var flight = flights(ui).get(0);
-            assertNotNull(flight.face(), "movement is public on either side");
-            var deck = (DeckStackPanel) field(ui.panel, actor == viewer ? "drawPile" : "opponentDrawPile");
-            assertEquals(SwingUtilities.convertRectangle(deck, deck.topBounds(), ui.overlay), flight.source().get());
-            assertTrue(flight.destination().get().y < 200 == (actor != viewer));
-            assertEquals(2, find(ui.panel, DeckStackPanel.class).size());
-            assertFalse(ui.overlay.contains(20, 20));
-            assertTrue(ui.overlay.isFlyingTo(flight.key()));
-            var beforeReplay = flights(ui);
-            ui.model.clearSelection();
-            ui.model.handleGameUpdate(new GameUpdate(sync(transition.after(viewer)), transition.result().events()));
-            ui.model.handleGameUpdate(new GameUpdate(sync(transition.before(viewer)), transition.result().events()));
-            ui.model.handleGameUpdate(new GameUpdate(new MatchSync("wrong", "LOCAL", transition.after(viewer), false, 1), transition.result().events()));
-            assertSame(beforeReplay, flights(ui), "ordinary refresh and duplicate/stale/foreign updates cannot restart a flight");
-            ui.clock.set(500_000_000L);
-            ui.overlay.tick();
-            assertTrue(ui.overlay.isFlyingTo(flight.key()), "the slower draw remains visible while approaching the hand");
-            ui.clock.set(650_000_000L);
-            ui.overlay.tick();
-            assertFalse(ui.overlay.isFlyingTo(flight.key()), "completion must unmask the real card");
+            assertTrue(flights(ui).isEmpty(), "basic movement never draws a card");
+            assertTrue(transition.after(viewer).blueMovementHand().isEmpty());
+            assertTrue(transition.after(viewer).redMovementHand().isEmpty());
+
         });
     }
 
     @ParameterizedTest
     @CsvSource({"mana-surge,BLUE,BLUE,18,1", "mana-surge,BLUE,RED,18,1",
-            "refocus,RED,RED,18,3", "refocus,RED,BLUE,18,3", "refocus,BLUE,BLUE,0,2",
+            "refocus,RED,RED,18,3", "refocus,RED,BLUE,18,3", "refocus,BLUE,BLUE,0,0",
             "mana-surge,BLUE,BLUE,0,0", "mana-surge,BLUE,RED,0,0",
             "foresight,BLUE,BLUE,18,0", "foresight,BLUE,RED,18,0",
             "foresight,RED,RED,1,1", "foresight,RED,BLUE,1,1", "foresight,BLUE,BLUE,0,0"})
@@ -169,8 +152,8 @@ class DeckPresentationTest {
         var transition = DeckPresentationFixtures.refocusSameHand(PlayerColor.BLUE);
         withTransition(transition, opponent ? PlayerColor.RED : PlayerColor.BLUE, ui -> {
             assertEquals(3, flights(ui).size());
-            assertEquals(2, flights(ui).stream().filter(f -> f.key().startsWith("move:")).count());
-            assertEquals(2, find(ui.panel, CardPanel.class).stream().filter(DeckDrawOverlay::isMasked).count(),
+            assertEquals(0, flights(ui).stream().filter(f -> f.key().startsWith("move:")).count());
+            assertEquals(0, find(ui.panel, CardPanel.class).stream().filter(DeckDrawOverlay::isMasked).count(),
                     "only the two movement destinations are masked, even when components are reused");
             assertEquals(3, flights(ui).stream().map(DeckDrawOverlay.Flight::key).distinct().count());
         });
@@ -178,7 +161,7 @@ class DeckPresentationTest {
 
     @ParameterizedTest @ValueSource(strings = {"reduced", "pause", "leave", "reconnect", "new-match", "disconnect", "dispose", "resize"})
     void lifecycleCancelsFlightsAndQueuedLayoutCallbacks(String reason) throws Exception {
-        var transition = DeckPresentationFixtures.movement(PlayerColor.BLUE, true);
+        var transition = DeckPresentationFixtures.skill("mana-surge", PlayerColor.BLUE, 18);
         for (boolean queued : new boolean[]{false, true}) {
             Ui[] ref = new Ui[1];
             try {

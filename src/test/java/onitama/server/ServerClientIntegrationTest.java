@@ -107,6 +107,8 @@ class ServerClientIntegrationTest {
         red.send(new JoinMatchRequest(roomCode));
         MatchSync blueStart = blue.expect(MatchSync.class);
         MatchSync redStart = red.expect(MatchSync.class);
+        var ready = ScriptedClient.keepOpening(blue, red, blueStart, redStart);
+        blueStart = ready[0]; redStart = ready[1];
         assertEquals(PlayerColor.BLUE, blueStart.view().viewer());
         assertEquals(PlayerColor.RED, redStart.view().viewer());
         assertEquals(blueStart.matchId(), redStart.matchId());
@@ -116,15 +118,15 @@ class ServerClientIntegrationTest {
             assertFalse(legalMoves.isEmpty());
             GameAction.MovePiece firstMove = legalMoves.get(0);
 
-            blue.send(new ActionRequest(blueStart.matchId(), 1L, blueStart.view().revision(), firstMove));
+            blue.send(new ActionRequest(blueStart.matchId(), 2L, blueStart.view().revision(), firstMove));
             GameUpdate blueUpdate = blue.expect(GameUpdate.class);
             ActionReply blueReply = blue.expect(ActionReply.class);
             GameUpdate redUpdate = red.expect(GameUpdate.class);
 
             assertTrue(blueReply.receipt().accepted());
-            assertEquals(1L, blueReply.receipt().revision());
+            assertEquals(3L, blueReply.receipt().revision());
 
-            blue.send(new ActionRequest(blueStart.matchId(), 2L, blueReply.current().view().revision(),
+            blue.send(new ActionRequest(blueStart.matchId(), 3L, blueReply.current().view().revision(),
                     new GameAction.EndTurn()));
             GameUpdate blueEndUpdate = blue.expect(GameUpdate.class);
             ActionReply blueEndReply = blue.expect(ActionReply.class);
@@ -133,7 +135,7 @@ class ServerClientIntegrationTest {
             assertTrue(blueEndReply.receipt().accepted());
             assertEquals(PlayerColor.RED, blueEndReply.current().view().turn());
 
-            red.send(new ActionRequest(redStart.matchId(), 1L, redEndUpdate.current().view().revision(),
+            red.send(new ActionRequest(redStart.matchId(), 2L, redEndUpdate.current().view().revision(),
                     new GameAction.Resign()));
             GameUpdate redResignUpdate = red.expect(GameUpdate.class);
             ActionReply redResignReply = red.expect(ActionReply.class);
@@ -147,15 +149,15 @@ class ServerClientIntegrationTest {
             assertFalse(legalMoves.isEmpty());
             GameAction.MovePiece firstMove = legalMoves.get(0);
 
-            red.send(new ActionRequest(redStart.matchId(), 1L, redStart.view().revision(), firstMove));
+            red.send(new ActionRequest(redStart.matchId(), 2L, redStart.view().revision(), firstMove));
             GameUpdate redUpdate = red.expect(GameUpdate.class);
             ActionReply redReply = red.expect(ActionReply.class);
             GameUpdate blueUpdate = blue.expect(GameUpdate.class);
 
             assertTrue(redReply.receipt().accepted());
-            assertEquals(1L, redReply.receipt().revision());
+            assertEquals(3L, redReply.receipt().revision());
 
-            red.send(new ActionRequest(redStart.matchId(), 2L, redReply.current().view().revision(),
+            red.send(new ActionRequest(redStart.matchId(), 3L, redReply.current().view().revision(),
                     new GameAction.EndTurn()));
             GameUpdate redEndUpdate = red.expect(GameUpdate.class);
             ActionReply redEndReply = red.expect(ActionReply.class);
@@ -164,7 +166,7 @@ class ServerClientIntegrationTest {
             assertTrue(redEndReply.receipt().accepted());
             assertEquals(PlayerColor.BLUE, redEndReply.current().view().turn());
 
-            red.send(new ActionRequest(redStart.matchId(), 3L, redEndReply.current().view().revision(),
+            red.send(new ActionRequest(redStart.matchId(), 4L, redEndReply.current().view().revision(),
                     new GameAction.Resign()));
             GameUpdate redResignUpdate = red.expect(GameUpdate.class);
             ActionReply redResignReply = red.expect(ActionReply.class);

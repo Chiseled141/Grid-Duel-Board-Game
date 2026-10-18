@@ -71,7 +71,7 @@ class MedievalPresentationTest {
             assertArrayEquals(before.getRGB(0, 0, 400, 480, null, 0, 400),
                     after.getRGB(0, 0, 400, 480, null, 0, 400), "rule text must not be printed on the art");
             var skills = base.skills().stream().map(skill -> skill.id().equals(first.id()) ? changed : skill).toList();
-            var rules = new RulesConfig(base.rulesVersion(), 2, 3, 2, 1, 5, 60, base.movementCards(), skills);
+            var rules = new RulesConfig(base.rulesVersion(), 0, 3, 2, 1, 5, 60, base.movementCards(), skills);
             var panel = new SkillCardPanel(new CardInstance(first.id() + "#1", first.id()), rules,
                     PlayerColor.BLUE, 5, TurnPhase.SKILL, true, false, null);
             assertTrue(panel.getToolTipText().contains("A distinctive updated live rule."));

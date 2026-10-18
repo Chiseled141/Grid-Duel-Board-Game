@@ -55,15 +55,17 @@ class LoadingPanelTest {
         } finally { SwingUtilities.invokeAndWait(() -> ref.get().close()); }
     }
 
-    @Test void onlyTheThreeApprovedScenesAreBundled() {
-        assertEquals(List.of("loading/castle-passage.png", "loading/campaign-map.png", "loading/fortress-courtyard.png"), LoadingPanel.BACKGROUNDS);
+    @Test void onlyTheFourPainterlyScenesAreBundled() {
+        assertEquals(List.of("loading/siege.png", "loading/stone-bridge.png", "loading/war-camp.png", "loading/war-council.png"), LoadingPanel.BACKGROUNDS);
         for (String asset : LoadingPanel.BACKGROUNDS) assertNotNull(getClass().getResource("/assets/" + asset));
+        for (String removed : List.of("castle-passage", "campaign-map", "fortress-courtyard"))
+            assertNull(getClass().getResource("/assets/loading/" + removed + ".png"));
         assertNull(getClass().getResource("/assets/loading/armourer-workshop.png"));
     }
 
     @Test void hintsUseTheActualConfiguredScoreAndManaLimits() {
         var base = RulesConfigLoader.load(null);
-        var custom = new RulesConfig(base.rulesVersion(), 2, 3, 2, 1, 7, 60, base.movementCards(), base.skills(), 11);
+        var custom = new RulesConfig(base.rulesVersion(), 0, 3, 2, 1, 7, 60, base.movementCards(), base.skills(), 11);
         var tips = LoadingPanel.tips(custom);
         assertTrue(tips.stream().anyMatch(tip -> tip.contains("11 points")));
         assertTrue(tips.stream().anyMatch(tip -> tip.contains("7 mana")));
@@ -79,6 +81,7 @@ class LoadingPanelTest {
                 var panel = ref.get(); assertEquals(0, panel.backgroundIndex());
                 panel.nextBackground(); assertEquals(1, panel.backgroundIndex());
                 panel.nextBackground(); assertEquals(2, panel.backgroundIndex());
+                panel.nextBackground(); assertEquals(3, panel.backgroundIndex());
                 panel.nextBackground(); assertEquals(0, panel.backgroundIndex());
                 settings.setReducedMotion(true); panel.nextBackground(); assertEquals(0, panel.backgroundIndex());
                 var tip = namedHint(panel); String before = tip.getText();
@@ -166,7 +169,7 @@ class LoadingPanelTest {
             var frame = new ClientFrame(null, null); frameRef.set(frame); frame.setVisible(true);
             var model = (onitama.client.state.ClientModel) field(frame, "model");
             var base = RulesConfigLoader.load(null);
-            var rules = new RulesConfig(base.rulesVersion(), 2, 3, 2, 1, 7, 60, base.movementCards(), base.skills(), 11);
+            var rules = new RulesConfig(base.rulesVersion(), 0, 3, 2, 1, 7, 60, base.movementCards(), base.skills(), 11);
             var game = onitama.core.duel.RulesEngine.newGame(rules, 42);
             var view = onitama.core.duel.RulesEngine.viewFor(game, onitama.core.PlayerColor.BLUE);
             var sync = new onitama.net.MatchSync("loading-online", "ROOM", view, false, 1L);

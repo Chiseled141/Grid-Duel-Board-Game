@@ -56,25 +56,12 @@ class GameCardDragTest {
         // Drain the resize event before interacting, as a real visible window does.
         SwingUtilities.invokeAndWait(() -> {
             try {
-                var card = movement(panel[0]); assertNotNull(card);
-                if (!click) { gesture(card, 0); assertNull(model[0].selectedCardId()); assertTrue(sent.isEmpty()); }
-                gesture(card, pull); assertEquals(card.card().id(), model[0].selectedCardId());
-                assertTrue(CardPlayOverlay.isMasked(card)); assertTrue(sent.isEmpty());
-                if (click) {
-                    model[0].setReducedMotion(true);
-                    CardPanel other = java.util.Arrays.stream(card.getParent().getComponents())
-                            .filter(c -> c instanceof CardPanel && c != card).map(c -> (CardPanel) c)
-                            .findFirst().orElseThrow();
-                    gesture(other, 10); // Too far for a click, too short for an upward draw.
-                    assertEquals(card.card().id(), model[0].selectedCardId());
-                    assertTrue(CardPlayOverlay.isMasked(card), "canceled replacement restores raised selection immediately");
-                    assertFalse(CardPlayOverlay.isMasked(other));
-                }
-                var move = Targeting.legalMoves(view).stream()
-                        .filter(m -> m.movementCardId().equals(card.card().id())).findFirst().orElseThrow();
+                assertNull(movement(panel[0]), "movement cards are removed from the hand");
+                assertNull(model[0].selectedCardId());
+                var move = Targeting.legalMoves(view).get(0);
                 var from = view.pieces().stream().filter(p -> p.piece().id() == move.pieceId()).findFirst().orElseThrow();
                 model[0].boardClicked(from.square());
-                assertTrue(CardPlayOverlay.isMasked(card)); assertTrue(sent.isEmpty());
+                assertTrue(sent.isEmpty());
                 model[0].boardClicked(move.to());
                 assertEquals(1, sent.stream().filter(m -> m instanceof ActionRequest).count());
                 assertEquals(view, model[0].view(), "submission cannot consume cards before acceptance");
@@ -94,15 +81,16 @@ class GameCardDragTest {
             var panel = new GamePanel(model, settings);
             try {
                 var game = RulesEngine.newGame(RulesConfigLoader.load(null), 42);
-                if (skill) game = ((ActionResult.Accepted) RulesEngine.apply(game, game.turn(),
+                game = ((ActionResult.Accepted) RulesEngine.apply(game, game.turn(),
                         new GameAction.SkipMovement())).nextState();
                 var view = RulesEngine.viewFor(game, game.turn());
                 model.handleMatchSync(new MatchSync("switch", "ROOM", view, false, 1));
                 model.setReducedMotion(true);
                 panel.setSize(1440, 900); layout(panel);
-                var firstMove = movement(panel);
-                var cards = java.util.Arrays.stream(firstMove.getParent().getComponents())
-                        .filter(c -> skill ? c instanceof SkillCardPanel : c instanceof CardPanel)
+                var handField = GamePanel.class.getDeclaredField("hand"); handField.setAccessible(true);
+                var actualHand = (CardHandPanel) handField.get(panel);
+                var cards = java.util.Arrays.stream(actualHand.getComponents())
+                        .filter(c -> c instanceof SkillCardPanel)
                         .map(c -> (JComponent) c).toList();
                 JComponent first = cards.get(0), second = cards.get(1);
                 gesture(first, click ? 0 : 60);
@@ -110,8 +98,7 @@ class GameCardDragTest {
                 gesture(second, click ? 0 : 60);
                 assertFalse(CardPlayOverlay.isMasked(first), "switching restores the prior card");
                 assertTrue(CardPlayOverlay.isMasked(second));
-                assertEquals(skill ? ((SkillCardPanel) second).instance().instanceId() : ((CardPanel) second).card().id(),
-                        skill ? model.selectedSkillInstanceId() : model.selectedCardId());
+                assertEquals(((SkillCardPanel) second).instance().instanceId(), model.selectedSkillInstanceId());
                 var field = GamePanel.class.getDeclaredField("playOverlay"); field.setAccessible(true);
                 var overlay = (CardPlayOverlay) field.get(panel);
                 var slot = SwingUtilities.convertRectangle(second.getParent(), second.getBounds(), overlay);

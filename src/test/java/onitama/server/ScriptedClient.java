@@ -44,11 +44,28 @@ final class ScriptedClient implements AutoCloseable {
 
     void handshake() {
         onitama.net.ErrorMessage greeting = expect(onitama.net.ErrorMessage.class);
-        if (!"GRID_DUEL_PROTOCOL:4".equals(greeting.text())) {
-            fail("expected GRID_DUEL_PROTOCOL:4 greeting, got " + greeting.text());
+        if (!"GRID_DUEL_PROTOCOL:6".equals(greeting.text())) {
+            fail("expected GRID_DUEL_PROTOCOL:6 greeting, got " + greeting.text());
         }
-        send(new onitama.net.ProtocolHello(4));
+        send(new onitama.net.ProtocolHello(6));
         expect(onitama.net.ProtocolReady.class);
+    }
+
+    /** Completes both opening choices explicitly before exercising in-turn protocol behavior. */
+    static onitama.net.MatchSync[] keepOpening(ScriptedClient blue, ScriptedClient red,
+            onitama.net.MatchSync blueSync, onitama.net.MatchSync redSync) {
+        blue.send(new onitama.net.ActionRequest(blueSync.matchId(), blueSync.nextSequence(),
+                blueSync.view().revision(), new onitama.core.duel.GameAction.ConfirmOpening(java.util.List.of())));
+        blue.expect(onitama.net.GameUpdate.class);
+        blue.expect(onitama.net.ActionReply.class);
+        var redUpdate = red.expect(onitama.net.GameUpdate.class).current();
+        red.send(new onitama.net.ActionRequest(redSync.matchId(), redSync.nextSequence(), redUpdate.view().revision(),
+                new onitama.core.duel.GameAction.ConfirmOpening(java.util.List.of())));
+        var finalRed = red.expect(onitama.net.GameUpdate.class).current();
+        red.expect(onitama.net.ActionReply.class);
+        var finalBlue = blue.expect(onitama.net.GameUpdate.class).current();
+        org.junit.jupiter.api.Assertions.assertEquals(onitama.core.duel.TurnPhase.MOVEMENT, finalBlue.view().phase());
+        return new onitama.net.MatchSync[]{finalBlue, finalRed};
     }
 
     /** Sends one message. */

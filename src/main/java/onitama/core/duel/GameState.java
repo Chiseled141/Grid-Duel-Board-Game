@@ -22,7 +22,12 @@ public final class GameState {
     private final List<String> movementDeck;
     private final List<CardInstance> skillDeck;
     private final List<CardInstance> spentSkills;
+    private final List<CardInstance> destroyedSkills = new ArrayList<>();
+    private final List<CardInstance> blueBurnedDraws = new ArrayList<>();
+    private final List<CardInstance> redBurnedDraws = new ArrayList<>();
+    private List<CardInstance> blueIntel = List.of(), redIntel = List.of();
     private int blueScore, redScore;
+    private boolean blueOpeningConfirmed, redOpeningConfirmed;
     private int blueMana;
     private int redMana;
     private PlayerColor turn;
@@ -89,6 +94,11 @@ public final class GameState {
      * Creates an independent deep copy of another state, including board, collections and RNG.
      */
     GameState(GameState other) {
+        this.destroyedSkills.addAll(other.destroyedSkills);
+        this.blueIntel = other.blueIntel;
+        this.redIntel = other.redIntel;
+        this.blueOpeningConfirmed = other.blueOpeningConfirmed;
+        this.redOpeningConfirmed = other.redOpeningConfirmed;
         this.blueScore = other.blueScore;
         this.redScore = other.redScore;
         this.objectives = other.objectives;
@@ -113,8 +123,58 @@ public final class GameState {
         this.outcome = other.outcome;
     }
 
+    /** Permanently destroyed overflow draws, retained only by the host for conservation. */
+    public List<CardInstance> destroyedSkills() { return List.copyOf(destroyedSkills); }
+
+    /** Only the drawing player receives these identities for the current accepted action. */
+    public List<CardInstance> burnedDrawsFor(PlayerColor viewer) {
+        return List.copyOf(viewer == PlayerColor.BLUE ? blueBurnedDraws : redBurnedDraws);
+    }
+
+    /** Private snapshot granted by Espionage, valid through the caster's current turn. */
+    public List<CardInstance> intelFor(PlayerColor viewer) {
+        return viewer == PlayerColor.BLUE ? blueIntel : redIntel;
+    }
+
+    void revealEnemyHand(PlayerColor actor) {
+        List<CardInstance> snapshot = List.copyOf(mutableSkillHand(actor.opponent()));
+        if (actor == PlayerColor.BLUE) blueIntel = snapshot; else redIntel = snapshot;
+    }
+
+    void clearIntel() { blueIntel = List.of(); redIntel = List.of(); }
+
+    void drawSkills(PlayerColor actor, int count, List<PublicEvent> events) {
+        for (int i = 0; i < count && !skillDeck.isEmpty(); i++) {
+            CardInstance drawn = skillDeck.remove(0);
+            if (mutableSkillHand(actor).size() < 6) {
+                mutableSkillHand(actor).add(drawn);
+            } else {
+                destroyedSkills.add(drawn);
+                (actor == PlayerColor.BLUE ? blueBurnedDraws : redBurnedDraws).add(drawn);
+                events.add(new PublicEvent.CardBurned(actor));
+            }
+        }
+    }
+
+    void spendSkill(PlayerColor actor, String instanceId) {
+        CardInstance card = mutableSkillHand(actor).stream()
+                .filter(c -> c.instanceId().equals(instanceId)).findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("Skill is not held"));
+        mutableSkillHand(actor).remove(card);
+        spentSkills.add(card);
+    }
+
     /** Public layout fixed for the lifetime of this match. */
     public ObjectiveLayout objectives() { return objectives; }
+
+    /** Whether this player has committed the one-time opening choice. */
+    public boolean openingConfirmed(PlayerColor color) {
+        return color == PlayerColor.BLUE ? blueOpeningConfirmed : redOpeningConfirmed;
+    }
+
+    void confirmOpening(PlayerColor color) {
+        if (color == PlayerColor.BLUE) blueOpeningConfirmed = true; else redOpeningConfirmed = true;
+    }
 
     public RulesConfig rules() { return rules; }
     public Board board() { return board; }
@@ -170,28 +230,12 @@ public final class GameState {
      * appends it to the public spent pile, and draws one replacement from index 0 of the
      * skill deck if nonempty.
      *
-     * <p>Note: Skill casting is not integrated yet. This operation is invoked by the later
-     * skill resolver after effect validation.
+     * Used for Foresight, whose committed choice resolves before normal replacement.
      *
      * @throws IllegalArgumentException if the specified instance is not held in the player's skill hand
      */
     void consumeHeldSkill(PlayerColor player, String skillInstanceId) {
-        List<CardInstance> hand = mutableSkillHand(player);
-        int foundIndex = -1;
-        for (int i = 0; i < hand.size(); i++) {
-            if (hand.get(i).instanceId().equals(skillInstanceId)) {
-                foundIndex = i;
-                break;
-            }
-        }
-        if (foundIndex < 0) {
-            throw new IllegalArgumentException("skill instance not in " + player + " hand: " + skillInstanceId);
-        }
-        CardInstance spent = hand.remove(foundIndex);
-        spentSkills.add(spent);
-        if (!skillDeck.isEmpty()) {
-            CardInstance replacement = skillDeck.remove(0);
-            hand.add(replacement);
-        }
+        spendSkill(player, skillInstanceId);
+        drawSkills(player, 1, new ArrayList<>());
     }
 }

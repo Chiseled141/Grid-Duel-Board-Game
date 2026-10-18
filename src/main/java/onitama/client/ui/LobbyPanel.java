@@ -168,6 +168,11 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
 
     @Override public void doLayout() {
         super.doLayout();
+        if (currentPage.equals("home")) {
+            int offset = Math.min(16, Math.max(0,
+                    getHeight() - getInsets().bottom - surface.getY() - surface.getHeight()));
+            surface.setLocation(surface.getX(), surface.getY() + offset);
+        }
         int ratingWidth = rating.getPreferredSize().width;
         int width = Math.min(profile.getPreferredSize().width, Math.max(0, getWidth() - 122 - ratingWidth));
         // Align the account pair with the floating sound button without a header bar.
@@ -521,17 +526,20 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
         return label;
     }
 
-    private static JButton smallButton(String text, Runnable action) {
+    static JButton smallButton(String text, Runnable action) {
         JButton button = new MenuAction(text, action, false);
+        button.putClientProperty("menu.compactBack", Boolean.TRUE);
         button.setFont(Theme.normal(13f));
-        button.setPreferredSize(new Dimension(292, 30));
-        button.setBorder(BorderFactory.createEmptyBorder(4, 0, 4, 0));
+        button.setPreferredSize(new Dimension(90, 36));
+        button.setBorder(BorderFactory.createEmptyBorder(4, 10, 4, 10));
         return button;
     }
 
     private static void line(JPanel page, JComponent component) {
         component.setAlignmentX(Component.LEFT_ALIGNMENT);
-        component.setMaximumSize(new Dimension(Integer.MAX_VALUE, component.getPreferredSize().height));
+        int width = Boolean.TRUE.equals(component.getClientProperty("menu.compactBack"))
+                ? component.getPreferredSize().width : Integer.MAX_VALUE;
+        component.setMaximumSize(new Dimension(width, component.getPreferredSize().height));
         page.add(component);
     }
 
@@ -692,6 +700,13 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
                 boolean highlight = isEnabled() && (managed
                         ? Boolean.TRUE.equals(getClientProperty(MenuNavigation.ACTIVE))
                         : getModel().isRollover() || isFocusOwner() || isSelected());
+                if (Boolean.TRUE.equals(getClientProperty("menu.compactBack"))) {
+                    g.setColor(new Color(25, 30, 27, highlight ? 170 : 115));
+                    g.fillRoundRect(1, 1, getWidth() - 3, getHeight() - 3, 8, 8);
+                    g.setColor(highlight ? new Color(255, 216, 143, 220) : new Color(255, 238, 200, 85));
+                    g.setStroke(new BasicStroke(1.2f));
+                    g.drawRoundRect(1, 1, getWidth() - 3, getHeight() - 3, 8, 8);
+                }
                 g.setFont(highlight && !managed ? Theme.bold(getFont().getSize2D()) : getFont());
                 FontMetrics metrics = g.getFontMetrics();
                 int x = getInsets().left;

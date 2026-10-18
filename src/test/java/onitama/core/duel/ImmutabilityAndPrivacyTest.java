@@ -29,7 +29,7 @@ class ImmutabilityAndPrivacyTest {
         int originalBlueMana = original.blueMana();
         int originalRedMana = original.redMana();
         List<String> originalHand = actor == PlayerColor.BLUE ? original.blueMovementHand() : original.redMovementHand();
-        String originalFirstCard = originalHand.get(0);
+        List<String> originalHandCopy = List.copyOf(originalHand);
         Square originalPieceLoc = original.board().findPiece(actor == PlayerColor.BLUE ? 0 : 6);
 
         PlayerView view = RulesEngine.viewFor(original, actor);
@@ -42,7 +42,7 @@ class ImmutabilityAndPrivacyTest {
         assertEquals(originalRev, original.revision());
         assertEquals(originalBlueMana, original.blueMana());
         assertEquals(originalRedMana, original.redMana());
-        assertEquals(originalFirstCard, originalHand.get(0));
+        assertEquals(originalHandCopy, originalHand);
         assertEquals(originalPieceLoc, original.board().findPiece(actor == PlayerColor.BLUE ? 0 : 6));
         assertEquals(TurnPhase.MOVEMENT, original.phase());
     }
@@ -57,9 +57,7 @@ class ImmutabilityAndPrivacyTest {
         PlayerColor actorA = stateA.turn();
 
         // Illegal move (off-board)
-        GameAction.MovePiece illegalMove = new GameAction.MovePiece(
-                actorA == PlayerColor.BLUE ? stateA.blueMovementHand().get(0) : stateA.redMovementHand().get(0),
-                actorA == PlayerColor.BLUE ? 0 : 6,
+        GameAction.MovePiece illegalMove = new GameAction.MovePiece(actorA == PlayerColor.BLUE ? 0 : 6,
                 new Square(0, -1));
         ActionResult rejectRes = RulesEngine.apply(stateA, actorA, illegalMove);
         assertTrue(rejectRes instanceof ActionResult.Rejected);

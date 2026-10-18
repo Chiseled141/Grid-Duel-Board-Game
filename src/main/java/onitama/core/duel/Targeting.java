@@ -7,8 +7,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.stream.Collectors;
-import onitama.core.Card;
 import onitama.core.Offset;
 import onitama.core.PlayerColor;
 import onitama.core.Square;
@@ -34,13 +32,6 @@ public final class Targeting {
         }
 
         PlayerColor mover = view.viewer();
-        List<String> handIds = mover == PlayerColor.BLUE
-                ? view.blueMovementHand()
-                : view.redMovementHand();
-
-        Map<String, Card> cardCatalog = view.rules().movementCards().stream()
-                .collect(Collectors.toMap(Card::id, c -> c));
-
         Map<Square, PlayerColor> occupied = new HashMap<>();
         List<PlacedPiece> friendlyPieces = new ArrayList<>();
         for (PlacedPiece pp : view.pieces()) {
@@ -51,22 +42,12 @@ public final class Targeting {
         }
 
         List<GameAction.MovePiece> moves = new ArrayList<>();
-        for (String cardId : handIds) {
-            Card card = cardCatalog.get(cardId);
-            if (card == null) continue;
-
-            for (PlacedPiece piece : friendlyPieces) {
-                Square origin = piece.square();
-                for (Offset offset : card.offsets()) {
-                    Offset effective = mover == PlayerColor.BLUE ? offset : offset.rotate180();
-                    Square dest = origin.plus(effective);
-                    if (Board.isInside(dest)) {
-                        PlayerColor destColor = occupied.get(dest);
-                        if (destColor == null || destColor != mover) {
-                            moves.add(new GameAction.MovePiece(card.id(), piece.piece().id(), dest));
-                        }
-                    }
-                }
+        for (PlacedPiece piece : friendlyPieces) {
+            for (Offset offset : List.of(new Offset(1, 0), new Offset(-1, 0),
+                    new Offset(0, 1), new Offset(0, -1))) {
+                Square dest = piece.square().plus(offset);
+                if (Board.isInside(dest) && occupied.get(dest) != mover)
+                    moves.add(new GameAction.MovePiece(piece.piece().id(), dest));
             }
         }
 
@@ -154,7 +135,13 @@ public final class Targeting {
             case "transposition" -> skillOptionsTransposition(def, currentDraft, actor, bySquare, byId, view.pieces());
             case "gust" -> skillOptionsGust(def, currentDraft, actor, bySquare, byId);
             case "banish" -> skillOptionsBanish(currentDraft, actor, bySquare, byId);
-            case "mana-surge", "refocus", "foresight" -> skillOptionsNone(currentDraft);
+            case "steal", "spy", "sabotage" -> view.opponentSkillCount() == 0
+                    ? SelectionOptions.error(ActionError.INVALID_TARGETS) : skillOptionsNone(currentDraft);
+            case "barter" -> view.opponentSkillCount() == 0 || view.ownSkillHand().size() < 2
+                    ? SelectionOptions.error(ActionError.INVALID_TARGETS) : skillOptionsNone(currentDraft);
+            case "siphon" -> (actor == PlayerColor.BLUE ? view.redMana() : view.blueMana()) == 0
+                    ? SelectionOptions.error(ActionError.INVALID_TARGETS) : skillOptionsNone(currentDraft);
+            case "mana-surge", "refocus", "foresight", "draw-two" -> skillOptionsNone(currentDraft);
             default -> SelectionOptions.error(ActionError.INVALID_TARGETS);
         };
     }

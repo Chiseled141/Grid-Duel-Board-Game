@@ -15,7 +15,14 @@ public sealed interface PublicEvent permits
         PublicEvent.MovementPlayed,
         PublicEvent.SkillCommitted,
         PublicEvent.TurnStarted,
-        PublicEvent.MatchEnded {
+        PublicEvent.MatchEnded,
+        PublicEvent.CardBurned {
+
+    /** A public overflow notification with no hidden card identity. */
+    record CardBurned(PlayerColor actor) implements PublicEvent, Serializable {
+        @Serial private static final long serialVersionUID = 1L;
+        public CardBurned { Objects.requireNonNull(actor); }
+    }
 
     record PieceMoved(int pieceId, Square from, Square to) implements PublicEvent, Serializable {
         @Serial private static final long serialVersionUID = 1L;

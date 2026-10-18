@@ -327,7 +327,7 @@ public final class ClientModel {
             if (practiceState == null || matchOver) {
                 return false;
             }
-            if (practiceState.turn() != PlayerColor.BLUE) {
+            if (practiceState.turn() != PlayerColor.BLUE && practiceState.phase() != TurnPhase.OPENING) {
                 return false;
             }
             PlayerView before = currentSync != null ? currentSync.view() : null;
@@ -345,7 +345,7 @@ public final class ClientModel {
             }
             long nextSeq = (currentSync != null ? currentSync.nextSequence() : 1L) + 1;
             PlayerView after = RulesEngine.viewFor(practiceState, PlayerColor.BLUE);
-            this.currentSync = new MatchSync("practice", "PRACTICE", after, false, nextSeq);
+            this.currentSync = new MatchSync(currentSync.matchId(), "PRACTICE", after, false, nextSeq);
             this.lastPresentedRevision = after.revision();
             this.priorViewForPresentation = after;
             clearSelection();
@@ -354,7 +354,7 @@ public final class ClientModel {
             fire(listener -> listener.onAcceptedPresentation(before, after, events));
             if (practiceState.outcome() != null) {
                 announcePracticeGameOver();
-            } else if (practiceState.turn() == PlayerColor.RED) {
+            } else {
                 scheduleBotTurn();
             }
             return true;
@@ -417,8 +417,7 @@ public final class ClientModel {
             if (highlightedTargets.contains(clicked)) {
                 List<GameAction.MovePiece> legal = Targeting.legalMoves(view);
                 for (GameAction.MovePiece m : legal) {
-                    if (m.movementCardId().equals(selectedCardId)
-                            && (selectedPieceId == null || m.pieceId() == selectedPieceId)
+                    if (selectedPieceId != null && m.pieceId() == selectedPieceId
                             && m.to().equals(clicked)) {
                         sendAction(m);
                         clearSelection();
@@ -521,10 +520,7 @@ public final class ClientModel {
         List<GameAction.MovePiece> legal = Targeting.legalMoves(view);
         List<Square> dests = new ArrayList<>();
         for (GameAction.MovePiece m : legal) {
-            if (selectedCardId != null && !m.movementCardId().equals(selectedCardId)) {
-                continue;
-            }
-            if (selectedPieceId != null && m.pieceId() != selectedPieceId) {
+            if (selectedPieceId == null || m.pieceId() != selectedPieceId) {
                 continue;
             }
             if (!dests.contains(m.to())) {
@@ -772,10 +768,10 @@ public final class ClientModel {
         this.practiceDifficulty = difficulty != null ? difficulty : Difficulty.ROOKIE;
         this.practiceRandom = new Random(seed);
         RulesConfig rules = RulesConfigLoader.load(null);
-        this.practiceState = RulesEngine.newGame(rules, seed);
-        this.currentSync = new MatchSync("practice", "PRACTICE",
+        this.practiceState = RulesEngine.newOpeningGame(rules, seed);
+        this.currentSync = new MatchSync("practice-" + java.util.UUID.randomUUID(), "PRACTICE",
                 RulesEngine.viewFor(practiceState, PlayerColor.BLUE), false, 1L);
-        this.presentationMatchId = "practice";
+        this.presentationMatchId = currentSync.matchId();
         this.lastPresentedRevision = 0;
         this.priorViewForPresentation = currentSync.view();
         this.inFlightRequest = null;
@@ -787,6 +783,7 @@ public final class ClientModel {
     }
 
     private boolean matchEntryPending;
+    private boolean openingPresentationPending;
 
     /** Holds local practice turns while the match-entry screen is visible. */
     public void setMatchEntryPending(boolean pending) {
@@ -795,8 +792,26 @@ public final class ClientModel {
         else if (screen == Screen.GAME) scheduleBotTurn();
     }
 
+    /** Holds practice gameplay until the opening cards land; the bot may still confirm its hand. */
+    public void setOpeningPresentationPending(boolean pending) {
+        if (openingPresentationPending == pending) return;
+        openingPresentationPending = pending;
+        if (pending && practiceState != null && practiceState.phase() != TurnPhase.OPENING) stopBotTimer();
+        else if (!pending && screen == Screen.GAME) scheduleBotTurn();
+    }
+
+    private boolean openingAllowsBotAction() {
+        return !openingPresentationPending || practiceState.phase() == TurnPhase.OPENING;
+    }
+
+    private boolean botNeedsAction() {
+        return practiceState.phase() == TurnPhase.OPENING
+                ? !practiceState.openingConfirmed(PlayerColor.RED) : practiceState.turn() == PlayerColor.RED;
+    }
+
     private void scheduleBotTurn() {
-        if (!matchEntryPending && screen == Screen.GAME && practiceMode && practiceState != null && practiceState.turn() == PlayerColor.RED
+        if (!matchEntryPending && screen == Screen.GAME && practiceMode && practiceState != null
+                && openingAllowsBotAction() && botNeedsAction()
                 && practiceState.outcome() == null) {
             botTimer.restart();
         }
@@ -807,7 +822,8 @@ public final class ClientModel {
     }
 
     void stepBot() {
-        if (matchEntryPending || screen != Screen.GAME || !practiceMode || practiceState == null || practiceState.turn() != PlayerColor.RED
+        if (matchEntryPending || screen != Screen.GAME || !practiceMode || practiceState == null
+                || !openingAllowsBotAction() || !botNeedsAction()
                 || practiceState.outcome() != null) {
             return;
         }
@@ -827,7 +843,7 @@ public final class ClientModel {
             }
             long nextSeq = (currentSync != null ? currentSync.nextSequence() : 1L) + 1;
             PlayerView after = RulesEngine.viewFor(practiceState, PlayerColor.BLUE);
-            this.currentSync = new MatchSync("practice", "PRACTICE", after, false, nextSeq);
+            this.currentSync = new MatchSync(currentSync.matchId(), "PRACTICE", after, false, nextSeq);
             this.lastPresentedRevision = after.revision();
             this.priorViewForPresentation = after;
             clearSelection();
@@ -836,7 +852,7 @@ public final class ClientModel {
             fire(listener -> listener.onAcceptedPresentation(before, after, events));
             if (practiceState.outcome() != null) {
                 announcePracticeGameOver();
-            } else if (practiceState.turn() == PlayerColor.RED) {
+            } else {
                 scheduleBotTurn();
             }
         }
@@ -869,6 +885,7 @@ public final class ClientModel {
     private void clearMatchState() {
         fire(ClientModelListener::onPresentationReset);
         stopBotTimer();
+        openingPresentationPending = false;
         practiceMode = false;
         practiceState = null;
         practiceRandom = null;

@@ -53,8 +53,8 @@ class MatchChatTest {
         blue.send(new CreateMatchRequest());
         red.send(new JoinMatchRequest(blue.expect(MatchCreated.class).roomCode()));
         var sync = blue.expect(MatchSync.class);
-        red.expect(MatchSync.class);
-        return sync;
+        var redSync = red.expect(MatchSync.class);
+        return ScriptedClient.keepOpening(blue, red, sync, redSync)[0];
     }
 
     @Test
@@ -73,7 +73,7 @@ class MatchChatTest {
         outsider.expect(ErrorMessage.class);
         var mover = sync.view().turn() == PlayerColor.BLUE ? blue : red;
         var other = mover == blue ? red : blue;
-        mover.send(new ActionRequest(sync.matchId(), 1, sync.view().revision(), new GameAction.EndTurn()));
+        mover.send(new ActionRequest(sync.matchId(), 2, sync.view().revision(), new GameAction.EndTurn()));
         var update = mover.expect(GameUpdate.class);
         assertEquals(sync.view().revision() + 1, update.current().view().revision());
         assertTrue(mover.expect(ActionReply.class).receipt().accepted());
@@ -140,7 +140,7 @@ class MatchChatTest {
         assertTrue(paused.paused());
         blue.send(new ChatRequest(sync.matchId(), "hello"));
         blue.expect(ErrorMessage.class);
-        blue.send(new ActionRequest(sync.matchId(), 1, sync.view().revision(), new GameAction.Resign()));
+        blue.send(new ActionRequest(sync.matchId(), 2, sync.view().revision(), new GameAction.Resign()));
         blue.expect(GameUpdate.class);
         blue.expect(ActionReply.class);
         blue.expect(GameOver.class);

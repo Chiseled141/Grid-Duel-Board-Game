@@ -99,10 +99,7 @@ class AnimationSequenceTest {
             SwingUtilities.invokeAndWait(() -> {
                 var ui = ref[0];
                 @SuppressWarnings("unchecked") var flights = (List<DeckDrawOverlay.Flight>) field(ui.draws, "flights");
-                assertEquals(1, flights.size(), "newer authoritative revisions must not suppress the queued draw");
-                var deck = (DeckStackPanel) field(ui.panel, "opponentDrawPile");
-                assertEquals(SwingUtilities.convertRectangle(deck, deck.topBounds(), ui.draws), flights.get(0).source().get());
-                ui.clock.set(500_000_000); ui.draws.tick(); assertTrue(ui.draws.isFlyingTo(flights.get(0).key()));
+                assertTrue(flights.isEmpty(), "basic movement never draws cards; skill draw stays queued");
                 advance(ui);
                 assertTrue(((CardPlayOverlay) field(ui.panel, "playOverlay")).busy());
                 assertEquals(fixture.skill.nextState().board().placedPieces(), field(field(ui.panel, "boardPanel"), "pieces"));

@@ -15,23 +15,22 @@ final class CardDraws {
     static List<Draw> between(PlayerView before, PlayerView after, List<PublicEvent> events) {
         if (after.revision() <= before.revision() || after.viewer() != before.viewer()) return List.of();
         var draws = new ArrayList<Draw>();
-        for (PublicEvent event : events) {
-            if (event instanceof PublicEvent.MovementPlayed played) {
-                // The engine appends the replacement, including when it draws the same card again.
-                draws.add(new Draw(true, played.actor(), moves(after, played.actor()).size() - 1));
-            } else if (event instanceof PublicEvent.SkillCommitted skill
-                    && skill.skill().definitionId().equals("refocus")) {
-                for (int i = 0; i < moves(after, skill.actor()).size(); i++)
-                    draws.add(new Draw(true, skill.actor(), i));
+        PlayerColor actor = before.turn();
+        if (actor == after.viewer()) {
+            var oldIds = before.ownSkillHand().stream().map(c -> c.instanceId()).toList();
+            for (int slot = 0; slot < after.ownSkillHand().size(); slot++) {
+                if (!oldIds.contains(after.ownSkillHand().get(slot).instanceId()))
+                    draws.add(new Draw(false, actor, slot));
             }
-        }
-        // Consumption appends a spent skill and removes one deck card if a replacement exists.
-        // This also catches Foresight resolution, whose accepted event list is empty.
-        if (after.spentSkills().size() > before.spentSkills().size()
-                && after.skillDeckCount() < before.skillDeckCount()) {
-            PlayerColor actor = before.turn();
-            int size = actor == after.viewer() ? after.ownSkillHand().size() : after.opponentSkillCount();
-            if (size > 0) draws.add(new Draw(false, actor, size - 1));
+        } else {
+            long burns = events.stream().filter(e -> e instanceof PublicEvent.CardBurned).count();
+            int received = Math.max(0, before.skillDeckCount() - after.skillDeckCount() - (int) burns);
+            // Theft transfers one concealed card without drawing from the shared deck.
+            if (events.stream().anyMatch(e -> e instanceof PublicEvent.SkillCommitted sc
+                    && sc.skill().definitionId().equals("steal"))) received = 1;
+            received = Math.min(received, after.opponentSkillCount());
+            for (int slot = after.opponentSkillCount() - received; slot < after.opponentSkillCount(); slot++)
+                draws.add(new Draw(false, actor, slot));
         }
         return List.copyOf(draws);
     }
