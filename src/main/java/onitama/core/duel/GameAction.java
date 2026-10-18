@@ -10,6 +10,7 @@ import onitama.core.Square;
  *
  */
 public sealed interface GameAction permits
+        GameAction.ConfirmOpening,
         GameAction.MovePiece,
         GameAction.SkipMovement,
         GameAction.CastSkill,
@@ -17,10 +18,20 @@ public sealed interface GameAction permits
         GameAction.EndTurn,
         GameAction.Resign {
 
-    record MovePiece(String movementCardId, int pieceId, Square to) implements GameAction, Serializable {
+    /** Confirms the locally marked opening skills; empty means keep all. */
+    record ConfirmOpening(java.util.List<String> replaceInstanceIds) implements GameAction, Serializable {
+        @Serial private static final long serialVersionUID = 1L;
+        public ConfirmOpening {
+            replaceInstanceIds = java.util.List.copyOf(Objects.requireNonNull(replaceInstanceIds));
+            if (replaceInstanceIds.size() > 6) throw new IllegalArgumentException("At most six replacements");
+            if (replaceInstanceIds.stream().anyMatch(id -> id.isBlank() || id.length() > 64))
+                throw new IllegalArgumentException("Invalid skill identity");
+        }
+    }
+
+    record MovePiece(int pieceId, Square to) implements GameAction, Serializable {
         @Serial private static final long serialVersionUID = 1L;
         public MovePiece {
-            Objects.requireNonNull(movementCardId, "movementCardId must not be null");
             Objects.requireNonNull(to, "to must not be null");
         }
     }

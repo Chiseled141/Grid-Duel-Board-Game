@@ -59,8 +59,7 @@ class PresentationRegressionTest {
             var move = moves.get(0);
             var result = (ActionResult.Accepted) RulesEngine.apply(state, state.turn(), move);
             var after = RulesEngine.viewFor(result.nextState(), state.turn());
-            if (ownMoves(after).contains(move.movementCardId()) == redrawSame)
-                return new ActionFixture(before, after, result.events());
+            return new ActionFixture(before, after, result.events());
         }
         throw new AssertionError("No deterministic movement fixture");
     }
@@ -115,7 +114,7 @@ class PresentationRegressionTest {
                 assertFalse(play(ui).busy(), "movement does not fly into the skill-only display");
                 assertNull(field(field(ui.panel, "ownPlay"), "face"));
                 assertNotNull(ui.model.lastMoveFrom()); assertNotNull(ui.model.lastMoveTo());
-                assertEquals(5, ui.hand.getComponentCount(), "decoration cannot intercept clicks as a child");
+                assertEquals(3, ui.hand.getComponentCount(), "decoration cannot intercept clicks as a child");
                 play(ui).cancel();
                 assertFalse(play(ui).busy());
                 assertEquals(f.after.ownSkillHand(), ((List<?>) field(ui.hand, "cards")).stream()
@@ -219,7 +218,7 @@ class PresentationRegressionTest {
     @Test void acceptedActionKeepsFreshReflowInVisibleHand() throws Exception {
         org.junit.jupiter.api.Assumptions.assumeFalse(java.awt.GraphicsEnvironment.isHeadless());
         SwingUtilities.invokeAndWait(() -> {
-            var f = movement(false); var ui = ui(f.before);
+            var f = skill(); var ui = ui(f.before);
             JFrame frame = new JFrame("Animation reflow regression");
             try {
                 frame.setContentPane(ui.panel);
@@ -231,7 +230,7 @@ class PresentationRegressionTest {
                 Timer reflow = (Timer) field(ui.hand, "reflowTimer");
                 assertNotNull(reflow, "a visible replacement starts reflow");
                 assertTrue(reflow.isRunning(), "accepted-event cleanup must not cancel the new reflow");
-                assertFalse(play(ui).busy(), "movement retains reflow without a skill-play flight");
+                assertTrue(play(ui).busy(), "skill flight and hand reflow coexist");
             } finally { frame.dispose(); }
         });
     }
@@ -276,7 +275,7 @@ class PresentationRegressionTest {
                     assertNull(area.getToolTipText(), "concealed/in-flight cards cannot expose details");
                     play(ui).cancel();
                     String expected = skill ? onitama.config.SkillText.render(rules.skill("mana-surge"))
-                            : CardArt.nameFor(onitama.core.CardDeck.cardById(((GameAction.MovePiece) action).movementCardId())).toUpperCase();
+                            : "MOVE";
                     if (skill) assertTrue(area.getToolTipText().contains(expected));
                     else {
                         assertNull(area.getToolTipText());

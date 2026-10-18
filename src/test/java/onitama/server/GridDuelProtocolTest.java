@@ -75,14 +75,14 @@ class GridDuelProtocolTest {
     }
 
     @Test
-    void handshakeNegotiatesProtocolVersion4() throws Exception {
+    void handshakeNegotiatesProtocolVersion6() throws Exception {
         client1 = new ScriptedClient(port, false);
         ErrorMessage greeting = client1.expect(ErrorMessage.class);
-        assertEquals("GRID_DUEL_PROTOCOL:4", greeting.text());
+        assertEquals("GRID_DUEL_PROTOCOL:6", greeting.text());
 
-        client1.send(new ProtocolHello(4));
+        client1.send(new ProtocolHello(6));
         ProtocolReady ready = client1.expect(ProtocolReady.class);
-        assertEquals(4, ready.version());
+        assertEquals(6, ready.version());
 
         client1.send(new RegisterRequest("user101", "password123"));
         LoginResponse response = client1.expectLoginOk();
@@ -90,11 +90,11 @@ class GridDuelProtocolTest {
     }
 
     @org.junit.jupiter.params.ParameterizedTest
-    @org.junit.jupiter.params.provider.ValueSource(ints = {2, 3, 99})
+    @org.junit.jupiter.params.provider.ValueSource(ints = {2, 3, 4, 99})
     void handshakeRejectsMismatchedVersion(int version) throws Exception {
         client1 = new ScriptedClient(port, false);
         ErrorMessage greeting = client1.expect(ErrorMessage.class);
-        assertEquals("GRID_DUEL_PROTOCOL:4", greeting.text());
+        assertEquals("GRID_DUEL_PROTOCOL:6", greeting.text());
 
         client1.send(new ProtocolHello(version));
         ErrorMessage err = client1.expect(ErrorMessage.class);
@@ -106,7 +106,7 @@ class GridDuelProtocolTest {
     void handshakeRejectsPreHandshakeCommands() throws Exception {
         client1 = new ScriptedClient(port, false);
         ErrorMessage greeting = client1.expect(ErrorMessage.class);
-        assertEquals("GRID_DUEL_PROTOCOL:4", greeting.text());
+        assertEquals("GRID_DUEL_PROTOCOL:6", greeting.text());
 
         // Attempting to log in before handshake
         client1.send(new LoginRequest("user1", "pw1"));
@@ -131,6 +131,8 @@ class GridDuelProtocolTest {
 
         MatchSync sync1 = client1.expect(MatchSync.class);
         MatchSync sync2 = client2.expect(MatchSync.class);
+        var ready = ScriptedClient.keepOpening(client1, client2, sync1, sync2);
+        sync1 = ready[0]; sync2 = ready[1];
         String matchId = sync1.matchId();
 
         ScriptedClient moverClient = sync1.view().turn() == PlayerColor.BLUE ? client1 : client2;
@@ -142,55 +144,55 @@ class GridDuelProtocolTest {
         assertFalse(legalMoves.isEmpty());
         GameAction.MovePiece move1 = legalMoves.get(0);
 
-        moverClient.send(new ActionRequest(matchId, 2L, moverSync.view().revision(), move1));
+        moverClient.send(new ActionRequest(matchId, 3L, moverSync.view().revision(), move1));
         ActionReply gapReply = moverClient.expect(ActionReply.class);
         assertFalse(gapReply.receipt().accepted());
         assertEquals(ActionError.SEQUENCE_GAP, gapReply.receipt().error());
-        assertEquals(1L, gapReply.current().nextSequence());
+        assertEquals(2L, gapReply.current().nextSequence());
 
         // 2. STALE REVISION: Send sequence 1 with revision + 1
-        moverClient.send(new ActionRequest(matchId, 1L, moverSync.view().revision() + 10, move1));
+        moverClient.send(new ActionRequest(matchId, 2L, moverSync.view().revision() + 10, move1));
         ActionReply staleReply = moverClient.expect(ActionReply.class);
         assertFalse(staleReply.receipt().accepted());
         assertEquals(ActionError.STALE_REVISION, staleReply.receipt().error());
         // Stale revision consumed sequence 1
-        assertEquals(2L, staleReply.current().nextSequence());
+        assertEquals(3L, staleReply.current().nextSequence());
 
         // 3. RETRY OF REJECTED SEQUENCE: Retransmit identical payload for sequence 1
-        moverClient.send(new ActionRequest(matchId, 1L, moverSync.view().revision() + 10, move1));
+        moverClient.send(new ActionRequest(matchId, 2L, moverSync.view().revision() + 10, move1));
         ActionReply retryStale = moverClient.expect(ActionReply.class);
         assertFalse(retryStale.receipt().accepted());
         assertEquals(ActionError.STALE_REVISION, retryStale.receipt().error());
 
         // 4. SEQUENCE CONFLICT: Retransmit sequence 1 with different payload
-        moverClient.send(new ActionRequest(matchId, 1L, moverSync.view().revision(), new GameAction.SkipMovement()));
+        moverClient.send(new ActionRequest(matchId, 2L, moverSync.view().revision(), new GameAction.SkipMovement()));
         ActionReply conflictReply = moverClient.expect(ActionReply.class);
         assertFalse(conflictReply.receipt().accepted());
         assertEquals(ActionError.SEQUENCE_CONFLICT, conflictReply.receipt().error());
 
         // 5. SUCCESSFUL ACTION on sequence 2
-        moverClient.send(new ActionRequest(matchId, 2L, moverSync.view().revision(), move1));
+        moverClient.send(new ActionRequest(matchId, 3L, moverSync.view().revision(), move1));
         GameUpdate update1 = moverClient.expect(GameUpdate.class);
         ActionReply okReply = moverClient.expect(ActionReply.class);
         otherClient.expect(GameUpdate.class);
         assertTrue(okReply.receipt().accepted());
-        assertEquals(1L, okReply.receipt().revision());
-        assertEquals(3L, okReply.current().nextSequence());
+        assertEquals(3L, okReply.receipt().revision());
+        assertEquals(4L, okReply.current().nextSequence());
 
         // 6. IDEMPOTENT RETRY OF ACCEPTED ACTION: Retransmit sequence 2 with exact same move
-        moverClient.send(new ActionRequest(matchId, 2L, moverSync.view().revision(), move1));
+        moverClient.send(new ActionRequest(matchId, 3L, moverSync.view().revision(), move1));
         ActionReply idempReply = moverClient.expect(ActionReply.class);
         assertTrue(idempReply.receipt().accepted());
-        assertEquals(1L, idempReply.receipt().revision());
-        assertEquals(3L, idempReply.current().nextSequence());
+        assertEquals(3L, idempReply.receipt().revision());
+        assertEquals(4L, idempReply.current().nextSequence());
 
         // Same action with a changed revision is a different request, not a retry.
-        moverClient.send(new ActionRequest(matchId, 2L, moverSync.view().revision() + 99, move1));
+        moverClient.send(new ActionRequest(matchId, 3L, moverSync.view().revision() + 99, move1));
         ActionReply changedRevision = moverClient.expect(ActionReply.class);
         assertFalse(changedRevision.receipt().accepted());
         assertEquals(ActionError.SEQUENCE_CONFLICT, changedRevision.receipt().error());
-        assertEquals(1L, changedRevision.current().view().revision());
-        assertEquals(3L, changedRevision.current().nextSequence());
+        assertEquals(3L, changedRevision.current().view().revision());
+        assertEquals(4L, changedRevision.current().nextSequence());
 
         // 7. OLD SEQUENCE: sequence 0 (older than nextSequence - 1)
         moverClient.send(new ActionRequest(matchId, 0L, 0L, move1));
@@ -276,6 +278,8 @@ class GridDuelProtocolTest {
 
             MatchSync s1 = c1.expect(MatchSync.class);
             MatchSync s2 = c2.expect(MatchSync.class);
+            var ready = ScriptedClient.keepOpening(c1, c2, s1, s2);
+            s1 = ready[0]; s2 = ready[1];
             String matchId = s1.matchId();
 
             ScriptedClient moverClient = s1.view().turn() == PlayerColor.BLUE ? c1 : c2;
@@ -284,7 +288,7 @@ class GridDuelProtocolTest {
             LoginResponse moverLogin = moverClient == c1 ? c1Login : c2Login;
 
             // Skip movement to enter SKILL phase
-            moverClient.send(new ActionRequest(matchId, 1L, moverSync.view().revision(), new GameAction.SkipMovement()));
+            moverClient.send(new ActionRequest(matchId, 2L, moverSync.view().revision(), new GameAction.SkipMovement()));
             GameUpdate up1 = moverClient.expect(GameUpdate.class);
             ActionReply rep1 = moverClient.expect(ActionReply.class);
             otherClient.expect(GameUpdate.class);
@@ -295,7 +299,7 @@ class GridDuelProtocolTest {
 
             // Cast Foresight
             String foresightId = rep1.current().view().ownSkillHand().get(0).instanceId();
-            moverClient.send(new ActionRequest(matchId, 2L, rep1.current().view().revision(),
+            moverClient.send(new ActionRequest(matchId, 3L, rep1.current().view().revision(),
                     new GameAction.CastSkill(foresightId, new onitama.core.duel.SkillTargets.None())));
             GameUpdate up2 = moverClient.expect(GameUpdate.class);
             ActionReply rep2 = moverClient.expect(ActionReply.class);
@@ -333,7 +337,7 @@ class GridDuelProtocolTest {
             List<String> order = restoredSync.view().ownChoice().preview().stream()
                     .map(CardInstance::instanceId)
                     .toList();
-            restoredMover.send(new ActionRequest(matchId, 3L, restoredSync.view().revision(),
+            restoredMover.send(new ActionRequest(matchId, 4L, restoredSync.view().revision(),
                     new GameAction.ResolveForesight(restoredSync.view().ownChoice().choiceId(), order)));
             GameUpdate resolveUp = restoredMover.expect(GameUpdate.class);
             ActionReply resolveRep = restoredMover.expect(ActionReply.class);

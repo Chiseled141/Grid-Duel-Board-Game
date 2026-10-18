@@ -27,6 +27,44 @@ classes and unused legacy mechanics have been removed.
   counts. Delegated implementations must use the state/action/view interfaces
   and exact message names in Step 3; do not invent competing contracts.
 
+## Adopted rules update — free movement and hand control (2026-10-18)
+
+This section supersedes all older movement-card and 24-skill rules/appendices below.
+Current rules: `grid-duel-v4`; current wire protocol: `GRID_DUEL_PROTOCOL:6`.
+
+- No movement cards, movement hands or movement deck. Select a friendly piece and
+  move exactly one square orthogonally, or skip; once per own movement phase.
+  Friendly landing is illegal; enemy landing captures. No movement draw or RNG.
+  Existing movement skills retain their own jumps, swaps and repositioning rules.
+- Shared skill catalog now has 30 definitions: the previous 24 plus Pilfer (`steal`,
+  cost 4), Espionage (`spy`, 2), Draw Two (`draw-two`, 2), Sabotage (`sabotage`, 3),
+  Barter (`barter`, 2), Siphon (`siphon`, 2). Each has one copy by default.
+- Hand limit is 6. A cast is validated, then its card leaves hand for public spent
+  before effects. Normally draw one replacement after effects. Effects/rejections
+  remain atomic and candidate RNG is never committed on rejection.
+- Pilfer steals a random opposing held skill instead of the normal replacement;
+  requires a nonempty opposing hand. The stolen identity is never a public event.
+- Espionage snapshots enemy skills privately for the caster until End Turn.
+  Reconnect restores the same permitted intel, never a fresh reveal or payment.
+- Draw Two draws up to 2 additional skills, then the normal replacement.
+- Refocus permanently discards all other held skills into public spent, draws that
+  many, then draws its normal replacement. Empty decks shrink the resulting hand.
+- Sabotage permanently discards one random enemy skill into public spent.
+- Barter exchanges one random other held skill with one random enemy skill;
+  requires both hands nonempty after the played card leaves. Then draws replacement.
+- Siphon transfers up to 2 enemy mana after payment, within the caster's cap;
+  requires a positive transfer. No board target is needed for these six skills.
+- Drawing at 6 held cards removes the top card permanently into the host-only
+  destroyed zone. Emit `CardBurned(actor)` without an identity. Only the drawer's
+  view contains `ownBurnedDraws` for that accepted action; the opponent sees backs
+  tearing. Never reveal destroyed identities in public spent. Counts/deck shrink
+  remain public. Reduced motion skips travel/tearing; it never changes destruction.
+- `PlayerView.revealedEnemySkills` contains only the caster's permitted intel.
+  Reserved movement fields remain empty/zero for source compatibility; no live
+  route uses them. `MovePiece` is `(pieceId, to)`. Config movement.handSize is 0.
+- Opening selection, skill targeting, objectives, mana defaults, victory, retry,
+  Foresight commitment, localhost-only hosting and DB transactions remain unchanged.
+
 ## 1. Product scope
 
 Two players control seven identical pieces each on a 7×7 board with three public objective squares. Reusable
@@ -129,6 +167,23 @@ An End Turn action skips any remaining optional phases. A player may end a turn 
 - The played card may be drawn again immediately. This follows the **return → shuffle → draw** ordering and must not be silently changed to a discard-pile system.
 - Each player keeps two movement cards. Skipping movement draws nothing.
 - Skill-generated movement does not consume or replace a movement card unless the skill explicitly says so; Refocus is such an exception.
+
+### Opening skill selection
+
+Live matches begin in OPENING before turn 1. Each player privately sees their three
+skills, may mark/unmark any subset for replacement locally, then confirms once
+(including keeping all). Marking alone sends no gameplay action. Either player
+may confirm irrespective of the selected starter. The host draws replacement
+instances from the remaining shared skill deck into the marked slots before
+returning the removed cards and shuffling, so a removed card cannot be its own
+replacement. Nothing is spent and mana/board/movement hands stay unchanged.
+Both confirmations are required before the starter receives first-turn mana and
+MOVEMENT begins. Confirmation is atomic, sequenced, retry-safe and reconnectable;
+views expose only own skills and the two confirmation flags. Practice and fleet
+bots use this same transition. Presentation deals skills from the own deck to
+three large preview slots, returns marked cards only after accepted confirmation,
+then draws replacements and transfers the final cards into the playable hand.
+Reduced motion skips flights; reconnect never resubmits a confirmed choice.
 
 ### 2.4 Skill use, mana, and replacement draws
 

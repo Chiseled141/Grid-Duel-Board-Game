@@ -1,4 +1,16 @@
 > Rules update: seven pieces, capture +1 score, two scoring squares on y=3 give +1 score each at own-turn start,
+
+## Current rules override (2026-10-18)
+
+See [free movement migration](handoffs/free-movement.md) and the authoritative
+spec's adopted update. grid-duel-v4 / protocol 6 replace movement cards with one
+optional orthogonal step and add hand-control skills. Thirty skill definitions,
+six-card hand cap. PlayerView appends revealedEnemySkills (caster-only until End
+Turn) and ownBurnedDraws (drawer-only, current accepted action). Overflow draws
+enter a host-private destroyed zone and publish only CardBurned(actor). MovePiece
+is (pieceId, to). Reserved movement fields are always empty/zero in live views.
+Older movement-card/deck descriptions below are historical and superseded.
+
 > two mana squares on y=2/y=4 give +1 mana each at own-turn start (capped),
 > with mirrored, randomly chosen columns fixed for the match, default target 8.
 > Elimination takes precedence over SCORE, then the existing completed-turn draw.
@@ -53,7 +65,7 @@ record RulesConfig(String rulesVersion, int movementHandSize, int skillHandSize,
                    List<Card> movementCards, List<SkillDefinition> skills, int scoreToWin) {}
 enum SkillCategory { MOVEMENT, ATTACK, CONTROL, RESOURCE }
 enum SkillParameter { DISTANCE, RANGE, MAX_TARGETS, REQUIRED_ALLIES, MANA_GAIN, LOOKAHEAD }
-enum TurnPhase { MOVEMENT, SKILL, CHOICE, END, FINISHED }
+enum TurnPhase { OPENING, MOVEMENT, SKILL, CHOICE, END, FINISHED }
 enum EndReason { ELIMINATION, SCORE, FORFEIT, DRAW }
 record GameOutcome(PlayerColor winner, EndReason reason) {}
 ```
@@ -64,7 +76,7 @@ Piece IDs 0–5 are Blue, 6–11 Red, assigned left-to-right along each starting
 
 Movement cards retain existing lowercase definition IDs and one copy each. Skill instances are `definitionId#ordinal`, ordinals starting at 1, e.g. `strike#1`. An instance occupies exactly one of hand/deck/spent. This distinction supports later configured multiple copies without confusing a held copy with another. Public skill definitions and copy counts are not secret; membership/order of hidden zones is secret. Do not expose instance IDs for opponent held cards. All definition and instance IDs are bounded to 64 characters.
 
-`RulesConfig` contains public definitions, never shuffled order, seed, hands or mutable configuration. Rules version is `grid-duel-v3`; protocol version is separately 4; config schema version is separately 1.
+`RulesConfig` contains public definitions, never shuffled order, seed, hands or mutable configuration. Rules version is `grid-duel-v3`; protocol version is separately 5; config schema version is separately 1.
 
 ## 3. Authoritative state and pure engine API
 
@@ -82,7 +94,7 @@ Movement cards retain existing lowercase definition IDs and one copy each. Skill
 | `blueScore`, `redScore` | Public running scores; copied with state and included in every PlayerView |
 | `blueMana`, `redMana` | Mana balances including any pending reserved mana |
 | `turn`, `phase` | Active color and phase |
-| `startedTurns`, `completedTurns` | Start at 1 and 0 after initial mana grant |
+| `startedTurns`, `completedTurns` | Both 0 during OPENING; 1 and 0 after both confirmations and the initial mana grant |
 | `revision` | Starts at 0; increments once per accepted player action or terminal host event |
 | `randomState` | Copyable private PRNG state; never serialized or exposed to a bot |
 | `pendingChoice` | Null or private PendingForesight |
@@ -108,6 +120,19 @@ sealed interface ActionResult {
 Setup random call order is movement shuffle, skill shuffle, alternating movement deal, alternating skill deal, then nextInt(2) for first player (0 Blue, 1 Red). Definitions are ordered by Appendix order before constructing decks; copies ordered by ordinal. On normal movement append the used card to the deck, shuffle, draw index 0. Refocus appends held cards in current hand order, shuffles once, draws two. Tests pin these operations to reproducible behavior.
 
 ## 4. Actions and phases
+
+Live routes use `newOpeningGame`, then `ConfirmOpening(List<String> replaceInstanceIds)`
+once per player, independent of the starter. The request list is bounded by six
+(configured maximum hand size); each ID must be held and unique. Draw into marked
+slots before returning/shuffling removed cards, never spending them. Empty means
+keep all. Validate before copying/mutating; rejected choices consume no RNG.
+Only both confirmations start MOVEMENT, turn 1 and its mana grant. Views expose
+own cards and two readiness booleans, never opponent selections. Retry/reconnect
+use the existing per-player sequence machinery. During OPENING only, a confirmation
+may use an older nonnegative expected revision because the other player's independent
+confirmation cannot change this player's hand; future revisions remain invalid.
+`newGame` remains an already-started position factory for pure simulations.
+
 
 ```java
 sealed interface GameAction {
@@ -198,7 +223,8 @@ record PlayerView(PlayerColor viewer, RulesConfig rules, long revision,
                   int blueMana, int redMana, int reservedMana,
                   int movementDeckCount, int skillDeckCount,
                   List<CardInstance> spentSkills, ForesightView ownChoice,
-                  GameOutcome outcome, int blueScore, int redScore, ObjectiveLayout objectives) {}
+                  GameOutcome outcome, int blueScore, int redScore, ObjectiveLayout objectives,
+                  boolean openingConfirmed, boolean opponentOpeningConfirmed) {}
 record ForesightView(long choiceId, String skillInstanceId, int reservedMana,
                      List<CardInstance> preview) {}
 ```
@@ -237,7 +263,7 @@ No cancellation after reveal. Reconnect restores the same pending choice. Discon
 
 ## 8. Wire contract, retries and compatibility
 
-Java object stream creation order remains output+flush, then input+filter. The first application message sent by the server is existing `ErrorMessage("GRID_DUEL_PROTOCOL:4")` as a backward-decodable greeting; the new client consumes this exact marker internally, never displays it as an error. Client responds with new `ProtocolHello(int version)`, server returns `ProtocolReady(int version)` when version=4. Do not send login/register/reconnect/game commands before readiness. Use a 5-second handshake deadline, then close with a clear incompatibility message. Old clients can decode the greeting and see a version hint; a new server rejects their pre-handshake login with an existing ErrorMessage. A new client talking to an old server times out locally with an upgrade message. This avoids sending an unknown class to an old deserializer merely to negotiate a version.
+Java object stream creation order remains output+flush, then input+filter. The first application message sent by the server is existing `ErrorMessage("GRID_DUEL_PROTOCOL:5")` as a backward-decodable greeting; the new client consumes this exact marker internally, never displays it as an error. Client responds with new `ProtocolHello(int version)`, server returns `ProtocolReady(int version)` when version=5. Do not send login/register/reconnect/game commands before readiness. Use a 5-second handshake deadline, then close with a clear incompatibility message. Old clients can decode the greeting and see a version hint; a new server rejects their pre-handshake login with an existing ErrorMessage. A new client talking to an old server times out locally with an upgrade message. This avoids sending an unknown class to an old deserializer merely to negotiate a version.
 
 New messages under `onitama.net`:
 
@@ -346,3 +372,7 @@ search acknowledgement can arrive late from another handler and must be ignored
 once the client is in a match. No socket writes hold the lobby monitor. No queue
 state is restored after disconnect; reconnect to an already formed match uses
 the existing token/MatchSync path. All gameplay contracts remain unchanged.
+
+Protocol 5 adds GameAction.ConfirmOpening and PlayerView readiness booleans.
+It retains Version 4 matchmaking messages, but old clients must upgrade because
+OPENING requires explicit confirmation before gameplay.

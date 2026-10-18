@@ -72,6 +72,10 @@ public final class BoardPanel extends JComponent {
     private final List<SkillCue> skillCues = new ArrayList<>();
     private static final long SKILL_CUE_MS = 520;
 
+    private record SkillImpact(String skillId, PlayerColor actor, onitama.core.duel.SkillCategory category,
+                               List<MovingPiece> moves, List<Square> targets, long started) { }
+    private final List<SkillImpact> skillImpacts = new ArrayList<>();
+
     private Timer animationTimer;
     private float selectionPulse;
     private Timer selectionPulseTimer;
@@ -281,6 +285,19 @@ public final class BoardPanel extends JComponent {
         repaint();
     }
 
+    /** Adds reusable board effects using only accepted public movement and elimination events. */
+    public void playSkillImpact(String skillId, PlayerColor actor, onitama.core.duel.SkillCategory category,
+                                List<MovingPiece> moves, List<Square> eliminated) {
+        if (reducedMotion || category == null || category == onitama.core.duel.SkillCategory.RESOURCE) return;
+        var targets = new java.util.LinkedHashSet<Square>(eliminated);
+        for (MovingPiece move : moves) targets.add(move.to());
+        if (targets.isEmpty()) return;
+        skillImpacts.add(new SkillImpact(skillId, actor, category, List.copyOf(moves), List.copyOf(targets),
+                animationClock.getAsLong()));
+        ensureAnimationTimer();
+        repaint();
+    }
+
     public void finishMoveAnimation() {
         movingPieces.clear();
         Runnable cb = moveAnimCallback;
@@ -300,6 +317,7 @@ public final class BoardPanel extends JComponent {
         movingPieces.clear();
         eliminationEffects.clear();
         skillCues.clear();
+        skillImpacts.clear();
         moveAnimCallback = null;
         repaint();
     }
@@ -319,7 +337,7 @@ public final class BoardPanel extends JComponent {
     }
 
     private void checkStopAnimationTimer() {
-        if (movingPieces.isEmpty() && eliminationEffects.isEmpty() && skillCues.isEmpty()) {
+        if (movingPieces.isEmpty() && eliminationEffects.isEmpty() && skillCues.isEmpty() && skillImpacts.isEmpty()) {
             if (animationTimer != null) {
                 animationTimer.stop();
             }
@@ -338,6 +356,7 @@ public final class BoardPanel extends JComponent {
         }
         eliminationEffects.removeIf(eff -> now - eff.startMillis() >= eff.durationMillis());
         skillCues.removeIf(cue -> now - cue.startMillis() >= cue.durationMillis());
+        skillImpacts.removeIf(impact -> now - impact.started() >= SKILL_CUE_MS);
         checkStopAnimationTimer();
         repaint();
     }
@@ -396,6 +415,8 @@ public final class BoardPanel extends JComponent {
         if (!eliminationEffects.isEmpty()) {
             drawEliminationEffects(g);
         }
+
+        drawSkillImpacts(g);
 
         if (!skillCues.isEmpty()) {
             drawSkillCues(g);
@@ -715,6 +736,131 @@ public final class BoardPanel extends JComponent {
             g.drawLine(cx - slash, cy - slash, cx + slash, cy + slash);
             g.drawLine(cx - slash, cy + slash, cx + slash, cy - slash);
         }
+    }
+
+    private void drawSkillImpacts(Graphics2D parent) {
+        for (SkillImpact impact : skillImpacts) {
+            double p = Math.max(0, (animationClock.getAsLong() - impact.started()) / (double) SKILL_CUE_MS);
+            if (p >= 1) continue;
+            Graphics2D g = (Graphics2D) parent.create();
+            try {
+                g.clipRect(originX, originY, cell * BOARD_SIZE, cell * BOARD_SIZE);
+                Color accent = switch (impact.category()) {
+                    case MOVEMENT -> new Color(111, 224, 244);
+                    case ATTACK -> new Color(255, 170, 86);
+                    case CONTROL -> new Color(192, 151, 255);
+                    case RESOURCE -> Theme.AMBER;
+                };
+                float opacity = (float) (Math.sin(Math.PI * p) * 0.9);
+                g.setComposite(java.awt.AlphaComposite.SrcOver.derive(opacity));
+                if (impact.category() == onitama.core.duel.SkillCategory.MOVEMENT) {
+                    for (MovingPiece move : impact.moves()) drawSkillTrail(g, move, p, accent);
+                }
+                for (Square square : impact.targets()) {
+                    double x = originX + (displayX(square.x()) + 0.5) * cell;
+                    double y = originY + (displayY(square.y()) + 0.5) * cell;
+                    double radius = cell * (0.16 + 0.52 * p);
+                    g.setPaint(new java.awt.RadialGradientPaint(new java.awt.geom.Point2D.Double(x, y),
+                            (float) radius, new float[]{0f, 1f},
+                            new Color[]{Theme.withAlpha(accent, 110), Theme.withAlpha(accent, 0)}));
+                    g.fill(new java.awt.geom.Ellipse2D.Double(x-radius, y-radius, radius*2, radius*2));
+                    g.setColor(accent);
+                    g.setStroke(new BasicStroke(Math.max(1f, cell / 28f)));
+                    g.draw(new java.awt.geom.Ellipse2D.Double(x-radius, y-radius, radius*2, radius*2));
+                    if (impact.category() == onitama.core.duel.SkillCategory.ATTACK) {
+                        drawSkillWeapon(g, impact, x, y, p);
+                    } else if (impact.category() == onitama.core.duel.SkillCategory.CONTROL) {
+                        g.rotate(p * Math.PI / 2, x, y);
+                        for (int i = 0; i < 4; i++) {
+                            g.draw(new java.awt.geom.Rectangle2D.Double(x-radius*.7, y-radius*.7, radius*1.4, radius*1.4));
+                            g.rotate(Math.PI / 2, x, y);
+                            g.fill(new java.awt.geom.Ellipse2D.Double(x+radius-2, y-2, 4, 4));
+                        }
+                        g.rotate(-p * Math.PI / 2, x, y);
+                    }
+                }
+            } finally { g.dispose(); }
+        }
+    }
+
+    private void drawSkillWeapon(Graphics2D parent, SkillImpact impact, double x, double y, double p) {
+        Graphics2D g = (Graphics2D) parent.create();
+        try {
+            g.translate(x, y);
+            double strike = Math.max(0, Math.min(1, (p - .15) / .5));
+            strike = strike * strike * (3 - 2 * strike);
+            boolean spear = "pierce".equals(impact.skillId()) || "crossfire".equals(impact.skillId());
+            // Weapons face the actor's advance direction even when the viewer flips the board.
+            double facing = impact.actor() == viewColor ? -Math.PI / 2 : Math.PI / 2;
+            g.rotate(facing);
+            if (spear) {
+                drawSpear(g, strike);
+                if ("crossfire".equals(impact.skillId())) {
+                    g.rotate(Math.PI);
+                    drawSpear(g, strike);
+                }
+            } else {
+                g.setColor(new Color(255, 202, 119, 105));
+                g.setStroke(new BasicStroke(Math.max(3f, cell / 6f), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                double size = cell * 1.5;
+                g.draw(new java.awt.geom.Arc2D.Double(-size/2, -size/2, size, size,
+                        35, -150 * strike, java.awt.geom.Arc2D.OPEN));
+                g.rotate(-1.3 + 2.6 * strike);
+                g.scale(cell, cell);
+                // Blade, central bevel, brass crossguard and leather grip remain readable at small sizes.
+                g.setPaint(new java.awt.GradientPaint(0f, -.10f, new Color(248, 252, 255),
+                        0f, .10f, new Color(104, 142, 164)));
+                var blade = new java.awt.geom.Path2D.Double();
+                blade.moveTo(-.48, -.09); blade.lineTo(.46, -.065);
+                blade.lineTo(.75, 0); blade.lineTo(.46, .065); blade.lineTo(-.48, .09); blade.closePath();
+                g.fill(blade);
+                g.setColor(new Color(52, 72, 84)); g.setStroke(new BasicStroke(.018f)); g.draw(blade);
+                g.setColor(Color.WHITE); g.draw(new java.awt.geom.Line2D.Double(-.44, 0, .68, 0));
+                g.setColor(new Color(91, 48, 28));
+                g.fill(new java.awt.geom.RoundRectangle2D.Double(-.85, -.055, .34, .11, .04, .04));
+                g.setColor(new Color(236, 191, 92));
+                g.fill(new java.awt.geom.RoundRectangle2D.Double(-.54, -.22, .08, .44, .04, .04));
+                g.fill(new java.awt.geom.Ellipse2D.Double(-.92, -.085, .15, .17));
+            }
+        } finally { g.dispose(); }
+    }
+
+    private void drawSpear(Graphics2D parent, double strike) {
+        Graphics2D g = (Graphics2D) parent.create();
+        try {
+            g.scale(cell, cell);
+            g.translate(-1.15 + 1.35 * strike, 0);
+            g.setColor(new Color(255, 213, 129, 95));
+            g.fill(new java.awt.geom.RoundRectangle2D.Double(-1.6, -.10, 1.8, .20, .15, .15));
+            g.setColor(new Color(99, 57, 32));
+            g.fill(new java.awt.geom.RoundRectangle2D.Double(-1.35, -.035, 1.25, .07, .03, .03));
+            g.setColor(new Color(231, 184, 87));
+            g.fill(new java.awt.geom.Rectangle2D.Double(-.23, -.065, .14, .13));
+            var head = new java.awt.geom.Path2D.Double();
+            head.moveTo(-.12, -.11); head.lineTo(.30, 0); head.lineTo(-.12, .11);
+            head.lineTo(-.22, 0); head.closePath();
+            g.setPaint(new java.awt.GradientPaint(0f, -.1f, Color.WHITE, 0f, .1f, new Color(103, 145, 166)));
+            g.fill(head);
+            g.setColor(new Color(52, 72, 84)); g.setStroke(new BasicStroke(.015f)); g.draw(head);
+            g.setColor(Color.WHITE); g.draw(new java.awt.geom.Line2D.Double(-.17, 0, .26, 0));
+        } finally { g.dispose(); }
+    }
+
+    private void drawSkillTrail(Graphics2D g, MovingPiece move, double p, Color accent) {
+        double eased = Math.min(1, p * SKILL_CUE_MS / MOVE_ANIM_MS);
+        eased = eased * eased * (3 - 2 * eased);
+        double x = originX + (displayX(move.from().x()) + .5) * cell;
+        double y = originY + (displayY(move.from().y()) + .5) * cell;
+        double endX = originX + (displayX(move.to().x()) + .5) * cell;
+        double endY = originY + (displayY(move.to().y()) + .5) * cell;
+        double headX = x + (endX-x) * eased;
+        double headY = y + (endY-y) * eased - Math.sin(Math.PI * Math.min(1, p * SKILL_CUE_MS / MOVE_ANIM_MS)) * cell * .16;
+        g.setColor(Theme.withAlpha(accent, 70));
+        g.setStroke(new BasicStroke(Math.max(3f, cell / 5f), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g.draw(new java.awt.geom.Line2D.Double(x, y, headX, headY));
+        g.setColor(accent);
+        g.setStroke(new BasicStroke(Math.max(1f, cell / 24f), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g.draw(new java.awt.geom.Line2D.Double(x, y, headX, headY));
     }
 
     private void drawSkillCues(Graphics2D g) {

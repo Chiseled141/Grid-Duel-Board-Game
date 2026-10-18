@@ -105,16 +105,16 @@ class ClientModelTest {
         var sync = new MatchSync("plays", "ROOM", after, false, 2);
         var update = new onitama.net.GameUpdate(sync, accepted.events());
         model.handleGameUpdate(update);
-        assertEquals(List.of(new ClientModel.PlayedCard(initial.startedTurns(), game.turn(), move.movementCardId(), false)),
+        assertEquals(List.of(),
                 model.playedCards());
         model.handleGameUpdate(update);
-        assertEquals(1, model.playedCards().size());
+        assertEquals(0, model.playedCards().size());
         model.handleMatchSync(sync);
-        assertEquals(1, model.playedCards().size(), "same-match reconnect keeps locally seen plays");
+        assertEquals(0, model.playedCards().size(), "same-match reconnect keeps locally seen plays");
         model.handleGameUpdate(new onitama.net.GameUpdate(new MatchSync("foreign", "ROOM", after, false, 2),
                 List.of(new onitama.core.duel.PublicEvent.SkillCommitted(game.turn().opponent(),
                         new CardInstance("dash#1", "dash")))));
-        assertEquals(1, model.playedCards().size());
+        assertEquals(0, model.playedCards().size());
         model.handleMatchSync(new MatchSync("fresh", "ROOM", initial, false, 1));
         assertTrue(model.playedCards().isEmpty());
     }
@@ -310,6 +310,29 @@ class ClientModelTest {
         }
     }
     @Test
+    void botMayConfirmButCannotPlayWhileOpeningPresentationIsVisible() throws Exception {
+        long seed = 0;
+        while (RulesEngine.newGame(rules, seed).turn() != PlayerColor.RED) seed++;
+        final long redSeed = seed;
+        javax.swing.SwingUtilities.invokeAndWait(() -> {
+            model.startPracticeMatch(onitama.core.Difficulty.ROOKIE, redSeed);
+            model.setOpeningPresentationPending(true);
+            try {
+                model.sendAction(new GameAction.ConfirmOpening(List.of()));
+                model.stepBot(); // Bot readiness is allowed while the preview is visible.
+                assertEquals(TurnPhase.MOVEMENT, model.view().phase());
+                assertEquals(PlayerColor.RED, model.view().turn());
+                var ready = model.view();
+                model.stepBot();
+                assertEquals(ready, model.view(), "bot must wait for the final hand flight");
+                model.setOpeningPresentationPending(false);
+                model.stepBot();
+                assertEquals(ready.revision() + 1, model.view().revision());
+            } finally { model.leaveToLobby(); }
+        });
+    }
+
+    @Test
     void botActsWhenPracticeStartsOnRed() throws Exception {
         long seed = 0;
         while (RulesEngine.newGame(rules, seed).turn() != PlayerColor.RED) seed++;
@@ -419,6 +442,8 @@ class ClientModelTest {
                 }
             });
             model.startPracticeMatch(onitama.core.Difficulty.SENIOR, seed);
+            model.sendAction(new GameAction.ConfirmOpening(List.of()));
+            model.stepBot();
             try {
                 for (int step = 0; step < 5 && model.view().turn() == PlayerColor.RED; step++) model.stepBot();
                 assertEquals(1, committed.size());

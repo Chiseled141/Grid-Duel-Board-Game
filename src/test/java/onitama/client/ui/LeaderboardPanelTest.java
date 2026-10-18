@@ -24,7 +24,7 @@ class LeaderboardPanelTest {
     }
     private JButton backButton(Container parent) {
         for (var child : parent.getComponents()) {
-            if (child instanceof JButton button && "Back to menu".equals(button.getText())) return button;
+            if (child instanceof JButton button && "leaderboardBack".equals(button.getName())) return button;
             if (child instanceof Container container) {
                 var found = backButton(container); if (found != null) return found;
             }

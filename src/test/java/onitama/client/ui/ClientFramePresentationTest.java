@@ -80,7 +80,7 @@ class ClientFramePresentationTest {
 
     @Test void helpUsesMatchBalanceAndExplainsDeckPrivacy() {
         var base = RulesConfigLoader.load(null);
-        var custom = new RulesConfig(base.rulesVersion(), 2, 4, 3, 2, 7, 80,
+        var custom = new RulesConfig(base.rulesVersion(), 0, 4, 3, 2, 7, 80,
                 base.movementCards(), base.skills());
         var help = ClientFrame.helpTabText("How to Play", custom);
         assertTrue(help.contains("80 completed player turns"));
@@ -88,7 +88,7 @@ class ClientFramePresentationTest {
         assertTrue(help.contains("up to 7"));
         var cards = ClientFrame.helpTabText("Cards", custom);
         assertTrue(cards.contains("4 skill cards"));
-        assertTrue(cards.contains("opponent skills stay hidden"));
+        assertTrue(cards.toLowerCase().contains("opponent skills stay hidden"));
         assertTrue(cards.contains("spent permanently"));
         assertTrue(ClientFrame.helpTabText("How to Play", null).contains("60 completed player turns"));
     }

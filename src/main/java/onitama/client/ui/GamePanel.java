@@ -84,6 +84,7 @@ public final class GamePanel extends JPanel {
     private final DeckStackPanel drawPile = new DeckStackPanel();
     private final DeckStackPanel opponentDrawPile = new DeckStackPanel();
     private final DeckDrawOverlay drawOverlay;
+    private final OpeningHandPanel openingHand;
     private final CardPlayOverlay playOverlay = new CardPlayOverlay(this::refresh);
     private final PlayedCardArea ownPlay = new PlayedCardArea("YOUR SKILL PLAYED");
     private final PlayedCardArea enemyPlay = new PlayedCardArea("OPPONENT SKILL PLAYED");
@@ -95,6 +96,7 @@ public final class GamePanel extends JPanel {
     private final List<CardPanel> opponentMovementPanels = new ArrayList<>();
     private final List<CardBackPanel> opponentSkillPanels = new ArrayList<>();
     private List<String> builtOpponentMoves = List.of();
+    private List<CardInstance> builtEnemyIntel = List.of();
     private PlayerColor builtOpponentColor;
 
     private final JPanel opponentCards = new JPanel(new FlowLayout(FlowLayout.CENTER, 8, 0));
@@ -207,6 +209,7 @@ public final class GamePanel extends JPanel {
         this.chat = new ChatPanel(model);
         this.settings = settings;
         this.drawOverlay = drawOverlay;
+        this.openingHand = new OpeningHandPanel(model, drawPile, () -> List.copyOf(mySkillPanels), this::refresh);
         presentationTimer.setRepeats(false);
         opponentDrawPile.setName("opponentDrawPile");
         opponentDrawPile.setPreferredSize(new Dimension(100, 116));
@@ -231,7 +234,7 @@ public final class GamePanel extends JPanel {
         scene.add(buildTurnControls(), BorderLayout.WEST);
         scene.add(center, BorderLayout.CENTER);
         scene.add(buildRightColumn(), BorderLayout.EAST);
-        add(DeckDrawOverlay.wrap(DeckDrawOverlay.wrap(scene, drawOverlay), playOverlay), BorderLayout.CENTER);
+        add(DeckDrawOverlay.wrap(DeckDrawOverlay.wrap(DeckDrawOverlay.wrap(scene, drawOverlay), playOverlay), openingHand), BorderLayout.CENTER);
         addComponentListener(new java.awt.event.ComponentAdapter() {
             @Override public void componentResized(java.awt.event.ComponentEvent event) {
                 cancelPresentation(); refresh();
@@ -264,6 +267,7 @@ public final class GamePanel extends JPanel {
                 if (screen == Screen.GAME) {
                     refresh();
                 } else {
+                    openingHand.suspend();
                     cancelPresentation();
                     closeForesightDialog();
                     boardPanel.clearHighlights();
@@ -278,7 +282,8 @@ public final class GamePanel extends JPanel {
             @Override
             public void onPresentationReset() {
                 pendingGameOver = null;
-                    cancelPresentation();
+                openingHand.suspend();
+                cancelPresentation();
                 ownPlay.clear(); enemyPlay.clear();
                 ownBadge.reset();
                 opponentBadge.reset();
@@ -318,6 +323,7 @@ public final class GamePanel extends JPanel {
     private boolean presentationBusy() { return activePresentation != null || playOverlay.busy(); }
 
     private void handleAcceptedPresentation(PlayerView priorView, PlayerView currentView, List<PublicEvent> events) {
+        if (priorView != null && priorView.phase() == TurnPhase.OPENING) return;
         if (priorView == null || currentView == null || events == null
                 || model.screen() != Screen.GAME || model.currentSync().paused()) return;
         if (model.reducedMotion() || currentView.outcome() != null) {
@@ -348,6 +354,8 @@ public final class GamePanel extends JPanel {
         int duration = 0;
         int draws = CardDraws.between(batch.before(), batch.after(), batch.events()).size();
         if (draws > 0) duration = 600 + (draws - 1) * 80;
+        long burns = batch.events().stream().filter(e -> e instanceof PublicEvent.CardBurned).count();
+        if (burns > 0) duration = Math.max(duration, 1000 + (draws + (int) burns - 1) * 80);
         boolean moved = batch.events().stream().anyMatch(e -> e instanceof PublicEvent.PieceMoved);
         boolean eliminated = batch.events().stream().anyMatch(e -> e instanceof PublicEvent.PieceEliminated);
         if (moved) duration = Math.max(duration, 480 + (eliminated ? 380 : 0));
@@ -421,6 +429,7 @@ public final class GamePanel extends JPanel {
             String sName = def != null ? def.name() : committedSkill.skill().definitionId();
             SkillCategory cat = def != null ? def.category() : SkillCategory.CONTROL;
             boardPanel.playSkillCue(sName, cat, committedSkill.actor());
+            boardPanel.playSkillImpact(committedSkill.skill().definitionId(), committedSkill.actor(), cat, moves, elimSquares);
 
         }
 
@@ -485,7 +494,7 @@ public final class GamePanel extends JPanel {
 
     private void scheduleDraws(PlayerView before, PlayerView after, List<PublicEvent> events) {
         List<CardDraws.Draw> draws = CardDraws.between(before, after, events);
-        if (draws.isEmpty()) return;
+        if (draws.isEmpty() && events.stream().noneMatch(e -> e instanceof PublicEvent.CardBurned)) return;
         long generation = drawGeneration;
         String match = model.currentSync().matchId();
         // Reconciliation has already adopted the new hand. Let Swing validate new slots first.
@@ -518,6 +527,30 @@ public final class GamePanel extends JPanel {
                         : DeckDrawOverlay.Flight.reveal(key, deck.backImage(), DeckDrawOverlay.snapshot(target),
                                 source, destination, delay));
                 drawOverlay.bind(target, key);
+            }
+            int burnIndex = 0;
+            for (PublicEvent event : events) if (event instanceof PublicEvent.CardBurned burned) {
+                boolean own = burned.actor() == after.viewer();
+                DeckStackPanel deck = own ? drawPile : opponentDrawPile;
+                java.awt.image.BufferedImage face = null;
+                if (own && burnIndex < after.ownBurnedDraws().size()) {
+                    var card = new SkillCardPanel(after.ownBurnedDraws().get(burnIndex), after.rules(),
+                            after.viewer(), 99, TurnPhase.END, false, false, null);
+                    card.setSize(card.getPreferredSize());
+                    card.setReducedMotion(true);
+                    face = DeckDrawOverlay.snapshot(card);
+                }
+                int index = burnIndex++;
+                flights.add(DeckDrawOverlay.Flight.torn("burn:" + burned.actor() + ":" + index,
+                        deck.backImage(), face,
+                        () -> SwingUtilities.convertRectangle(deck, deck.topBounds(), drawOverlay),
+                        () -> {
+                            Rectangle board = SwingUtilities.convertRectangle(boardPanel,
+                                    new Rectangle(0, 0, boardPanel.getWidth(), boardPanel.getHeight()), drawOverlay);
+                            int width = Math.min(150, Math.max(60, board.width / 4));
+                            return new Rectangle(board.x + board.width / 2 - width / 2 + index * 12,
+                                    board.y + board.height / 2 - width * 3 / 4, width, width * 3 / 2);
+                        }, flights.size() * 80));
             }
             drawOverlay.play(flights);
         });
@@ -777,16 +810,23 @@ public final class GamePanel extends JPanel {
     private void refreshOpponentHand(PlayerView view, PlayerColor opponent) {
         List<String> ids = CardDraws.moves(view, opponent);
         if (!ids.equals(builtOpponentMoves) || opponentSkillPanels.size() != view.opponentSkillCount()
-                || builtOpponentColor != opponent) {
+                || builtOpponentColor != opponent || !builtEnemyIntel.equals(view.revealedEnemySkills())) {
             opponentCards.removeAll();
             opponentMovementPanels.clear();
             opponentSkillPanels.clear();
             builtOpponentMoves = List.copyOf(ids);
             builtOpponentColor = opponent;
+            builtEnemyIntel = List.copyOf(view.revealedEnemySkills());
             for (int i = 0; i < view.opponentSkillCount(); i++) {
                 CardBackPanel back = new CardBackPanel();
                 opponentSkillPanels.add(back);
-                opponentCards.add(back);
+                if (i < builtEnemyIntel.size()) {
+                    var revealed = new SkillCardPanel(builtEnemyIntel.get(i), view.rules(), view.viewer(),
+                            99, TurnPhase.END, false, false, null);
+                    revealed.setPreferredSize(new Dimension(110, 142));
+                    revealed.setReducedMotion(model.reducedMotion());
+                    opponentCards.add(revealed);
+                } else opponentCards.add(back);
             }
             opponentCards.add(Box.createHorizontalStrut(16));
             for (String id : ids) {
@@ -807,12 +847,13 @@ public final class GamePanel extends JPanel {
         int theirs = own == PlayerColor.BLUE ? view.redMana() : view.blueMana();
         int ownPieces = (int) view.pieces().stream().filter(p -> p.piece().color() == own).count();
         String name = model.me() == null ? "YOU" : model.me().username();
+        boolean activeTurn = view.outcome() == null && view.phase() != TurnPhase.OPENING && !openingHand.isVisible();
         ownBadge.updateScore(view.score(own), view.rules().scoreToWin());
         opponentBadge.updateScore(view.score(own.opponent()), view.rules().scoreToWin());
         ownBadge.update(name, own, mine, view.rules().manaCap(), view.reservedMana(), ownPieces,
-                view.outcome() == null && view.turn() == own, paused, model.reducedMotion());
+                activeTurn && view.turn() == own, paused, model.reducedMotion());
         opponentBadge.update(model.opponentName(), own.opponent(), theirs, view.rules().manaCap(), 0,
-                view.pieces().size() - ownPieces, view.outcome() == null && view.turn() != own,
+                view.pieces().size() - ownPieces, activeTurn && view.turn() != own,
                 paused, model.reducedMotion());
 
     }
@@ -848,6 +889,9 @@ public final class GamePanel extends JPanel {
                 || !view.rules().equals(handRules) || view.viewer() != handColor) {
             rebuildHand(view, myCardIds);
         }
+        openingHand.sync(entryPending);
+        for (SkillCardPanel card : mySkillPanels)
+            card.putClientProperty("openingHidden", openingHand.isVisible() || view.phase() == TurnPhase.OPENING);
         for (CardPanel card : myCardPanels) card.setReducedMotion(model.reducedMotion());
         for (SkillCardPanel card : mySkillPanels) card.setReducedMotion(model.reducedMotion());
         if (model.reducedMotion()) cancelPresentation();
@@ -985,8 +1029,8 @@ public final class GamePanel extends JPanel {
                 showInstruction(name + ": no valid targets. Press Escape to choose again.");
             }
         } else if (view.phase() == TurnPhase.MOVEMENT) {
-            showInstruction(model.selectedCardId() == null ? "Choose a movement card, then a piece."
-                    : model.selectedPieceId() == null ? "Select a piece to move." : "Select a highlighted destination.");
+            showInstruction(model.selectedPieceId() == null ? "Choose a piece: move 1 square horizontally or vertically, or skip."
+                    : "Select a highlighted destination.");
         } else if (view.phase() == TurnPhase.SKILL) {
             showInstruction("Select a skill card, or End Turn.");
         } else if (view.phase() == TurnPhase.END) {
@@ -1064,8 +1108,11 @@ public final class GamePanel extends JPanel {
         if (model.isMatchOver()) {
             return "GAME OVER";
         }
+        if (view.phase() == TurnPhase.OPENING) return "CHOOSE YOUR OPENING HAND";
+        if (openingHand.isVisible()) return "PREPARING YOUR HAND";
         if (view.turn() == myColor) {
             return switch (view.phase()) {
+                case OPENING -> "CHOOSE YOUR OPENING HAND";
                 case MOVEMENT -> "YOUR TURN — MOVE";
                 case SKILL -> "YOUR TURN — SKILL";
                 case CHOICE -> "RESOLVING FORESIGHT";
@@ -1094,6 +1141,7 @@ public final class GamePanel extends JPanel {
     /** Defers match dialogs until the player leaves the loading screen. */
     void setEntryPending(boolean pending) {
         entryPending = pending;
+        if (pending) openingHand.suspend();
         if (!pending) {
             refresh();
             GameOver over = pendingGameOver; pendingGameOver = null;

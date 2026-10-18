@@ -45,12 +45,15 @@ public final class PracticeBot {
         Objects.requireNonNull(view, "view must not be null");
         Objects.requireNonNull(random, "random must not be null");
 
+        if (view.phase() == TurnPhase.OPENING && view.outcome() == null)
+            return view.openingConfirmed() ? null : new GameAction.ConfirmOpening(List.of());
         if (view.outcome() != null || view.viewer() != view.turn()) {
             return null;
         }
 
         TurnPhase phase = view.phase();
         return switch (phase) {
+            case OPENING -> null;
             case CHOICE -> chooseForesight(view, random);
             case MOVEMENT -> chooseMovement(view, difficulty, random);
             case SKILL -> chooseSkill(view, difficulty, random);
@@ -113,6 +116,8 @@ public final class PracticeBot {
             if (def == null || def.manaCost() > mana) continue;
             // Spending this single-use resource at full mana cannot help.
             if (def.id().equals("mana-surge") && mana >= view.rules().manaCap()) continue;
+            if (def.id().equals("draw-two") && (view.ownSkillHand().size() >= 6 || view.skillDeckCount() == 0)) continue;
+            if (def.id().equals("refocus") && (view.ownSkillHand().size() < 2 || view.skillDeckCount() == 0)) continue;
             List<GameAction.CastSkill> targets = new ArrayList<>();
             searchSkill(view, card.instanceId(), SelectionDraft.empty(), new HashSet<>(), targets, random);
             candidates.addAll(targets);
@@ -181,7 +186,17 @@ public final class PracticeBot {
         if (target instanceof SkillTargets.Rally rally) return 10 + rally.moves().size() + rally.moves().stream().mapToInt(move -> relocationValue(view, move.pieceId(), move.to())).sum();
         if (target instanceof SkillTargets.ShiftEnemies shifted) return 10 + shifted.enemyIds().size();
         if (target instanceof SkillTargets.Relocate move) return 10 + relocationValue(view, move.pieceId(), move.to());
-        if (target instanceof SkillTargets.None) return 1;
+        if (target instanceof SkillTargets.None) {
+            String id = view.ownSkillHand().stream().filter(c -> c.instanceId().equals(cast.skillInstanceId()))
+                    .map(CardInstance::definitionId).findFirst().orElse("");
+            return switch (id) {
+                case "steal", "sabotage" -> 35;
+                case "siphon" -> 15;
+                case "draw-two" -> 12;
+                case "spy", "barter" -> 5;
+                default -> 1;
+            };
+        }
         return 10;
     }
 }

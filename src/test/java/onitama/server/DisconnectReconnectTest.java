@@ -82,23 +82,29 @@ class DisconnectReconnectTest {
         guest.send(new JoinMatchRequest(roomCode));
         MatchSync hostSync = host.expect(MatchSync.class);
         MatchSync guestSync = guest.expect(MatchSync.class);
+        var ready = ScriptedClient.keepOpening(host, guest, hostSync, guestSync);
+        hostSync = ready[0]; guestSync = ready[1];
 
         assertEquals(PlayerColor.BLUE, hostSync.view().viewer());
         assertEquals(PlayerColor.RED, guestSync.view().viewer());
-        assertEquals(PlayerColor.BLUE, hostSync.view().turn());
+        if (hostSync.view().turn() == PlayerColor.RED) {
+            guest.send(new ActionRequest(guestSync.matchId(), 2, guestSync.view().revision(), new GameAction.EndTurn()));
+            guest.expect(GameUpdate.class); guest.expect(ActionReply.class);
+            hostSync = host.expect(GameUpdate.class).current();
+        }
 
         // Blue plays a move
         List<GameAction.MovePiece> legal = Targeting.legalMoves(hostSync.view());
         assertFalse(legal.isEmpty());
         GameAction.MovePiece move = legal.get(0);
-        host.send(new ActionRequest(hostSync.matchId(), 1L, hostSync.view().revision(), move));
+        host.send(new ActionRequest(hostSync.matchId(), 2L, hostSync.view().revision(), move));
 
         GameUpdate blueUpdate = host.expect(GameUpdate.class);
         ActionReply blueReply = host.expect(ActionReply.class);
         GameUpdate redUpdate = guest.expect(GameUpdate.class);
 
         assertTrue(blueReply.receipt().accepted());
-        assertEquals(1L, blueReply.receipt().revision());
+        assertEquals(hostSync.view().revision() + 1, blueReply.receipt().revision());
 
         // Host drops: guest is told about the grace period and sees paused=true.
         host.close();

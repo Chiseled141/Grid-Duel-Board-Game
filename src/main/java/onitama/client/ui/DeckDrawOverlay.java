@@ -25,7 +25,19 @@ public final class DeckDrawOverlay extends JComponent {
     /** Immutable flight description; endpoint suppliers return overlay-local rectangles on the EDT. */
     public record Flight(String key, BufferedImage back, BufferedImage face,
                          Supplier<Rectangle> source, Supplier<Rectangle> destination,
-                         int delayMs, int durationMs) {
+                         int delayMs, int durationMs, boolean tear) {
+        /** Ordinary card flight, retained for opening and hand replacement animations. */
+        public Flight(String key, BufferedImage back, BufferedImage face,
+                      Supplier<Rectangle> source, Supplier<Rectangle> destination, int delayMs, int durationMs) {
+            this(key, back, face, source, destination, delayMs, durationMs, false);
+        }
+
+        /** Overflow draw: reveal only a permitted face, then tear the card into fragments. */
+        public static Flight torn(String key, BufferedImage back, BufferedImage permittedFace,
+                                  Supplier<Rectangle> source, Supplier<Rectangle> destination, int delayMs) {
+            return new Flight(key, back, permittedFace, source, destination, delayMs, 1000, true);
+        }
+
         public Flight {
             Objects.requireNonNull(key);
             Objects.requireNonNull(back);
@@ -157,6 +169,11 @@ public final class DeckDrawOverlay extends JComponent {
     }
 
     private void paintFlight(Graphics2D original, Flight flight, Rectangle from, Rectangle to, double p) {
+        if (flight.tear() && p >= .52) {
+            paintTear(original, flight, to, (p - .52) / .48);
+            return;
+        }
+        if (flight.tear()) p = Math.min(.999, p / .52);
         double eased = p * p * (3 - 2 * p);
         double distance = Math.hypot(to.getCenterX() - from.getCenterX(), to.getCenterY() - from.getCenterY());
         double arc = Math.min(56, distance * .12) * Math.sin(Math.PI * p);
@@ -181,6 +198,36 @@ public final class DeckDrawOverlay extends JComponent {
     }
 
     private double elapsedMs() { return (clock.getAsLong() - startedNanos) / 1_000_000.0; }
+    private void paintTear(Graphics2D original, Flight flight, Rectangle bounds, double p) {
+        BufferedImage picture = flight.face() == null ? flight.back() : flight.face();
+        // Interlocking jagged strips separate in opposing directions, then fall and fade.
+        for (int strip = 0; strip < 6; strip++) {
+            Graphics2D g = (Graphics2D) original.create();
+            try {
+                double width = bounds.width, height = bounds.height;
+                double left = strip * width / 6, right = (strip + 1) * width / 6;
+                double direction = strip < 3 ? -1 : 1;
+                g.translate(bounds.x + direction * p * width * (.25 + Math.abs(strip - 2.5) * .14),
+                        bounds.y + p * p * height * .55 + (strip % 2) * p * 12);
+                g.rotate(direction * p * .45, width / 2, height / 2);
+                g.setComposite(AlphaComposite.SrcOver.derive((float) (1 - p)));
+                var shape = new java.awt.geom.Path2D.Double();
+                shape.moveTo(left, 0);
+                for (int row = 0; row <= 10; row++)
+                    shape.lineTo(right + (strip == 5 ? 0 : (row % 2 == 0 ? -4 : 4)), row * height / 10);
+                for (int row = 10; row >= 0; row--)
+                    shape.lineTo(left + (strip == 0 ? 0 : (row % 2 == 0 ? -4 : 4)), row * height / 10);
+                shape.closePath();
+                g.clip(shape);
+                g.drawImage(picture, 0, 0, bounds.width, bounds.height, null);
+                g.setClip(null);
+                g.setColor(new Color(255, 229, 164, 190));
+                g.setStroke(new java.awt.BasicStroke(1.3f));
+                g.draw(shape);
+            } finally { g.dispose(); }
+        }
+    }
+
     private static double mix(double a, double b, double amount) { return a + (b - a) * amount; }
     private static boolean valid(Rectangle r) { return r != null && r.width > 0 && r.height > 0; }
     private static void requireEdt() {

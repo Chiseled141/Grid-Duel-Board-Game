@@ -53,7 +53,13 @@ final class SkillEffects {
             case "gust" -> resolveGust(definition, board, actor, targets, events);
             case "banish" -> resolveBanish(board, actor, targets, events);
             case "mana-surge" -> resolveManaSurge(definition, next, actor, targets);
-            case "refocus" -> resolveRefocus(next, actor, targets);
+            case "refocus" -> resolveRefocus(next, actor, targets, events);
+            case "steal" -> resolveSteal(next, actor, targets);
+            case "spy" -> resolveSpy(next, actor, targets);
+            case "draw-two" -> resolveDraw(next, actor, targets, events);
+            case "sabotage" -> resolveSabotage(next, actor, targets);
+            case "barter" -> resolveBarter(next, actor, targets);
+            case "siphon" -> resolveSiphon(next, actor, targets);
             case "foresight" -> resolveForesight(targets);
             default -> ActionError.INVALID_TARGETS;
         };
@@ -660,14 +666,63 @@ final class SkillEffects {
     }
 
     private static ActionError resolveRefocus(
-            GameState next, PlayerColor actor, SkillTargets targets) {
+            GameState next, PlayerColor actor, SkillTargets targets, List<PublicEvent> events) {
         if (!(targets instanceof SkillTargets.None)) return ActionError.INVALID_TARGETS;
-        List<String> hand = next.mutableMovementHand(actor);
-        next.mutableMovementDeck().addAll(hand);
+        List<CardInstance> hand = next.mutableSkillHand(actor);
+        int count = hand.size();
+        next.mutableSpentSkills().addAll(hand);
         hand.clear();
-        next.randomState().shuffle(next.mutableMovementDeck());
-        hand.add(next.mutableMovementDeck().remove(0));
-        hand.add(next.mutableMovementDeck().remove(0));
+        next.drawSkills(actor, count, events);
+        return null;
+    }
+
+    private static ActionError resolveSteal(GameState next, PlayerColor actor, SkillTargets targets) {
+        if (!(targets instanceof SkillTargets.None) || next.mutableSkillHand(actor.opponent()).isEmpty())
+            return ActionError.INVALID_TARGETS;
+        var enemy = next.mutableSkillHand(actor.opponent());
+        var stolen = enemy.remove(next.randomState().nextInt(enemy.size()));
+        next.mutableSkillHand(actor).add(stolen);
+        return null;
+    }
+
+    private static ActionError resolveSpy(GameState next, PlayerColor actor, SkillTargets targets) {
+        if (!(targets instanceof SkillTargets.None) || next.mutableSkillHand(actor.opponent()).isEmpty())
+            return ActionError.INVALID_TARGETS;
+        next.revealEnemyHand(actor);
+        return null;
+    }
+
+    private static ActionError resolveSabotage(GameState next, PlayerColor actor, SkillTargets targets) {
+        var enemy = next.mutableSkillHand(actor.opponent());
+        if (!(targets instanceof SkillTargets.None) || enemy.isEmpty()) return ActionError.INVALID_TARGETS;
+        next.mutableSpentSkills().add(enemy.remove(next.randomState().nextInt(enemy.size())));
+        return null;
+    }
+
+    private static ActionError resolveBarter(GameState next, PlayerColor actor, SkillTargets targets) {
+        var own = next.mutableSkillHand(actor); var enemy = next.mutableSkillHand(actor.opponent());
+        if (!(targets instanceof SkillTargets.None) || own.isEmpty() || enemy.isEmpty()) return ActionError.INVALID_TARGETS;
+        int ownSlot = next.randomState().nextInt(own.size()), enemySlot = next.randomState().nextInt(enemy.size());
+        CardInstance offered = own.set(ownSlot, enemy.get(enemySlot));
+        enemy.set(enemySlot, offered);
+        return null;
+    }
+
+    private static ActionError resolveSiphon(GameState next, PlayerColor actor, SkillTargets targets) {
+        if (!(targets instanceof SkillTargets.None)) return ActionError.INVALID_TARGETS;
+        int mine = actor == PlayerColor.BLUE ? next.blueMana() : next.redMana();
+        int theirs = actor == PlayerColor.BLUE ? next.redMana() : next.blueMana();
+        int amount = Math.min(2, Math.min(theirs, next.rules().manaCap() - mine));
+        if (amount <= 0) return ActionError.INVALID_TARGETS;
+        if (actor == PlayerColor.BLUE) { next.setBlueMana(mine + amount); next.setRedMana(theirs - amount); }
+        else { next.setRedMana(mine + amount); next.setBlueMana(theirs - amount); }
+        return null;
+    }
+
+    private static ActionError resolveDraw(GameState next, PlayerColor actor, SkillTargets targets,
+                                           List<PublicEvent> events) {
+        if (!(targets instanceof SkillTargets.None)) return ActionError.INVALID_TARGETS;
+        next.drawSkills(actor, 2, events);
         return null;
     }
 

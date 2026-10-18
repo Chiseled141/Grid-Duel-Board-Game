@@ -24,7 +24,7 @@ public final class DeckPresentationFixtures {
             var move = Targeting.legalMoves(RulesEngine.viewFor(game, actor)).get(0);
             var result = (ActionResult.Accepted) RulesEngine.apply(game, actor, move);
             var hand = actor == PlayerColor.BLUE ? result.nextState().blueMovementHand() : result.nextState().redMovementHand();
-            if (hand.contains(move.movementCardId()) == sameCard) return new Transition(game, result);
+            return new Transition(game, result);
         }
         throw new AssertionError("No movement fixture");
     }
@@ -41,7 +41,7 @@ public final class DeckPresentationFixtures {
 
     private static Transition skill(String definition, PlayerColor actor, int deckSize, boolean sameHand) {
         var base = RulesConfigLoader.load(null);
-        var rules = new RulesConfig(base.rulesVersion(), 2, 3, 5, 1, 7, 60, base.movementCards(), base.skills());
+        var rules = new RulesConfig(base.rulesVersion(), 0, 3, 5, 1, 7, 60, base.movementCards(), base.skills());
         for (int seed = 0; seed < 2000; seed++) {
             var start = RulesEngine.newGame(rules, seed);
             if (start.turn() != actor) continue;
@@ -64,6 +64,23 @@ public final class DeckPresentationFixtures {
             return new Transition(game, result);
         }
         throw new AssertionError("No skill fixture");
+    }
+
+    /** Six-card hand casting Draw Two, producing one held draw and two overflow tears. */
+    public static Transition fullHandDraw(PlayerColor actor) {
+        var base = RulesConfigLoader.load(null);
+        var rules = new RulesConfig(base.rulesVersion(), 0, 6, 5, 1, 5, 60, List.of(), base.skills());
+        for (int seed = 0; seed < 1000; seed++) {
+            var game = RulesEngine.newGame(rules, seed);
+            if (game.turn() != actor) continue;
+            var card = game.mutableSkillHand(actor).stream().filter(c -> c.definitionId().equals("draw-two")).findFirst();
+            if (card.isEmpty()) continue;
+            game.setPhase(TurnPhase.SKILL);
+            var result = (ActionResult.Accepted) RulesEngine.apply(game, actor,
+                    new GameAction.CastSkill(card.get().instanceId(), new SkillTargets.None()));
+            return new Transition(game, result);
+        }
+        throw new AssertionError("No full-hand fixture");
     }
 
     /** Resolves an actual pending Foresight; its event list is intentionally empty. */

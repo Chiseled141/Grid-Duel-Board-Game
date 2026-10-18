@@ -28,6 +28,14 @@ class ChatPanelTest {
         return null;
     }
 
+    private JButton helpButton(Container parent) {
+        for (Component child : parent.getComponents()) {
+            if (child instanceof JButton button && "matchHowToPlay".equals(button.getName())) return button;
+            if (child instanceof Container nested) { var found = helpButton(nested); if (found != null) return found; }
+        }
+        return null;
+    }
+
     private void layout(Container parent) {
         parent.doLayout();
         for (Component child : parent.getComponents()) if (child instanceof Container nested) layout(nested);
@@ -45,7 +53,7 @@ class ChatPanelTest {
             try {
                 game.setSize(1440, 900); layout(game);
                 var chat = find(game, ChatPanel.class);
-                var help = find(game, javax.swing.JButton.class);
+                var help = helpButton(game);
                 var opponent = find(help.getParent(), PlayerBadgePanel.class);
                 assertNotNull(opponent, "practice bot belongs in the help stack");
                 assertTrue(opponent.getToolTipText().contains("Practice Bot"));

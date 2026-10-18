@@ -16,7 +16,6 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import onitama.core.Card;
-import onitama.core.CardDeck;
 import onitama.core.duel.RulesConfig;
 import onitama.core.duel.SkillCategory;
 import onitama.core.duel.SkillDefinition;
@@ -54,7 +53,13 @@ public final class RulesConfigLoader {
             Map.entry("mana-surge", SkillCategory.RESOURCE),
             Map.entry("refocus", SkillCategory.RESOURCE),
             Map.entry("foresight", SkillCategory.RESOURCE),
-            Map.entry("banish", SkillCategory.CONTROL)
+            Map.entry("banish", SkillCategory.CONTROL),
+            Map.entry("steal", SkillCategory.CONTROL),
+            Map.entry("spy", SkillCategory.CONTROL),
+            Map.entry("draw-two", SkillCategory.RESOURCE),
+            Map.entry("sabotage", SkillCategory.CONTROL),
+            Map.entry("barter", SkillCategory.CONTROL),
+            Map.entry("siphon", SkillCategory.CONTROL)
     );
 
     private static final Set<String> ALLOWED_KEYS = buildAllowedKeys();
@@ -164,8 +169,8 @@ public final class RulesConfigLoader {
         }
 
         int movementHandSize = parseInt(props, "movement.handSize");
-        if (movementHandSize != 2) {
-            throw new ConfigException("movement.handSize", String.valueOf(movementHandSize), "movementHandSize must be exactly 2");
+        if (movementHandSize != 0) {
+            throw new ConfigException("movement.handSize", String.valueOf(movementHandSize), "movementHandSize must be exactly 0");
         }
 
         int manaCap = parseInt(props, "mana.cap");
@@ -244,7 +249,7 @@ public final class RulesConfigLoader {
                     "not enough skill copies for starting deal: 2 * " + skillHandSize + " > " + totalCopies);
         }
 
-        List<Card> movementCards = CardDeck.catalog();
+        List<Card> movementCards = List.of();
         try {
             return new RulesConfig(rulesVersion, movementHandSize, skillHandSize,
                     initialMana, manaIncome, manaCap, turnLimit, movementCards, skillDefs, parseInt(props, "score.target"));

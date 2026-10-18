@@ -41,7 +41,7 @@ class GamePanelLayoutTest {
     void boardAndUnifiedHandFitAtSupportedWindowSizes(int width, int height, int handSize, PlayerColor viewer) throws Exception {
         SwingUtilities.invokeAndWait(() -> {
             RulesConfig r = RulesConfigLoader.load(null);
-            RulesConfig rules = new RulesConfig(r.rulesVersion(), 2, handSize, r.initialMana(),
+            RulesConfig rules = new RulesConfig(r.rulesVersion(), 0, handSize, r.initialMana(),
                     r.manaPerTurn(), r.manaCap(), r.turnLimit(), r.movementCards(), r.skills());
             var view = RulesEngine.viewFor(RulesEngine.newGame(rules, 42), viewer);
             var model = new ClientModel(new ServerConnection() {
@@ -54,9 +54,9 @@ class GamePanelLayoutTest {
             panel.setSize(width, height);
             layout(panel);
             CardHandPanel hand = find(panel, CardHandPanel.class).get(0);
-            assertEquals(2, find(hand, CardPanel.class).size(), "both movement cards belong in bottom hand");
+            assertEquals(0, find(hand, CardPanel.class).size(), "movement cards are removed");
             assertEquals(handSize, find(hand, SkillCardPanel.class).size());
-            assertEquals(handSize + 2, hand.getComponentCount());
+            assertEquals(handSize, hand.getComponentCount());
             assertTrue(SwingUtilities.convertPoint(hand, 0, 0, panel).y > height / 2);
             for (Component card : hand.getComponents()) {
                 assertTrue(card.getX() >= 0 && card.getY() >= 0);

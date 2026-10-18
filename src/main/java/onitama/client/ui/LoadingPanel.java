@@ -15,12 +15,12 @@ import onitama.core.duel.RulesConfig;
 /** Match-entry artwork, real resource-loading progress and rotating live-rule tips. */
 public final class LoadingPanel extends JPanel implements AutoCloseable {
     private static final Logger LOG = Logger.getLogger(LoadingPanel.class.getName());
-    static final List<String> BACKGROUNDS = List.of("loading/castle-passage.png",
-            "loading/campaign-map.png", "loading/fortress-courtyard.png");
+    static final List<String> BACKGROUNDS = List.of("loading/siege.png",
+            "loading/stone-bridge.png", "loading/war-camp.png", "loading/war-council.png");
     private final ClientSettings settings;
     private final Runnable onEnter;
     private final RulesConfig rules;
-    private final Image[] images = new Image[3];
+    private final Image[] images = new Image[BACKGROUNDS.size()];
     private final JPanel column = new JPanel();
     private final JLabel hint = new HintLabel();
     private final JLabel status = new JLabel("Preparing the game…");
@@ -162,10 +162,10 @@ public final class LoadingPanel extends JPanel implements AutoCloseable {
         return List.of("Every enemy eliminated earns 1 point. Reach " + rules.scoreToWin() + " points or eliminate every enemy to win.",
                 "Gold squares award +1 point at your turn’s start. Hold them through your opponent’s turn.",
                 "Blue squares give +1 bonus mana at your turn’s start, up to " + rules.manaCap() + " mana in total.",
-                "Movement cards jump over pieces. Capture an enemy by landing on its square.",
+                "Move one piece 1 square horizontally or vertically. Capture an enemy by landing on its square.",
                 "You can play one skill per turn. Successfully used skills are spent permanently.",
-                "Both movement hands are public. Inspect your opponent’s cards before choosing a destination.",
-                "Skipping movement keeps your movement cards. You can still play a skill afterward.",
+                "Espionage privately reveals enemy skills until you end your turn.",
+                "You may skip movement and still play a skill. Full hands tear any extra draws.",
                 "Bonus squares are mirrored for both players. Contest them to stop your opponent earning rewards.");
     }
 

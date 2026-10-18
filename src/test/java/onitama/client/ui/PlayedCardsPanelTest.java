@@ -35,9 +35,7 @@ class PlayedCardsPanelTest {
                 model.handleGameUpdate(new GameUpdate(new MatchSync("timeline", "ROOM",
                         RulesEngine.project(game, viewer), false, 1), accepted.events()));
             }
-            assertEquals(2, model.playedCards().size());
-            assertEquals(1, model.playedCards().get(0).turn());
-            assertEquals(2, model.playedCards().get(1).turn());
+            assertTrue(model.playedCards().isEmpty(), "basic movement no longer creates played-card history");
             model.handleMatchSync(new MatchSync("rematch", "ROOM", first, false, 1));
             assertEquals(0, model.playedCards().size());
         });

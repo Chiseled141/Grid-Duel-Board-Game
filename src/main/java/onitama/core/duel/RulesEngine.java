@@ -6,9 +6,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
-import onitama.core.Card;
-import onitama.core.CardDeck;
-import onitama.core.Offset;
 import onitama.core.PlayerColor;
 import onitama.core.Square;
 
@@ -20,17 +17,14 @@ public final class RulesEngine {
     private RulesEngine() {}
 
     /**
-     * Creates a new match in the standard initial state with deterministic deals and starting mana.
+     * Creates an already-started position for simulations; live routes use newOpeningGame.
      */
     public static GameState newGame(RulesConfig rules, long seed) {
         Objects.requireNonNull(rules, "rules must not be null");
 
-        // 1. Build movement deck in Appendix A order from CardDeck.catalog()
-        List<String> movementDeck = CardDeck.catalog().stream()
-                .map(Card::id)
-                .collect(Collectors.toCollection(ArrayList::new));
+        List<String> movementDeck = new ArrayList<>();
 
-        // 2. Build skill instances in Appendix B order, ordinal order within definition
+        // Canonical definition order makes seeded deals independent of config list ordering.
         Map<String, SkillDefinition> skillMap = rules.skills().stream()
                 .collect(Collectors.toMap(SkillDefinition::id, s -> s));
         List<CardInstance> skillDeck = new ArrayList<>();
@@ -43,24 +37,15 @@ public final class RulesEngine {
             }
         }
 
-        // 3. Deterministic SplitMix64 RNG
+        // Copyable randomness keeps rejected candidate actions atomic.
         GameRandom rng = new GameRandom(seed);
 
-        // 4. Shuffle movement deck
-        rng.shuffle(movementDeck);
-
-        // 5. Shuffle skill deck
         rng.shuffle(skillDeck);
 
-        // 6. Deal movement cards alternately Blue, Red, Blue, Red
+        // Reserved movement slots remain empty in every live match.
         List<String> blueMovementHand = new ArrayList<>();
         List<String> redMovementHand = new ArrayList<>();
-        for (int i = 0; i < rules.movementHandSize(); i++) {
-            blueMovementHand.add(movementDeck.remove(0));
-            redMovementHand.add(movementDeck.remove(0));
-        }
-
-        // 7. Deal skills alternately Blue then Red
+        // Alternate the skill deal between the players.
         List<CardInstance> blueSkillHand = new ArrayList<>();
         List<CardInstance> redSkillHand = new ArrayList<>();
         for (int i = 0; i < rules.skillHandSize(); i++) {
@@ -68,10 +53,10 @@ public final class RulesEngine {
             redSkillHand.add(skillDeck.remove(0));
         }
 
-        // 8. Starter selection: 0 Blue, 1 Red
+        // Starter selection: 0 Blue, 1 Red.
         PlayerColor starter = rng.nextInt(2) == 0 ? PlayerColor.BLUE : PlayerColor.RED;
 
-        // 9. Initial mana: starter gains manaPerTurn
+        // Simulations start immediately; newOpeningGame defers this reward until both confirm.
         int blueMana = rules.initialMana();
         int redMana = rules.initialMana();
         if (starter == PlayerColor.BLUE) {
@@ -103,6 +88,48 @@ public final class RulesEngine {
                 null, ObjectiveLayout.generate(rng));
     }
 
+    /** Creates a live match awaiting both players' private opening skill choices. */
+    public static GameState newOpeningGame(RulesConfig rules, long seed) {
+        GameState state = newGame(rules, seed);
+        state.setPhase(TurnPhase.OPENING);
+        state.setStartedTurns(0);
+        state.setBlueMana(rules.initialMana());
+        state.setRedMana(rules.initialMana());
+        return state;
+    }
+
+    private static ActionResult applyOpening(GameState state, PlayerColor actor, GameAction.ConfirmOpening action) {
+        if (state.phase() != TurnPhase.OPENING || state.openingConfirmed(actor))
+            return new ActionResult.Rejected(ActionError.WRONG_PHASE);
+        List<String> ids = action.replaceInstanceIds();
+        if (ids.size() != new java.util.HashSet<>(ids).size() || ids.size() > state.skillDeck().size())
+            return new ActionResult.Rejected(ActionError.INVALID_TARGETS);
+        List<CardInstance> hand = state.mutableSkillHand(actor);
+        if (!hand.stream().map(CardInstance::instanceId).toList().containsAll(ids))
+            return new ActionResult.Rejected(ActionError.CARD_NOT_HELD);
+        GameState next = new GameState(state);
+        List<CardInstance> returned = new ArrayList<>();
+        for (int slot = 0; slot < hand.size(); slot++) if (ids.contains(hand.get(slot).instanceId())) {
+            returned.add(hand.get(slot));
+            next.mutableSkillHand(actor).set(slot, next.mutableSkillDeck().remove(0));
+        }
+        if (!returned.isEmpty()) {
+            next.mutableSkillDeck().addAll(returned);
+            next.randomState().shuffle(next.mutableSkillDeck());
+        }
+        next.confirmOpening(actor);
+        List<PublicEvent> events = List.of();
+        if (next.openingConfirmed(actor.opponent())) {
+            next.setPhase(TurnPhase.MOVEMENT);
+            next.setStartedTurns(1);
+            int mana = Math.min(next.rules().manaCap(), next.rules().initialMana() + next.rules().manaPerTurn());
+            if (next.turn() == PlayerColor.BLUE) next.setBlueMana(mana); else next.setRedMana(mana);
+            events = List.of(new PublicEvent.TurnStarted(next.turn(), 1));
+        }
+        next.setRevision(state.revision() + 1);
+        return new ActionResult.Accepted(next, events);
+    }
+
     /**
      * Pure state transition: applies an action to a state. Input state is never mutated.
      */
@@ -118,6 +145,9 @@ public final class RulesEngine {
         if (action instanceof GameAction.Resign) {
             return applyResign(state, actor);
         }
+
+        if (action instanceof GameAction.ConfirmOpening opening) return applyOpening(state, actor, opening);
+        if (state.phase() == TurnPhase.OPENING) return new ActionResult.Rejected(ActionError.WRONG_PHASE);
 
         if (actor != state.turn()) {
             return new ActionResult.Rejected(ActionError.NOT_YOUR_TURN);
@@ -190,6 +220,7 @@ public final class RulesEngine {
         }
 
         GameState next = new GameState(state);
+        next.clearIntel();
         int completed = next.completedTurns() + 1;
         next.setCompletedTurns(completed);
 
@@ -224,11 +255,6 @@ public final class RulesEngine {
             return new ActionResult.Rejected(ActionError.WRONG_PHASE);
         }
 
-        List<String> hand = state.mutableMovementHand(actor);
-        if (!hand.contains(move.movementCardId())) {
-            return new ActionResult.Rejected(ActionError.CARD_NOT_HELD);
-        }
-
         Square from = state.board().findPiece(move.pieceId());
         if (from == null) {
             return new ActionResult.Rejected(ActionError.INVALID_TARGETS);
@@ -247,20 +273,7 @@ public final class RulesEngine {
             return new ActionResult.Rejected(ActionError.INVALID_TARGETS);
         }
 
-        Card card = findCard(state.rules(), move.movementCardId());
-        if (card == null) {
-            return new ActionResult.Rejected(ActionError.CARD_NOT_HELD);
-        }
-
-        boolean legalOffset = false;
-        for (Offset offset : card.offsets()) {
-            Offset effective = actor == PlayerColor.BLUE ? offset : offset.rotate180();
-            if (from.plus(effective).equals(move.to())) {
-                legalOffset = true;
-                break;
-            }
-        }
-        if (!legalOffset) {
+        if (Math.abs(from.x() - move.to().x()) + Math.abs(from.y() - move.to().y()) != 1) {
             return new ActionResult.Rejected(ActionError.INVALID_TARGETS);
         }
 
@@ -270,17 +283,8 @@ public final class RulesEngine {
         // 1. Relocate piece and capture if destination occupied
         Piece captured = next.board().move(from, move.to());
 
-        // 2. Recycle movement card: return -> shuffle -> draw
-        List<String> nextHand = next.mutableMovementHand(actor);
-        nextHand.remove(move.movementCardId());
-        next.mutableMovementDeck().add(move.movementCardId());
-        next.randomState().shuffle(next.mutableMovementDeck());
-        String drawn = next.mutableMovementDeck().remove(0);
-        nextHand.add(drawn);
-
         // 3. Events in deterministic documented order
         List<PublicEvent> events = new ArrayList<>();
-        events.add(new PublicEvent.MovementPlayed(actor, move.movementCardId()));
         events.add(new PublicEvent.PieceMoved(move.pieceId(), from, move.to()));
         if (captured != null) {
             events.add(new PublicEvent.PieceEliminated(captured.id(), move.to()));
@@ -372,6 +376,7 @@ public final class RulesEngine {
         } else {
             next.setRedMana(currentMana - cost);
         }
+        next.spendSkill(actor, heldInstance.instanceId());
         ActionError error = SkillEffects.resolve(definition, state, next, actor, cast.targets(), events);
         if (error != null) {
             return new ActionResult.Rejected(error);
@@ -380,8 +385,8 @@ public final class RulesEngine {
         // Add SkillCommitted event first
         events.add(0, new PublicEvent.SkillCommitted(actor, heldInstance));
 
-        // Card bookkeeping: consume held skill, append to spent, draw top replacement if available
-        next.consumeHeldSkill(actor, heldInstance.instanceId());
+        // The played card has already freed its hand slot; theft replaces the normal draw.
+        if (!definition.id().equals("steal")) next.drawSkills(actor, 1, events);
 
         awardEliminations(state, next, actor);
         if (!finishVictory(next, actor, events)) next.setPhase(TurnPhase.END);
@@ -460,15 +465,6 @@ public final class RulesEngine {
         return true;
     }
 
-    private static Card findCard(RulesConfig rules, String cardId) {
-        for (Card card : rules.movementCards()) {
-            if (card.id().equals(cardId)) {
-                return card;
-            }
-        }
-        return null;
-    }
-
     /**
      * Projects authoritative state into recipient-specific immutable player view.
      */
@@ -521,6 +517,7 @@ public final class RulesEngine {
                 state.skillDeck().size(),
                 state.spentSkills(),
                 ownChoice,
-                state.outcome(), state.score(PlayerColor.BLUE), state.score(PlayerColor.RED), state.objectives());
+                state.outcome(), state.score(PlayerColor.BLUE), state.score(PlayerColor.RED), state.objectives(),
+                state.openingConfirmed(viewer), state.openingConfirmed(viewer.opponent()), state.intelFor(viewer), state.burnedDrawsFor(viewer));
     }
 }

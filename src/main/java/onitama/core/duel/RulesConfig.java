@@ -8,7 +8,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import onitama.core.Card;
-import onitama.core.CardDeck;
 
 /**
  * Immutable per-match rules and balance configuration.
@@ -28,17 +27,13 @@ public record RulesConfig(
     @Serial
     private static final long serialVersionUID = 1L;
 
-    public static final String EXPECTED_RULES_VERSION = "grid-duel-v3";
-
-    public static final Set<String> EXPECTED_MOVEMENT_IDS = Set.of(
-            "tiger", "dragon", "frog", "rabbit", "crab", "elephant", "goose", "rooster",
-            "monkey", "mantis", "horse", "ox", "crane", "boar", "eel", "cobra");
+    public static final String EXPECTED_RULES_VERSION = "grid-duel-v4";
 
     public static final List<String> CANONICAL_SKILL_IDS = List.of(
             "sidestep", "dash", "blink", "exchange", "advance", "recall",
             "strike", "pierce", "surround", "sweep", "shove", "pull",
             "vault", "flank", "transposition", "gust", "rally", "scatter",
-            "crossfire", "chain-strike", "mana-surge", "refocus", "foresight", "banish");
+            "crossfire", "chain-strike", "mana-surge", "refocus", "foresight", "banish", "steal", "spy", "draw-two", "sabotage", "barter", "siphon");
 
     /** Creates a rules snapshot using the standard eight-point victory target. */
     public RulesConfig(String rulesVersion, int movementHandSize, int skillHandSize, int initialMana,
@@ -73,8 +68,8 @@ public record RulesConfig(
         if (!EXPECTED_RULES_VERSION.equals(rulesVersion)) {
             throw new IllegalArgumentException("unsupported rules version: " + rulesVersion);
         }
-        if (movementHandSize != 2) {
-            throw new IllegalArgumentException("movementHandSize must be exactly 2: " + movementHandSize);
+        if (movementHandSize != 0) {
+            throw new IllegalArgumentException("movementHandSize must be exactly 0: " + movementHandSize);
         }
         if (manaCap < 1 || manaCap > 20) {
             throw new IllegalArgumentException("manaCap must be 1..20: " + manaCap);
@@ -92,27 +87,10 @@ public record RulesConfig(
             throw new IllegalArgumentException("skillHandSize must be 1..6: " + skillHandSize);
         }
 
-        if (movementCards.size() != 16) {
-            throw new IllegalArgumentException("movementCards count must be 16, got " + movementCards.size());
-        }
-        Set<String> moveIds = new HashSet<>();
-        for (Card card : movementCards) {
-            if (!EXPECTED_MOVEMENT_IDS.contains(card.id())) {
-                throw new IllegalArgumentException("unknown movement card id: " + card.id());
-            }
-            if (!moveIds.add(card.id())) {
-                throw new IllegalArgumentException("duplicate movement card id: " + card.id());
-            }
-            // Card.equals compares IDs only; compare the structural pattern explicitly.
-            var expected = CardDeck.cardById(card.id()).offsets();
-            if (card.offsets().size() != expected.size()
-                    || !new HashSet<>(card.offsets()).equals(new HashSet<>(expected))) {
-                throw new IllegalArgumentException("invalid movement pattern: " + card.id());
-            }
-        }
+        if (!movementCards.isEmpty()) throw new IllegalArgumentException("movementCards must be empty");
 
-        if (skills.size() != 24) {
-            throw new IllegalArgumentException("skills count must be 24, got " + skills.size());
+        if (skills.size() != CANONICAL_SKILL_IDS.size()) {
+            throw new IllegalArgumentException("skills count must be 30, got " + skills.size());
         }
         Set<String> skillIds = new HashSet<>();
         int totalCopies = 0;

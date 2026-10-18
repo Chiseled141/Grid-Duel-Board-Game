@@ -79,8 +79,10 @@ class ObjectiveLayoutTest {
     @Test void botUsesTheRandomScoringLocationRatherThanTheOldCenter() {
         for (int seed = 0; seed < 30; seed++) {
             var state = RulesEngine.newGame(RulesConfigLoader.load(null), seed);
-            state.setTurn(PlayerColor.BLUE); state.mutableMovementHand(PlayerColor.BLUE).clear();
-            state.mutableMovementHand(PlayerColor.BLUE).addAll(List.of("tiger", "frog"));
+            state.setTurn(PlayerColor.BLUE);
+            var target = state.objectives().scoring().get(0);
+            var origin = new onitama.core.Square(target.x(), 2);
+            state.board().move(new onitama.core.Square(0, 0), origin);
             var action = PracticeBot.chooseAction(RulesEngine.viewFor(state, PlayerColor.BLUE), Difficulty.SENIOR, new Random(1));
             var move = assertInstanceOf(GameAction.MovePiece.class, action);
             assertTrue(state.objectives().scoring().contains(move.to()));

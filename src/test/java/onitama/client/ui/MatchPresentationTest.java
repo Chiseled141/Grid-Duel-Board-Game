@@ -85,7 +85,7 @@ class MatchPresentationTest {
     @Test void topLeftHelpOpensLiveRulesWithoutChangingSelectionOrSendingActions() throws Exception {
         SwingUtilities.invokeAndWait(() -> {
             var base = RulesConfigLoader.load(null);
-            var rules = new RulesConfig(base.rulesVersion(), 2, 3, 2, 1, 7, 80,
+            var rules = new RulesConfig(base.rulesVersion(), 0, 3, 2, 1, 7, 80,
                     base.movementCards(), base.skills());
             var state = RulesEngine.newGame(rules, 42);
             var view = RulesEngine.viewFor(state, state.turn());
@@ -102,15 +102,15 @@ class MatchPresentationTest {
             });
             try {
                 frame.setContentPane(ui.panel); frame.setSize(1280, 720); frame.setVisible(true); frame.validate();
-                var cardId = (view.viewer() == PlayerColor.BLUE ? view.blueMovementHand() : view.redMovementHand()).get(0);
-                ui.model.cardClicked(cardId);
+                var piece = view.pieces().stream().filter(p -> p.piece().color() == view.viewer()).findFirst().orElseThrow();
+                ui.model.boardClicked(piece.square());
                 var help = find(ui.panel, javax.swing.JButton.class).stream()
                         .filter(b -> "matchHowToPlay".equals(b.getName())).findFirst().orElseThrow();
                 close.start(); help.doClick(); close.stop();
                 assertTrue(found.get());
                 assertTrue(text.get().contains("80 completed player turns"));
                 assertTrue(text.get().contains("up to 7"));
-                assertEquals(cardId, ui.model.selectedCardId());
+                assertEquals(piece.piece().id(), ui.model.selectedPieceId());
                 assertEquals(view, ui.model.view()); assertTrue(ui.sent.isEmpty());
             } finally { close.stop(); frame.dispose(); }
         });
@@ -134,7 +134,7 @@ class MatchPresentationTest {
             var ui = ui(initial());
             try {
                 var opponent = field(ui.panel, "opponentCards", javax.swing.JPanel.class);
-                assertEquals(2, find(opponent, CardPanel.class).size());
+                assertEquals(0, find(opponent, CardPanel.class).size());
                 assertEquals(3, find(opponent, CardBackPanel.class).size());
                 for (var back : find(opponent, CardBackPanel.class)) assertNull(back.getToolTipText());
                 assertEquals(3, find(ui.panel, SkillCardPanel.class).size());
@@ -163,7 +163,7 @@ class MatchPresentationTest {
             var base = RulesConfigLoader.load(null);
             var skills = base.skills().stream().map(d -> new SkillDefinition(d.id(), d.name(), d.category(), 4,
                     d.copies(), d.parameters(), d.descriptionTemplate(), d.artworkPath())).toList();
-            var rules = new RulesConfig(base.rulesVersion(), 2, 3, 2, 1, 5, 60, base.movementCards(), skills);
+            var rules = new RulesConfig(base.rulesVersion(), 0, 3, 2, 1, 5, 60, base.movementCards(), skills);
             var game = RulesEngine.newGame(rules, 42); var ui = ui(RulesEngine.viewFor(game, game.turn()));
             try { for (var card : find(ui.panel, SkillCardPanel.class)) assertTrue(card.getToolTipText().contains("4 Mana")); }
             finally { ui.panel.removeNotify(); }

@@ -33,14 +33,14 @@ class ObjectiveRulesTest {
     }
 
     @ParameterizedTest @EnumSource(PlayerColor.class)
-    void threeSquareJumpCapturesAndScoresForBothOrientations(PlayerColor actor) {
+    void oneSquareMoveCapturesAndScoresForBothOrientations(PlayerColor actor) {
         var state = game(actor);
         int home = actor == PlayerColor.BLUE ? 0 : 6;
         int ownId = actor == PlayerColor.BLUE ? 0 : 6, enemyId = actor == PlayerColor.BLUE ? 6 : 0;
-        state.board().set(new Square(1, home), new Piece(ownId, actor));
+        state.board().set(new Square(1, actor == PlayerColor.BLUE ? 2 : 4), new Piece(ownId, actor));
         state.board().set(CENTER, new Piece(enemyId, actor.opponent()));
         state.board().set(new Square(0, 6 - home), new Piece(enemyId + 1, actor.opponent()));
-        var action = new GameAction.MovePiece("tiger", ownId, CENTER);
+        var action = new GameAction.MovePiece(ownId, CENTER);
         assertTrue(Targeting.legalMoves(RulesEngine.viewFor(state, actor)).contains(action));
         var next = accepted(state, action);
         assertEquals(1, next.score(actor));
@@ -54,11 +54,11 @@ class ObjectiveRulesTest {
 
     @Test void movementScoreWinPrecedesTheDrawLimitEvenWithEnemiesRemaining() {
         var state = game(PlayerColor.BLUE); state.setCompletedTurns(59);
-        state.board().set(new Square(1, 0), new Piece(0, PlayerColor.BLUE));
+        state.board().set(new Square(1, 2), new Piece(0, PlayerColor.BLUE));
         state.board().set(CENTER, new Piece(6, PlayerColor.RED));
         state.board().set(new Square(0, 6), new Piece(7, PlayerColor.RED));
         state.addScore(PlayerColor.BLUE, 7);
-        var next = accepted(state, new GameAction.MovePiece("tiger", 0, CENTER));
+        var next = accepted(state, new GameAction.MovePiece(0, CENTER));
         assertEquals(new GameOutcome(PlayerColor.BLUE, EndReason.SCORE), next.outcome());
         assertEquals(8, next.score(PlayerColor.BLUE));
         assertEquals(59, next.completedTurns());
@@ -185,10 +185,10 @@ class ObjectiveRulesTest {
 
     @Test void seniorBotMovesOntoCenterAndKeepsItsDefenderThere() {
         var state = game(PlayerColor.BLUE);
-        state.board().set(new Square(1, 0), new Piece(0, PlayerColor.BLUE));
+        state.board().set(new Square(1, 2), new Piece(0, PlayerColor.BLUE));
         state.board().set(new Square(6, 6), new Piece(6, PlayerColor.RED));
         var action = PracticeBot.chooseAction(RulesEngine.viewFor(state, PlayerColor.BLUE), Difficulty.SENIOR, new Random(1));
-        assertEquals(new GameAction.MovePiece("tiger", 0, CENTER), action);
+        assertEquals(new GameAction.MovePiece(0, CENTER), action);
         state = accepted(state, action); state.setPhase(TurnPhase.MOVEMENT);
         assertInstanceOf(GameAction.SkipMovement.class,
                 PracticeBot.chooseAction(RulesEngine.viewFor(state, PlayerColor.BLUE), Difficulty.SENIOR, new Random(1)));

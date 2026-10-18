@@ -42,7 +42,7 @@ class MessageWireFilterTest {
         MatchSync sync = new MatchSync("match-1", "ROOM1", view, false, 1L);
         assertDeserializes(sync);
         assertDeserializes(new ActionRequest("match-1", 1L, 0L,
-                new GameAction.MovePiece("tiger", 1, new Square(2, 2))));
+                new GameAction.MovePiece(1, new Square(2, 2))));
         assertDeserializes(new ActionReply("match-1", 1L,
                 new ActionReceipt(true, 1L, null), sync));
         assertDeserializes(new GameUpdate(sync, List.of(
@@ -50,8 +50,8 @@ class MessageWireFilterTest {
         assertDeserializes(new GameOver(null, EndReason.DRAW, 1000, 1000));
         assertDeserializes(new LoginResponse(true, null,
                 new UserProfile("alice", 1016, 3, 1), "token"));
-        assertDeserializes(new ProtocolHello(4));
-        assertDeserializes(new ProtocolReady(4));
+        assertDeserializes(new ProtocolHello(6));
+        assertDeserializes(new ProtocolReady(6));
         assertDeserializes(new onitama.net.FindMatchRequest(true));
         assertDeserializes(new onitama.net.FindMatchRequest(false));
         assertDeserializes(new onitama.net.MatchmakingStatus(true, null));

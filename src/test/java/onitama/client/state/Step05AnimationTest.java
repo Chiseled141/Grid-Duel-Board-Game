@@ -111,8 +111,7 @@ class Step05AnimationTest {
 
         MatchSync sync2 = new MatchSync("m-100", "ROOM-100", rev2, false, 2L);
         List<PublicEvent> events = List.of(
-                new PublicEvent.PieceMoved(1, new Square(0, 0), new Square(0, 1)),
-                new PublicEvent.MovementPlayed(PlayerColor.BLUE, rev1.blueMovementHand().get(0))
+                new PublicEvent.PieceMoved(1, new Square(0, 0), new Square(0, 1))
         );
 
         // 1. ActionReply arrives with revision 2
@@ -183,6 +182,8 @@ class Step05AnimationTest {
                 }
             });
 
+            model.sendAction(new GameAction.ConfirmOpening(List.of()));
+            model.stepBot();
             // Advance game until bot turn then step bot
             for (int i = 0; i < 5; i++) {
                 if (model.myTurn()) {
@@ -208,9 +209,9 @@ class Step05AnimationTest {
         MatchSync sync = new MatchSync("m-1", "ROOM1", view, false, 1L);
         model.handleMessage(sync);
 
-        String cardId = view.blueMovementHand().get(0);
-        model.cardClicked(cardId);
-        assertEquals(cardId, model.selectedCardId());
+        assertTrue(view.blueMovementHand().isEmpty());
+        model.boardClicked(new Square(0, 0));
+        assertNotNull(model.selectedPieceId());
 
         // Player skips movement or makes move, selection clears
         model.skipMovement();
@@ -309,7 +310,7 @@ class Step05AnimationTest {
         SwingUtilities.invokeAndWait(() -> {
             RulesConfig r = RulesConfigLoader.load(null);
             // 6 skill cards in hand
-            RulesConfig config6 = new RulesConfig(r.rulesVersion(), 2, 6, r.initialMana(),
+            RulesConfig config6 = new RulesConfig(r.rulesVersion(), 0, 6, r.initialMana(),
                     r.manaPerTurn(), r.manaCap(), r.turnLimit(), r.movementCards(), r.skills());
             GameState game = RulesEngine.newGame(config6, 99L);
             PlayerView view = RulesEngine.viewFor(game, viewer);

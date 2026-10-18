@@ -116,7 +116,7 @@ public final class MatchSession {
         tracks.get(PlayerColor.BLUE).reset();
         tracks.get(PlayerColor.RED).reset();
         long seed = server.config().dealRandom().nextLong();
-        state = RulesEngine.newGame(rulesConfig, seed);
+        state = RulesEngine.newOpeningGame(rulesConfig, seed);
         paused = false;
         announceMatchStart();
     }
@@ -170,7 +170,12 @@ public final class MatchSession {
                 return;
             }
 
-            if (request.expectedRevision() != state.revision()) {
+            // The two opening choices are independent; an opponent's confirmation
+            // must not reject a choice already submitted against the initial view.
+            boolean independentOpening = request.action() instanceof GameAction.ConfirmOpening
+                    && state.phase() == onitama.core.duel.TurnPhase.OPENING
+                    && request.expectedRevision() >= 0 && request.expectedRevision() <= state.revision();
+            if (request.expectedRevision() != state.revision() && !independentOpening) {
                 ActionReceipt receipt = new ActionReceipt(false, state.revision(), ActionError.STALE_REVISION);
                 track.lastReceipt = receipt;
                 sender.send(new ActionReply(matchId, seq, receipt, createSync(actor)));
