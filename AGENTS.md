@@ -1,598 +1,252 @@
-# AGENTS.md — Harness and authoritative specification for Deck Duel
-
-> Read this file at the start of every task. It is the only harness entry point.
-
-## Stack & hard constraints
-
-- Java 17, Maven single module. Only deps: `org.xerial:sqlite-jdbc` + `org.junit.jupiter:junit-jupiter` (test). Swing for UI, raw `ServerSocket`/`Socket` + Java object serialization for networking. No Spring/JavaFX/Netty/Gson/Lombok/cloud SDKs.
-- Everything runs on localhost. `mvn package` → `target/deck-duel.jar` dispatched by `deckduel.Main` on `args[0]`: `server` | `client` | `bots` | `demo`.
-- The "Deck Duel — Authoritative specification" section in this file is the ground truth for rules, protocol, database schema and tests. Where older passages conflict, the adopted rules updates in that section take precedence.
-
-## Migration status and authority
-
-- The 7×7 skill-card Deck Duel gameplay migration (Milestones A–F) is complete. The runnable engine in `deckduel.core.duel` powers all application routes: server, client, practice mode, bot fleet, and demo CLI.
-- Configuration is loaded via `RulesConfigLoader` from bundled defaults with optional external `.properties` override.
-- Protocol version `DECK_DUEL_PROTOCOL:7` handles recipient-specific views, action sequence retries, and reconnect.
-- Swing client (`ClientModel`, `BoardPanel`, `GamePanel`, `SkillCardPanel`, `ForesightDialog`) is fully integrated and playable.
-
-## Commands
-
-```bash
-mvn test          # all tests (UT01-UT09, IT01-02, LT01, PracticeBotTest) — must be green after every change
-mvn clean verify  # clean shade build; report actual test count
-mvn package       # builds target/deck-duel.jar
-java -jar target/deck-duel.jar demo --seed 42
-java -jar target/deck-duel.jar server --port 5555 --db data/deck-duel.db
-java -jar target/deck-duel.jar client --host 127.0.0.1 --port 5555
-java -jar target/deck-duel.jar bots --host 127.0.0.1 --port 5555 --bots 8 --games 4
-```
-
-Tests use ephemeral ports + temp DB files. Never require a running server.
-
-## Invariants — do not violate
-
-1. `deckduel.core` is pure logic: no I/O, no sockets. Shared server↔client verbatim.
-2. Target board: 7×7, seven identical pieces per side, Blue y=0 and Red y=6. Public randomized mirrored scoring/mana objectives and score rewards remain unchanged. Basic movement is one square orthogonally, optional once per turn; no movement cards, hands or deck. Movement skills retain their specific distances, jumps and swaps. Rules version deck-duel-v4; protocol 7.
-3. Friendly landing illegal; basic enemy landing eliminates. Shared 30-skill catalog (one copy each by default), three skills each, six-card hand cap. Turn: optional basic move → optional one skill → End Turn. Played skills leave hand before effects, then normally draw a replacement. Pilfer transfers a random enemy skill instead of that draw. Refocus permanently discards other held skills, then redraws that many. At six held cards, a draw is destroyed permanently in the private host zone; public CardBurned(actor) exposes no identity. Only the drawer receives ownBurnedDraws for animation. Espionage privately snapshots enemy skills until End Turn. Sabotage discards a random enemy skill; Barter exchanges random other own/enemy skills; Siphon transfers up to 2 mana after cost, within cap. Validate before RNG/mutation. Mana, score/elimination priority and 60-turn draw remain as specified.
-4. Authoritative server owns decks, hands, RNG and phases. Validate before mutation, including RNG. Send full recipient-specific views after accepted actions, start and reconnect; never send full authoritative state containing hidden deck order or seed; opponent skills are revealed only to a caster explicitly entitled by Espionage. Rejections change nothing. Foresight preview is private and commits the player to resolving its pending choice. Step 3 documents the live message/view contracts; legacy gameplay messages have been removed.
-5. Thread model: accept loop → handler pool → **one single-thread executor per `MatchSession`** => game logic lock-free. Shared registries via `ConcurrentHashMap`. Per-client writes only from its handler (single-writer). Shutdown hook for clean exit.
-6. Serialization: one object per message via `ObjectInput/OutputStream`, `flush()` + `reset()` every write, `serialVersionUID=1L`, `final` records, sealed `Message`.
-7. Heartbeats: `Ping` every 30s, `soTimeout` 90s. Reconnect: token in `LoginResponse`, `OpponentLeft(60)`, `ReconnectRequest` restores the recipient view and pending phase/choice without extra mana/draw; grace expiry = forfeit.
-8. DB: single shared SQLite `Connection` under monitor. All SQL via `PreparedStatement`. Match recording (insert + Elo/W/L) is one transaction with rollback. Elo K=32 zero-sum in `core.Elo`. PBKDF2 hashes. Preserve legacy STONE/STREAM records; new results use ELIMINATION/SCORE/FORFEIT/DRAW. Version/turn-count storage migration is specified in Step 3 before persistence changes.
-9. Client EDT: socket reader parses then `SwingUtilities.invokeLater` to `ClientModel`; `ClientModel` fires `ClientModelListener`; panels are observers — never touch socket, never block EDT on I/O. Board drawn from own side (Red flips canonical coords).
-
-10. Balance configuration: load validated `.properties` outside core, inject an immutable per-match snapshot; no mid-match hot reload. Runtime card text uses those definitions, not baked artwork. Practice bots get only permitted player information.
-
-## Where to find things
-
-- `docs/examples/game-balance.properties` — complete loader template; not active runtime configuration.
-- `src/main/java/deckduel/{core,net,server,db,client/{state,ui,bot}}`
-- `src/test/java/deckduel/` — `core/*`, `db/*`, `net/*`, `server/*`
-
-## Workflow
-
-- Read the relevant source and tests, and follow this harness and the authoritative specification below.
-- Run `mvn test` after code changes; report the actual result.
-- Keep changes focused and update relevant regression coverage when behavior changes.
-
-## Rules for agents
-
-- Explainable code: short methods, Javadoc on public types/methods (1-3 lines), comments explain *why*.
-- No dead/commented-out code, no `System.out.println` (use `java.util.logging`), no fabricated numbers.
-- Prefer existing patterns; no new abstractions without reason; no unrelated refactors.
-- Do not claim success without `mvn test` evidence.
-
----
-
-# Deck Duel — Authoritative specification
-
-**Status (2026-10-15): gameplay migration complete; Step 5 presentation integrated.**
-This is the source of truth for gameplay, technical constraints, protocol and tests.
-The live engine is `deckduel.core.duel` across server, client, practice, bots and demo.
-The sections below define the implemented APIs, configuration and persistence
-contracts. Obsolete 5×5 engine classes and unused legacy mechanics have been removed.
-
-## 0. Agent rules and migration policy
-
-- Java 17, single-module Maven. Dependencies: `org.xerial:sqlite-jdbc` and
-  test-only `org.junit.jupiter:junit-jupiter`. Swing UI, raw TCP sockets, Java
-  object serialization. No Spring, JavaFX, Netty, Gson/Jackson, Lombok, game
-  engine, animation library, cloud SDK, or cloud service.
-- Everything runs on localhost. Keep the current accounts, lobby, Elo,
-  leaderboard, practice, rematch, and reconnect capabilities.
-- Short explainable methods, public API Javadoc, meaningful comments, logging
-  via `java.util.logging`. No dead code or invented validation results.
-- Implement one bounded migration task at a time. This documentation change
-  does not authorize rewriting the entire engine immediately.
-- Keep `mvn test` green. When implementing an intentionally changed rule, replace
-  obsolete assertions with meaningful new-rule coverage in the same change.
-  Never remove or disable tests solely to conceal a failure. Unrelated security,
-  concurrency, serialization, and persistence coverage remains mandatory.
-- The 125-test baseline is historical, not a fixed expected count. Report actual
-  counts. Delegated implementations must use the state/action/view interfaces
-  and exact message names in Step 3; do not invent competing contracts.
-
-## Adopted rules update — free movement and hand control (2026-10-18)
-
-This section supersedes all older movement-card and 24-skill rules/appendices below.
-Current rules: `deck-duel-v4`; current wire protocol: `DECK_DUEL_PROTOCOL:7`.
-
-- No movement cards, movement hands or movement deck. Select a friendly piece and
-  move exactly one square orthogonally, or skip; once per own movement phase.
-  Friendly landing is illegal; enemy landing captures. No movement draw or RNG.
-  Existing movement skills retain their own jumps, swaps and repositioning rules.
-- Shared skill catalog now has 30 definitions: the previous 24 plus Pilfer (`steal`,
-  cost 4), Espionage (`spy`, 2), Draw Two (`draw-two`, 2), Sabotage (`sabotage`, 3),
-  Barter (`barter`, 2), Siphon (`siphon`, 2). Each has one copy by default.
-- Hand limit is 6. A cast is validated, then its card leaves hand for public spent
-  before effects. Normally draw one replacement after effects. Effects/rejections
-  remain atomic and candidate RNG is never committed on rejection.
-- Pilfer steals a random opposing held skill instead of the normal replacement;
-  requires a nonempty opposing hand. The stolen identity is never a public event.
-- Espionage snapshots enemy skills privately for the caster until End Turn.
-  Reconnect restores the same permitted intel, never a fresh reveal or payment.
-- Draw Two draws up to 2 additional skills, then the normal replacement.
-- Refocus permanently discards all other held skills into public spent, draws that
-  many, then draws its normal replacement. Empty decks shrink the resulting hand.
-- Sabotage permanently discards one random enemy skill into public spent.
-- Barter exchanges one random other held skill with one random enemy skill;
-  requires both hands nonempty after the played card leaves. Then draws replacement.
-- Siphon transfers up to 2 enemy mana after payment, within the caster's cap;
-  requires a positive transfer. No board target is needed for these six skills.
-- Drawing at 6 held cards removes the top card permanently into the host-only
-  destroyed zone. Emit `CardBurned(actor)` without an identity. Only the drawer's
-  view contains `ownBurnedDraws` for that accepted action; the opponent sees backs
-  tearing. Never reveal destroyed identities in public spent. Counts/deck shrink
-  remain public. Reduced motion skips travel/tearing; it never changes destruction.
-- `PlayerView.revealedEnemySkills` contains only the caster's permitted intel.
-  Reserved movement fields remain empty/zero for source compatibility; no live
-  route uses them. `MovePiece` is `(pieceId, to)`. Config movement.handSize is 0.
-- Opening selection, skill targeting, objectives, mana defaults, victory, retry,
-  Foresight commitment, localhost-only hosting and DB transactions remain unchanged.
-
-## 1. Product scope
-
-Two players control seven identical pieces each on a 7×7 board with three public objective squares. Reusable
-movement cards establish positioning; 24 distinct single-use skills and mana
-create tactical variety. Eliminate all enemy pieces or reach the configured score target (default 8) to win. Each enemy eliminated gives 1 point; each occupied scoring square gives 1 point at own-turn start. The 60 completed-player-turn limit remains. No additional terrain, Masters, temples, HP, armor, reactions or ongoing statuses.
-
-Server: headless authoritative matches, accounts, five-character room codes,
-multiple matches, reconnect grace, match records and Elo. Client: Swing
-login/register, lobby, game, leaderboard, and practice against a bot. Headless
-bots remain a load-test tool with CSV output. SQLite stores users and matches.
-
-`mvn package` builds `target/deck-duel.jar`; `deckduel.Main` dispatches `server`,
-`client`, `bots`, or `demo`. Existing shell/batch launch scripts remain supported.
-Out of scope: web/mobile clients, HTTP/WebSocket, spectators, replay
-recording and cloud automation. Elo-based matchmaking and cross-server queues remain out of scope.
-
-### Find match (2026-10-17)
-
-Play offers an optional server-owned FIFO queue for authenticated players on the
-same local server. FindMatchRequest(searching) joins or cancels it;
-MatchmakingStatus(searching, error) acknowledges the current search (nullable error).
-Duplicate joins are idempotent. Two available distinct accounts are claimed once,
-removed from the queue and any hosted rooms, then enter the normal MatchSession
-and receive recipient-specific MatchSync views. No fake bot opponent or ETA.
-Cancellation/disconnect/account changes remove a waiting entry. Authentication
-cancels search before its database work; changing a reserved identity notifies the
-old session's disconnect path. Old sessions neither send into a new account/match
-nor clear its reconnect token. A pairing that
-wins the cancellation race is already a live match and follows normal match rules.
-Active matches cannot queue; queued players must cancel before creating/joining
-rooms. Lobby admission and pairing share one short monitor; gameplay stays on the
-per-match executor. Add these records to the version-4 sealed wire allowlist;
-update server and client together. Existing room and practice routes remain.
-
-### Played-card history (2026-10-16)
-
-The match shows the latest publicly committed skill beside each side of the board.
-Movement cards do not enter these areas; public hands and last-move board markers
-provide movement feedback. Subsequent movement preserves the last displayed skill. The previous
-left timeline panel is removed; its space holds turn actions above a hand-sized
-shared decorative draw pile. The model retains local public history.
-Record only accepted public events; never infer unseen opponent skills or
-private Foresight previews. Duplicate/stale updates do not add entries. Same-match
-reconnect preserves locally observed plays; new matches/rematches clear them.
-The separate Card details tab is removed; enlarged cards and live tooltips provide
-card text. This applies in practice too.
-
-### In-match chat (2026-10-16)
-
-Live multiplayer matches support ephemeral text chat between their two connected
-players. ChatRequest(matchId, text) is client-to-server; ChatMessage(matchId,
-sender, text) is server-to-client, with identity derived from the authenticated
-handler. Both records use serialVersionUID=1L and the version-2 wire allowlist;
-update client and server together. Chat does not consume gameplay sequences or
-change revision, turn, phase, RNG or reconnect deadlines. It is allowed during
-private choices but not while paused or finished. Reject stale matches, blank
-text, more than 280 UTF-16 code units, control/format/line-separator characters,
-and sends less than 500 ms apart per player. Accepted text is stripped and echoed
-to both players. Client history keeps the last 200 accepted messages; same-match
-reconnect retains that local history, while a fresh match/rematch or leaving a
-finished match clears it. No storage or replay of missed chat; practice has no chat.
-
-## 2. Gameplay rules
-
-### 2.1 Setup
-
-The following defaults define the first playable version.
-
-- Coordinates: `x=0..6`, `y=0..6`. Blue begins on `y=0`; Red begins on `y=6`.
-- Place Blue pieces at `(0,0), (1,0), (2,0), (3,0), (4,0), (5,0), (6,0)`.
-- Place Red pieces at `(0,6), (1,6), (2,6), (3,6), (4,6), (5,6), (6,6)`.
-- Both starting rows are full, giving a symmetric seven-piece formation. Every piece has a stable identity, but identical abilities.
-- There are no temples, special pieces, HP, armor, upgrades, or passive statuses.
-- Use 16 movement-card patterns, one copy each. Lance/Tiger jumps forward 3; Left Feint/Frog and Right Feint/Rabbit jump sideways 3; the other 13 patterns are unchanged. Native offsets are Blue-relative; Red negates both components.
-- Shuffle each shared deck separately. Deal alternately Blue then Red: two movement cards each and three skill cards each.
-- This leaves 12 movement cards and 18 skill cards in their respective decks.
-- Choose the starting player randomly, independently of card stamps. Use seeded randomness for repeatable tests.
-- Public objective layout is generated once per match: two scoring squares at (x,3)/(6-x,3), x in 0..2, and two mana squares at (x,2)/(6-x,4), x in 0..6. All four are distinct and symmetric under 180-degree rotation. Store and reuse this layout across actions, retries and reconnects.
-- Both players begin with 2 mana. At their first turn start, they gain 1, so each first acts with 3 mana.
-
-### 2.2 Turn sequence
-
-A player turn contains these ordered phases:
-
-1. **Start:** gain 1 mana plus 1 per occupied mana square, capped at 5. Each occupied scoring square gives 1 score. Rewards happen exactly once when a new own turn starts; reconnecting/retries do not repeat them. Landing alone gives no reward.
-2. **Movement:** play at most one movement card, or skip movement.
-3. **Skill:** play at most one skill card, or skip the skill.
-4. **End:** finish the turn, increase the completed-turn count, then give the opponent the turn unless the match has ended.
-
-Once movement is played or skipped, the player cannot return to that phase. A skill cannot be played before movement has been played or skipped. A replacement skill cannot be played again in the same turn.
-
-An End Turn action skips any remaining optional phases. A player may end a turn even when legal actions exist. If no movement is legal, they may still cast a legal skill. Doing nothing does not cycle or draw cards. The turn limit prevents indefinite passing.
-
-### 2.3 Movement and captures
-
-- Select a movement card in your hand, one friendly piece, and a destination matching one of the card's oriented offsets.
-- Pieces jump over intervening pieces. The destination must be on the board and cannot contain a friendly piece.
-- Landing on an enemy eliminates that enemy and occupies its square.
-- After successful movement, remove the used card from the hand, insert it into the shared movement deck, shuffle the deck, then draw one replacement.
-- The played card may be drawn again immediately. This follows the **return → shuffle → draw** ordering and must not be silently changed to a discard-pile system.
-- Each player keeps two movement cards. Skipping movement draws nothing.
-- Skill-generated movement does not consume or replace a movement card unless the skill explicitly says so; Refocus is such an exception.
-
-### Opening skill selection
-
-Live matches begin in OPENING before turn 1. Each player privately sees their three
-skills, may mark/unmark any subset for replacement locally, then confirms once
-(including keeping all). Marking alone sends no gameplay action. Either player
-may confirm irrespective of the selected starter. The host draws replacement
-instances from the remaining shared skill deck into the marked slots before
-returning the removed cards and shuffling, so a removed card cannot be its own
-replacement. Nothing is spent and mana/board/movement hands stay unchanged.
-Both confirmations are required before the starter receives first-turn mana and
-MOVEMENT begins. Confirmation is atomic, sequenced, retry-safe and reconnectable;
-views expose only own skills and the two confirmation flags. Practice and fleet
-bots use this same transition. Presentation deals skills from the own deck to
-three large preview slots, returns marked cards only after accepted confirmation,
-then draws replacements and transfers the final cards into the playable hand.
-Reduced motion skips flights; reconnect never resubmits a confirmed choice.
-
-### 2.4 Skill use, mana, and replacement draws
-
-- A cast requires the player's skill phase, the card in their hand, sufficient mana, and all legal target selections.
-- Validate the complete action before committing it. Illegal casts change no board state, mana, hand, deck, turn phase, or random-generator state.
-- On success: pay the mana cost, resolve the entire effect, move the used card to the public spent pile, then draw one replacement if the skill deck is nonempty.
-- Spent skills never return to play. With one copy per skill, each effect can be cast at most once across the whole match.
-- When the shared skill deck is empty, casts still work but hands shrink. Having no skills does not cause a loss.
-- No automatic skill draw occurs at turn start or when movement is performed.
-- Mana persists between turns. Captures grant no mana. There are no refunds after a successful cast.
-- Mana Surge costs 0, obeys the cap, and consumes the one skill opportunity. It can be played at the cap even though its mana gain is zero.
-- No reactions, stacks, opponent-turn casts, or ongoing status effects in the first set.
-
-### 2.5 Targeting conventions and special cases
-
-- Distance means Manhattan distance: `abs(dx) + abs(dy)`.
-- Adjacent means horizontally or vertically adjacent unless a card explicitly says diagonal.
-- Empty means unoccupied at the point the rule checks it; all destinations must be on the board.
-- Any two-piece swap requires two distinct pieces. Swaps exchange positions without elimination or checking intermediate squares.
-- For “up to 2,” choose one or two distinct pieces/targets, never zero. Destinations must be distinct; no skill leaves two pieces on one square.
-- Skills do not capture by landing on an occupied square unless their rule explicitly allows it. Flank explicitly does.
-- “Starting row” always means the initial edge for that color, regardless of current piece locations.
-- Advance moves both chosen allies one row toward the enemy starting edge into squares empty before the cast; resolve together.
-- Gust and Scatter resolve together, into squares empty before the cast. “Both destinations” means every selected destination even when selecting only one target.
-- Rally chooses a stationary friendly anchor and one or two other allies. The player supplies their resolution order; each move reduces distance to the anchor and lands on a square empty at that step. Validate that entire sequence on a temporary state first.
-- Sweep removes its selected enemies together. Chain Strike's second target is adjacent to the first target's original square and must be a different enemy.
-- Crossfire requires two allies on opposite sides of the enemy in the same row or column, each at most distance 3 from the target, with clear intervening squares.
-- Refocus returns both of the caster's movement cards to the shared movement deck, shuffles once, then draws two. It works even after a normal movement this turn and does not reopen the movement phase.
-- Foresight privately reveals up to three top skill cards to the caster, accepts an ordering of exactly those cards, and puts them back before the normal replacement draw. Thus the first ordered card becomes the replacement. Opponents learn neither the preview nor the chosen order. An empty-deck cast is allowed and draws nothing.
-
-### 2.6 Winning and ending a match
-
-- After a complete movement or skill resolves, zero opposing pieces means an immediate win. Do not wait for End Turn.
-- Resolve mandatory card bookkeeping as part of that successful action before marking it complete; no further player actions follow a win.
-- Elimination or score wins caused by an action on the 60th player turn take precedence over the turn-limit draw. Elimination has priority when both win conditions occur together.
-- Otherwise, End Turn on completed turn 60 ends the match as a draw. This means 30 turns each in a normal alternating match, not 60 turns each.
-- Remaining-piece count and remaining mana do not break a draw.
-- Resignation loses immediately. Keep the existing 60-second reconnect grace and forfeit behavior for the online game.
-- Every enemy eliminated by a completed movement or skill gives its actor 1 point. Resolve multi-target skills atomically. After elimination check, reaching `score.target` (default 8) wins immediately with reason SCORE. A center turn-start reward can also win before movement.
-- Score and mana objectives require a piece occupying the square at own-turn start. There is no persistent ownership after leaving. No temple or Master-capture victory.
-
-### 2.7 Public and private information
-
-Public: board, turn and phase, both scores and score target, both mana totals, both movement hands, skill-hand counts, remaining deck counts, spent skills, completed-turn count, and match result.
-
-Private to a player: their skill hand and any active Foresight preview. Undrawn deck identities/order and the match random seed stay server-private during play.
-
-The existing full-state network broadcast cannot be reused unchanged under these rules. The server retains the authoritative state and sends each player only their permitted view. Reconnect must restore the same phase, hand, and pending Foresight choice without granting extra mana or another draw. Practice bots receive only the information their player is allowed to know.
-
-
-## 3. Architecture requirements
-
-- `deckduel.core` stays pure: no file I/O, sockets, or Swing. Server, practice, and
-  client-visible legality checks share rule definitions. Keep mutations confined
-  to engine-controlled paths; do not let UI code mutate received views.
-- The server owns both decks, all hands, RNG state, phase, mana, pending choices,
-  and result. Validate all actions against that state. Rejections mutate nothing,
-  including random state. Multi-target skills validate completely before commit.
-- Send a full **player-specific view**, not full authoritative GameState, after
-  each accepted action/phase transition and on match start/reconnect. Include
-  public state and only that recipient's permitted private data. Full snapshots
-  remain sufficient; delta synchronization is not required.
-- Accept loop → handler pool → one single-thread executor per `MatchSession`.
-  Match state is thread-confined; no locks inside game logic. Shared registries
-  use `ConcurrentHashMap`; each client socket retains a single writer. Preserve
-  clean shutdown behavior.
-- Java serialization: sealed `Message`, final message records, explicit
-  `serialVersionUID=1L`; flush and reset for every write so references cannot
-  deliver stale state. Maintain and test the deserialization allowlist for all
-  new payloads; reject unknown/foreign objects safely.
-- Ping every 30 seconds; socket timeout 90 seconds. Reconnect token comes from
-  LoginResponse. On disconnect, park the match and notify the opponent with
-  the 60-second grace. Restore the same permitted view and pending choice;
-  never repeat turn-start mana or a draw. Grace expiry forfeits.
-- Load and validate `.properties` balance definitions outside core, then inject
-  an immutable rules snapshot at match creation. Edits affect future matches.
-  Clients display the match's definitions, never independently selected local
-  balance values. Only public definitions may be distributed to clients.
-- Seeded randomness makes tests reproducible. Never send the live match seed,
-  RNG state, or undrawn deck sequence to clients or practice-bot policy code.
-
-## 4. Protocol requirements (target, not implemented APIs)
-
-Keep login/registration, lobby listing/create/join, leaderboard, ping/pong,
-rematch, error reporting, and token reconnect. Replace legacy gameplay payloads
-when their migration task lands; `PassTurn(cardIdToDiscard)` and broadcasts of
-full `GameState` are legacy behavior, not valid redesign contracts.
-
-| Operation | Direction | Required semantics |
-| --- | --- | --- |
-| Match start | Server → each player | Color, room, public rules snapshot, recipient-specific initial view |
-| Movement | Client → server | Selected held card, friendly piece/from square, destination; only movement phase |
-| Skip movement | Client → server | Enter skill phase without drawing or spending a movement card |
-| Cast skill | Client → server | Held skill and complete typed targets/selections; verify phase, mana and legality |
-| Resolve private choice | Client → server | Submit exactly a permutation of the active Foresight preview |
-| End turn | Client → server | Skip remaining optional phases and advance once; unavailable during a pending choice |
-| Accepted action | Server → each player | Updated permitted view and public action details; never opponent draw identities |
-| Rejected action | Server → requester | Useful error; no state mutation or disclosure of hidden information |
-| Game over | Server → each player | Winner or draw, ELIMINATION/FORFEIT/DRAW, updated ratings |
-| Reconnect | Client → server → recipient | Token verification; restore view and phase/private pending choice, not a fresh turn |
-
-Step 3 §8 defines match IDs, per-player request sequences, revision checks,
-receipts and the protocol handshake so stale/duplicate requests cannot spend
-cards twice or advance two turns. Broadcast views share
-public state, but their private payloads intentionally differ. Update both peers,
-serialization tests and filters together; mixed legacy/new gameplay peers are
-not supported and must fail clearly rather than silently deserialize incompatible
-state.
-
-Foresight requires a two-stage interaction: validate the cast before revealing
-anything, then enter a server-owned pending choice. Once a preview is revealed,
-the cast cannot be cancelled and no other gameplay action can run until its
-ordering is completed (resignation and disconnect handling still apply). Reserve
-the card and required mana; finish payment, reorder, disposal and replacement
-exactly once when a valid ordering arrives. Invalid order submissions preserve
-the pending choice. Reconnect restores it. With zero cards, resolve immediately
-without a choice. A final one-card ordering is deterministic. This commitment
-prevents repeatedly previewing the deck for free.
-
-## 5. Database (SQLite via JDBC)
-
-Single shared `Connection` guarded by a monitor (deliberate: SQLite serializes
-writes anyway; heavy concurrent write load is not a goal). Schema created
-idempotently at server start:
-
-```sql
-CREATE TABLE IF NOT EXISTS users (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  username TEXT UNIQUE NOT NULL,
-  password_hash TEXT NOT NULL,   -- PBKDF2WithHmacSHA256, iterations:saltB64:hashB64
-  elo INTEGER NOT NULL DEFAULT 1000,
-  wins INTEGER NOT NULL DEFAULT 0,
-  losses INTEGER NOT NULL DEFAULT 0,
-  created_at TEXT NOT NULL
-);
-CREATE TABLE IF NOT EXISTS matches (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  blue_user_id INTEGER NOT NULL REFERENCES users(id),
-  red_user_id INTEGER NOT NULL REFERENCES users(id),
-  winner_user_id INTEGER REFERENCES users(id),  -- NULL on draw
-  end_reason TEXT NOT NULL,                     -- new: ELIMINATION|FORFEIT|DRAW; legacy: STONE|STREAM
-  move_count INTEGER NOT NULL,
-  elo_blue_after INTEGER NOT NULL,
-  elo_red_after INTEGER NOT NULL,
-  played_at TEXT NOT NULL
-);
-```
-
-- **All** SQL through `PreparedStatement` (injection structurally impossible).
-- Recording a finished match (insert + both Elo/W/L updates) is **one
-  transaction** with rollback on failure.
-- **Elo:** standard, K=32, zero-sum, pure static function in `core`, unit-tested.
-- Passwords never stored/logged in plaintext (`javax.crypto`, JDK-built-in).
-
-
-Migration requirement: preserve historical STONE/STREAM rows. New matches use
-ELIMINATION, FORFEIT, or DRAW (resignation is FORFEIT). Do not reinterpret legacy
-records. The existing `move_count` field remains a legacy field; Step 3 §10
-defines the additive `rules_version`, `started_turns`, `completed_turns` migration
-and the version-aware `move_count=0` sentinel for new rows. A winning action may end a turn before End Turn; persist the
-number of turns started, including that terminal turn, separately from the
-completed-turn counter used for the draw check. These documented schema/API changes
-are not yet implemented. Preserve transaction and rating behavior.
-
-## 6. Swing client and artwork
-
-- Game screen: enlarged 7×7 board; both public movement hands; enlarged own skill
-  cards with live descriptions; concealed opponent skills; mana and turn/phase;
-  played-card history, skip movement, End Turn, resign and rematch. Use the same
-  selected animated background as the menu, warm translucent surfaces and floating
-  ivory/gold actions, with the previous prominent pill design for Skip Movement,
-  End Turn and Cast Skill. Remove the Card details tab, VS banner, Your hand label and
-  bottom instruction strip. Keep context guidance on tooltips and board highlights.
-  Each player side has an unlabeled decorative draw origin for both card types.
-  The opponent row orders hidden skills, movement cards, then its deck at the right;
-  local hand and deck positions remain. Hide deck titles/counts. The two authoritative decks, counts and recycling rules remain
-  distinct in engine/protocol. Never reveal concealed opponent skill faces.
-
-- Own cards support clicking or a left-button upward drag and release to select.
-  Settings offers Click or slide up (default) and Slide up only; persist the choice.
-  In slide-only mode clicks do not select. Short drags and Esc cancellation return
-  the card smoothly. Keep
-  selected cards raised during targeting. Only accepted actions launch card-play
-  flights to own-left/opponent-right presentation areas beside the board. Block
-  conflicting input during these flights, retain hand reflow, and reset visual
-  state on lifecycle changes. Areas never cover board squares and do not change
-  movement exchange or permanent skill consumption. Opponent skill faces may
-  appear only after their public committed event.
-- Draw from the player's side; Red flips canonical coordinates. Movement
-  diagrams come from offset data, not painted rules. A 5×5 (or 7×7 for range-three cards) relative offset
-  diagram is still valid for the existing patterns; it is not the game board.
-- Movement selection highlights legal landings. Skill selection follows shared
-  target constraints, supports ordered/multiple targets, and allows cancellation
-  before submission. Foresight's committed private choice cannot be cancelled.
-- Read only the player view. Local highlighting can use visible information;
-  server validation remains final. Never require hidden decks for UI legality.
-- Socket reader parses, then `SwingUtilities.invokeLater` updates ClientModel.
-  Panels observe ClientModelListener; no socket access or blocking I/O on EDT.
-  Animations use Swing timers and cannot mutate authoritative state or delay
-  network handling.
-- Retain parchment/sumi-e visual style and asset fallbacks. Skill art uses nature,
-  objects and structures, avoiding humans/faces. The existing 24 full-face PNGs
-  are design assets with baked text, not live balance data. Render card names,
-  costs and descriptions from the match definitions over separate artwork.
-
-## 7. Design and package boundaries
-
-Preserve `core`, `net`, `server`, `db`, `client/state`, `client/ui`, and
-`client/bot`. Keep Observer for ClientModel/panels, the sealed message handler
-registry, DAO interfaces/composition, and Main dispatch. Add only abstractions
-needed for skill effects, target validation, rules snapshots and restricted
-player views. Reuse shared effect operations where behavior matches; do not
-build a general scripting engine for this finite card set.
-
-## 8. Test inventory and migration acceptance
-
-The original 125-test baseline covered the legacy game. The table below records
-the migration requirements; current behavior is covered by the tests in
-`src/test/java/deckduel/`.
-
-| Existing area | Required treatment during implementation |
+# AGENTS.md — Deck Duel Harness and Authoritative Specification
+
+> Read this file at the start of every task. It is the only agent harness entry point.
+> README.md is the short human-facing overview; this file is authoritative for agents.
+
+## 1. Project status and authority
+
+The approved game design is now a two-player, Gwent-inspired card duel with Balatro-style scoring synergies. The repository has **not** been migrated yet: the runnable Java application and its tests still implement the former 7×7 piece-and-skill game.
+
+Treat the card-game rules in §5 as the target specification for future implementation. Do not describe them as implemented, and do not replace working legacy routes or features until a bounded migration task changes them. During migration, update this file and relevant tests with each intentional rules change. Preserve unrelated account, lobby, matchmaking, practice, bot, rematch, chat, reconnect, leaderboard, rating, security, and persistence behavior.
+
+This file replaces older gameplay rules, movement-card appendices, skill catalogs, and claims that the card-game migration is complete. The technical constraints below remain authoritative.
+
+## 2. Stack and hard constraints
+
+- Java 17, one Maven module.
+- Runtime dependencies are limited to org.xerial:sqlite-jdbc; tests use org.junit.jupiter:junit-jupiter.
+- Swing for the desktop UI. Use raw ServerSocket / Socket and Java object serialization for networking.
+- No Spring, JavaFX, Netty, Gson/Jackson, Lombok, game engine, animation library, cloud SDK, or cloud service.
+- Everything runs on localhost.
+- mvn package builds target/deck-duel.jar. deckduel.Main dispatches server, client, bots, or demo from the first argument.
+- Use java.util.logging; do not add System.out.println.
+- Keep methods short and explainable. Public types and methods need concise Javadoc. Comments explain why, not what the code already says.
+- Do not add dead or commented-out code, fabricated values, or unrelated refactors.
+
+## 3. Commands
+
+Run these from the repository root:
+
+    mvn test
+    mvn clean verify
+    mvn package
+    java -jar target/deck-duel.jar demo --seed 42
+    java -jar target/deck-duel.jar server --port 5555 --db data/deck-duel.db
+    java -jar target/deck-duel.jar client --host 127.0.0.1 --port 5555
+    java -jar target/deck-duel.jar bots --host 127.0.0.1 --port 5555 --bots 8 --games 4
+
+Tests use ephemeral localhost ports and temporary database files. They must not require a separately running server. After code changes, run the relevant tests and report the actual result. Do not claim a build or test passed without evidence.
+
+## 4. Technical invariants
+
+### 4.1 Core and authority
+
+1. deckduel.core is pure game logic: no file I/O, sockets, Swing, or database access. Server, client legality helpers, practice, and bots share the same rule definitions where appropriate.
+2. The server owns authoritative match state, decks, hands, random state, phases, scoring, and results. Clients submit actions; they do not mutate authoritative state.
+3. Validate a complete action before state mutation or committing random state. Rejections must leave the match unchanged and must not disclose hidden information.
+4. Send recipient-specific player views after accepted actions, match start, and reconnect. Never serialize the full authoritative state to a client. Opponent hands and undrawn deck order remain private.
+5. Practice bots receive only the information their player is allowed to know.
+
+### 4.2 Threads and networking
+
+- Use an accept loop, handler pool, and one single-thread executor per MatchSession; game logic is thread-confined and needs no internal locks.
+- Shared registries use ConcurrentHashMap.
+- Each client socket has one writer. Flush and reset the ObjectOutputStream after every message.
+- Keep the sealed Message hierarchy, final message records, and serialVersionUID = 1L. Maintain a strict deserialization allowlist and reject unknown or foreign objects safely.
+- Preserve the existing ping interval, socket timeout, clean shutdown hook, reconnect token, and reconnect grace behavior.
+- Send Ping every 30 seconds and use a 90-second socket timeout. A disconnect parks the match and notifies the opponent with a 60-second reconnect grace. The reconnect token is issued in LoginResponse; expiry is a forfeit.
+- Reconnect restores the same permitted view and pending phase/choice. It must not repeat a draw, score, payment, or other turn-start/action effect.
+- Gameplay protocol changes must update client and server together. The current protocol version is DECK_DUEL_PROTOCOL:7 for the legacy game. The card-game migration must use a deliberate protocol-version change; mixed incompatible gameplay peers must fail clearly.
+- Keep per-player action sequence/revision checks and retry-safe accepted-action receipts when replacing gameplay messages. Exact new payload names and fields must be designed before implementation; do not invent parallel contracts.
+- Preserve login/registration, lobby listing, room create/join, leaderboard, rematch, matchmaking, ping/pong, and error reporting. Find-match remains a server-owned FIFO queue on the same local server; cancellation and disconnect remove waiting players, and no fake bot opponent or ETA is shown.
+- Preserve ephemeral in-match chat if it remains in the current routes: derive sender identity from the authenticated connection, reject stale/blank/oversized/control-character messages, rate-limit sends, and do not persist chat or let it change gameplay revisions.
+
+#### Match and message lifecycle
+
+- The accept loop may not perform gameplay or database work on the accept thread. A connected handler owns its socket and its single-writer output path.
+- Each MatchSession owns exactly two player slots, the authoritative game state, per-player sequence receipts, connection/reconnect status, and one single-thread game executor. A match mutation runs on that executor; shared account/room/queue registries remain concurrency-safe.
+- After an accepted request, return the latest full view to each participant. A rejection returns a useful error only to the requester and changes no authoritative state, random state, sequence receipt, hand, score, or phase.
+- Reconnect authenticates the existing token, attaches the connection to the existing participant slot, and sends that player’s permitted current view. It does not create a new match, redraw a hand, replay an action, or repeat a round-start effect.
+- When a disconnect grace expires, resolve the match as a forfeit once. A stale handler must not send into a newer session for the same account or clear the newer reconnect token.
+- Matchmaking and room admission share a short synchronization boundary so a queued account cannot also enter a hosted room. Do not hold that boundary while running gameplay, network I/O, or database transactions.
+- If in-match chat remains enabled, it is outside gameplay sequencing: it must not change turn, revision, score, RNG, or reconnect deadlines. The current UX contract limits messages to 280 UTF-16 code units, rejects blank/control/format/line-separator text, rate-limits each sender to one accepted message per 500 ms, and keeps at most 200 accepted messages in local client history. Chat is ephemeral and is not replayed from storage after reconnect.
+
+#### Target gameplay message semantics
+
+The following are required behaviors for the future protocol, not existing message class names. Specify the exact records, fields, sequence rules, and allowlist in the migration task before implementing them.
+
+| Operation | Required behavior |
 | --- | --- |
-| CardPatternTest (UT01) | Validate all 16 updated Appendix offsets and Red rotation; adapt board-boundary expectations only where necessary |
-| RulesEngineTest (UT02) | Preserve jumping/friendly-landing/capture checks; expand to 7×7, phase and rejection atomicity |
-| WinConditionTest (UT03) | Replace Master/temple assertions with elimination, 60-turn draw and win-before-draw precedence |
-| CardCycleTest (UT04) | Replace transit and forced-pass tests with return/shuffle/draw and optional skip/end semantics |
-| CardDeckTest (UT05) | Replace 2/2/1 deal and stamp start with two public movement hands, shared decks, three private skills each and seeded random start |
-| EloTest (UT06), UserDaoTest (UT07), MatchDaoTest (UT08) | Preserve security, math, rollback and account behavior; cover new result/version/turn fields and legacy records when migrated |
-| MessageSerializationTest (UT09), MessageWireFilterTest | Round-trip new views/actions; allowed payloads work, foreign classes fail; verify no hidden data in serialized opponent views |
-| ServerClientIntegrationTest (IT01) | Full two-client elimination game; matching public state, distinct private views; stale/duplicate and illegal casts rejected |
-| DisconnectReconnectTest (IT02) | Preserve grace/forfeit; restore phase, hand and pending Foresight without extra mana/draw |
-| BotSmokeTest (LT01), PracticeBotTest | Complete games with legal movement/skills using permitted information; retain load-test and practice coverage |
+| Match start | Send each player the match identity, starting player, public rule/card definitions, and that recipient’s initial private hand/view. |
+| Play a card | Submit one card identity and any typed target/choice required by that card. Server verifies ownership, turn, play limit, row capacity/replacement choice, and effect legality. |
+| Accepted play | Commit exactly once, apply card/effect/score changes, draw one replacement if available, advance turn, and send fresh recipient-specific views plus public action details. |
+| Rejected play | Return a useful error only to the requester. Do not spend a card, draw, change score/board/turn, or commit random state. |
+| Round completion | Send both players the final row-based scores, round winner or draw, and next-round setup if the match continues. |
+| Match completion | Send the match winner or draw and final ratings/results. Persist the result once. |
+| Reconnect | Restore the same match, turn, hand, current score, row, and any pending effect/choice without resubmitting or repeating an accepted play. |
 
-Additional coverage required with the implementing tasks:
+Full recipient views are sufficient; deltas are optional. Public action details may reveal a played Unit, Landmark, or Spell only when the card’s play is public. Never infer or announce hidden draws. A spell’s target choices and result must be validated by the server even if the client only offers legal choices.
 
-- Setup: seven identical pieces per side at specified squares, 12/18 undealt
-  movement/skill cards, first active player's mana 3 and opponent's mana 2.
-- Card conservation: movement cards stay in hands/deck; skills stay in
-  hands/deck/spent pile, no duplicates or replenishment after exhaustion.
-- Every one of 24 effects: legal resolution, illegal targets and relevant
-  boundaries, both colors, correct payment/draw and phase consumption.
-- Simultaneous effects versus Rally's ordered movement; all-or-nothing rejection,
-  including unchanged RNG. Skills cannot eliminate by pushing off-board.
-- Mana cap, income exactly once, zero-cost cast, no mana from kills; no second
-  skill from a replacement draw and no movement-phase return.
-- Foresight valid permutations, malformed/duplicate choices, non-cancellable
-  preview, privacy and reconnect; Refocus's two-card reshuffle; empty skill deck.
-- Configuration validation, stable per-match snapshots, and UI text matching
-  those definitions. Baseline balance defaults in Appendix B load correctly.
-- Elimination after movement or skill, terminal action bookkeeping, 60th-turn
-  win precedence, optional all-pass draw, resignation and grace forfeits.
+### 4.3 Database and account security
 
-Tests use ephemeral localhost ports, temporary DBs/directories and no external
-running server. Run `mvn test` after changes; clean release verification uses
-`mvn clean verify`. Report actual test counts and limitations.
+- SQLite is accessed through one shared Connection guarded by a monitor. Use PreparedStatement for all SQL.
+- Recording a result, including the match row and both players’ rating/win/loss updates, is one transaction with rollback on failure.
+- Elo remains a pure function in core, K=32 and zero-sum unless a later approved rule changes it.
+- Passwords use the existing PBKDF2 approach and are never stored or logged in plaintext.
+- Preserve historical match rows and legacy result meanings. Add schema migrations; do not reinterpret old records. Store a rules version for new game results where persistence is changed.
+- Inspect the live schema and DAO before persistence edits. The existing account data includes username, password hash, Elo, wins, losses, and creation time. Match history stores both player IDs, optional winner, result reason, legacy turn/move count, ratings after the match, and played time. The card-game migration must add any rules-version or round/play-count data without destroying legacy STONE/STREAM or other existing rows.
+- Preserve the single-transaction boundary: insert the result and update both players’ records/ratings together, or roll the whole operation back.
 
-## 9. File I/O and balance configuration
+#### Persistence shape to preserve
 
-Retain `client.properties` settings (host/port, window, piece style), server CLI
-overrides and `java.util.logging`. Future balance `.properties` loader must
-validate IDs, effect parameters, costs, copy counts and deck/hand constraints
-before creating a match; errors must identify the bad setting. Do not silently
-fall back from malformed supplied values. Never parse files inside core.
+The existing schema is conceptually:
 
-First-version structural rules remain 7×7 with the specified seven-piece setup.
-Balance defaults: two movement cards, three skills initially, starting mana 2,
-income 1, cap 5, 60-turn limit, one copy of each skill. Costs/ranges/counts must be
-editable within supported effect constraints. Typed fields, file layout and
-validation boundaries are defined in Step 3 §9 and its complete example; they
-do not permit inventing new mechanics. Artwork manifest JSON requires no new runtime JSON dependency.
+- users: integer ID; unique username; password hash; Elo defaulting to 1000; wins; losses; creation timestamp.
+- matches: integer ID; Blue and Red user IDs; nullable winner ID for a draw; result reason; legacy move count; both post-match ratings; played timestamp.
 
-## 10. Release verification (pending implementation)
+The historical database may contain STONE and STREAM result reasons. Preserve those values and their meaning. Other existing result reasons, including elimination, score, forfeit, and draw, must not be reinterpreted merely because the new game uses rounds.
 
-- [ ] `mvn clean verify` passes and the shaded jar runs.
-- [ ] Two localhost clients play the new 7×7 rules through lobby, full game,
-      result and rematch; all 24 skills can be exercised.
-- [ ] Practice and load bots use legal actions without hidden information.
-- [ ] Private hands/deck order/preview never reach the wrong client's object
-      graph, logs, action history or error payloads.
-- [ ] Reconnect restores pending choices; malformed and duplicate requests do
-      not corrupt state; clean shutdown and persistence rollback still work.
-- [ ] Live card text matches match configuration; no transit/temple UI remains.
+Use foreign keys and the current DAO conventions. All SQL values are bound through PreparedStatement; never interpolate user data into SQL. If the new game needs a rules version, rounds won, or played-card count, add those fields through a versioned/additive migration. Existing rows and old result labels retain their historical meaning. Decide the new result vocabulary before changing persistence, then update migration and DAO tests together.
+- Keep authentication, lobby admission, room handling, matchmaking, and reconnect races safe. Gameplay remains confined to its match executor.
 
-## Appendix — the 16 movement cards (authoritative offsets)
+### 4.4 Swing client
 
-`(dx, dy)` from the moving piece; `+x` = right, `+y` = forward (Blue's native
-orientation); rotate 180° for the other player. `UT01` encodes exactly this.
+- The socket reader parses messages, then uses SwingUtilities.invokeLater to update ClientModel.
+- ClientModel notifies listeners; panels observe it. Panels do not access sockets or block the EDT on I/O.
+- Render from the recipient-specific view. Local highlights may use visible information, but server validation is final.
+- Animations may not mutate authoritative state or delay network handling. Lifecycle changes must reset transient UI state.
+- Keep fallbacks for optional artwork, fonts, and audio. Runtime card text comes from the match’s public definitions, not text baked into images.
+- Preserve the current application’s lobby, login/register, leaderboard, loading, practice, reconnect, result, and rematch screens while replacing the in-match board. Do not block the EDT to wait for game/network work.
+- The card-game presentation should make the two eight-space rows, both live scores, current player, hand, remaining plays, and public active effects readable. Private hands and any unrevealed deck contents remain private. This is a target UI requirement, not a claim that the current UI already has these screens.
+- Keep reduced-motion/accessibility settings and presentation fallbacks where they exist. UI animation is cosmetic and must not delay or determine the authoritative result.
 
-| Card | Offsets (dx, dy) |
-|---|---|
-| Tiger | (0,+3), (0,−1) |
-| Dragon | (−2,+1), (+2,+1), (−1,−1), (+1,−1) |
-| Frog | (−3,0), (−1,+1), (+1,−1) |
-| Rabbit | (+3,0), (+1,+1), (−1,−1) |
-| Crab | (0,+1), (−2,0), (+2,0) |
-| Elephant | (−1,0), (+1,0), (−1,+1), (+1,+1) |
-| Goose | (−1,0), (+1,0), (−1,+1), (+1,−1) |
-| Rooster | (−1,0), (+1,0), (−1,−1), (+1,+1) |
-| Monkey | (−1,+1), (+1,+1), (−1,−1), (+1,−1) |
-| Mantis | (0,−1), (−1,+1), (+1,+1) |
-| Horse | (0,+1), (0,−1), (−1,0) |
-| Ox | (0,+1), (0,−1), (+1,0) |
-| Crane | (0,+1), (−1,−1), (+1,−1) |
-| Boar | (0,+1), (−1,0), (+1,0) |
-| Eel | (−1,+1), (−1,−1), (+1,0) |
-| Cobra | (+1,+1), (+1,−1), (−1,0) |
+### 4.5 Balance configuration and randomness
 
+- Load and validate balance data outside core, then inject an immutable per-match snapshot. A change affects future matches only.
+- Reject malformed supplied configuration with a useful error; do not silently fall back.
+- Seeded randomness supports reproducible tests. Never send a live match seed, random state, or undrawn deck sequence to clients or bots.
+- Keep game rules and card definitions as data where practical. Do not introduce a general scripting engine for a finite card set.
+- The current RulesConfigLoader and docs/examples/game-balance.properties belong to the legacy board/skill game. Do not claim they already describe the new card library. Adapt or replace their data model in a bounded task, with validation tests and immutable per-match definitions.
 
-## Appendix B — Initial skill definitions
+### 4.6 Existing product routes and regression coverage
 
-These are the authoritative first-playtest defaults, clarified by §2.5. Category
-labels describe presentation, not turn phases: a MOVEMENT-category skill still
-uses the skill phase. All 24 skills have one copy. Costs are not claimed to be
-balanced; Dash/Vault at equal cost is a known playtest concern. Exchange swaps
-identical allies and therefore changes identity rather than tactical position;
-its practical benefit is currently only cycling a skill. Keep this adopted
-effect for now and reassess it during the balance pass. Later balance
-changes must update definitions and tests, not merely PNG text. The asset
-manifest at `output/skill-cards-v1/cards.json` mirrors this initial set; it is not
-a loaded runtime config and cannot override this specification.
+- Keep the current local server, Swing client, practice bot, load-test bot fleet, and deterministic demo working through the migration. All routes must eventually use the same card-game core rules.
+- Preserve tests for card-deck lifecycle, turn/action validation, match privacy, seeded randomness, message serialization and allowlisting, account/password behavior, SQLite rollback, Elo, server/client integration, matchmaking, chat, bot legality, and reconnect/forfeit behavior.
+- Current gameplay and presentation tests assert the legacy board game. Replace those assertions only as their corresponding migration task lands; do not delete unrelated coverage or disable a test to conceal a failure.
+- There is no fixed historical test-count target. Report the actual result from the command run.
 
-| ID | Name | Mana | Category | Effect |
-| --- | --- | --- | --- | --- |
-| `sidestep` | SIDESTEP | 1 | MOVEMENT | Move one friendly piece 1 square horizontally or vertically to an empty square. |
-| `dash` | DASH | 2 | MOVEMENT | Move one friendly piece exactly 2 squares horizontally or vertically. Both squares must be empty. |
-| `blink` | BLINK | 3 | MOVEMENT | Teleport one friendly piece to an empty square within distance 3. Ignore pieces between. |
-| `exchange` | EXCHANGE | 2 | MOVEMENT | Swap two friendly pieces within distance 3 of each other. |
-| `advance` | ADVANCE | 3 | MOVEMENT | Move two different friendly pieces 1 square each toward the enemy starting edge. Both destinations must be empty. |
-| `recall` | RECALL | 1 | MOVEMENT | Teleport one friendly piece to any empty square on your starting row. |
-| `strike` | STRIKE | 3 | ATTACK | Choose a friendly piece. Eliminate 1 enemy horizontally or vertically adjacent to it. Your piece stays still. |
-| `pierce` | PIERCE | 4 | ATTACK | Choose a friendly piece. Eliminate an enemy exactly 2 squares away horizontally or vertically. The square between must be empty. |
-| `surround` | SURROUND | 2 | ATTACK | Eliminate 1 enemy horizontally or vertically adjacent to at least two friendly pieces. |
-| `sweep` | SWEEP | 5 | ATTACK | Choose a friendly piece. Eliminate up to 2 enemies horizontally or vertically adjacent to it. |
-| `shove` | SHOVE | 1 | CONTROL | Choose a friendly piece. Push an adjacent enemy 1 square directly away. The destination must be empty and on the board. |
-| `pull` | PULL | 1 | CONTROL | Choose a friendly piece. Pull an enemy exactly 2 squares away horizontally or vertically into the empty square between. |
-| `vault` | VAULT | 2 | MOVEMENT | Move one friendly piece exactly 2 squares horizontally or vertically to an empty square. You may jump over a piece. |
-| `flank` | FLANK | 3 | ATTACK | Move one friendly piece 1 square diagonally. The destination must be empty or contain an enemy. Eliminate that enemy if present. |
-| `transposition` | TRANSPOSITION | 4 | CONTROL | Swap one friendly piece with one enemy within distance 2. Neither piece is eliminated. |
-| `gust` | GUST | 3 | CONTROL | Move up to 2 enemies 1 square each in the same horizontal or vertical direction. Both destinations must be empty before the skill. |
-| `rally` | RALLY | 3 | MOVEMENT | Choose a friendly anchor. Move up to 2 other friendly pieces 1 square each horizontally or vertically toward it. Each move must reduce distance and land empty. |
-| `scatter` | SCATTER | 3 | MOVEMENT | Move up to 2 different friendly pieces 1 square diagonally each. Both destinations must be empty before the skill. |
-| `crossfire` | CROSSFIRE | 4 | ATTACK | Eliminate an enemy between two friendly pieces in one row or column. Each ally must be within distance 3 with no pieces between it and the target. |
-| `chain-strike` | CHAIN STRIKE | 5 | ATTACK | Choose a friendly piece. Eliminate an adjacent enemy, then optionally 1 enemy adjacent to the first target. Adjacency is horizontal or vertical. |
-| `mana-surge` | MANA SURGE | 0 | RESOURCE | Gain 2 mana, up to the mana cap. This uses your skill for the turn. |
-| `refocus` | REFOCUS | 1 | RESOURCE | Return both movement cards to the movement deck. Shuffle, then draw 2 movement cards. |
-| `foresight` | FORESIGHT | 1 | RESOURCE | Look at the top 3 skill cards, or all remaining cards if fewer. Return them to the top in any order before drawing your replacement. |
-| `banish` | BANISH | 4 | CONTROL | Choose a friendly piece. Send an adjacent enemy to an empty square on that enemy's starting row. Adjacency is horizontal or vertical. |
+### 4.7 Runtime configuration and files
+
+- Preserve the current command-line entry points and supported server/client flags while migrating. Server and demo currently accept a balance configuration path; retain a clear override path for the new card definitions.
+- Preserve the existing client.properties settings that are still used by the client, including host/port and window or presentation preferences. Inspect the current loader before changing its format.
+- Keep user databases and generated bot output in the established data/results locations. Do not commit personal databases, credentials, local logs, generated build output, or machine-specific files.
+- Do not parse configuration or perform file I/O from core. Parse and validate at the boundary, then pass immutable definitions into a match.
+
+## 5. Approved card-game design
+
+This is the target ruleset for the migration. Card names, art, and the full card library are not finalized; do not fabricate card definitions or balance values beyond the values below.
+
+### 5.1 Match and deck setup
+
+- Two players play exactly three rounds. Add each player's final round score to their match total; the higher total after round three wins. A tied total is a match draw.
+- Randomly choose who starts the first round. After a round with a winner, that round’s loser starts the next round. After a tied round, alternate the starting player from the previous round.
+- Each player chooses three regions/nations from the Atlas. They contribute Unit cards, tags, and their own Landmark and Control Spell library; they provide no separate resource or play bonus.
+- The game builds a fixed Unit package of 21 Units: seven from each chosen region. A Unit may carry multiple region tags and multiple class tags.
+- Each Unit has a fixed printed value from 1 to 5 points, plus its region and class tags.
+- Each player chooses 16 non-Unit cards only from the libraries of their three selected regions/nations. Cards from unselected regions are unavailable. The 16 may be any mix of Landmarks and Control Spells, including all of one type. A player may include up to two copies of a given Landmark or Spell.
+- Each player’s deck therefore contains 37 cards: 21 Units and 16 non-Unit cards.
+- There is no spendable resource or play cost. Cards are played for their effects and scoring value.
+
+### 5.2 Round flow, hand, and board
+
+- Each player starts a round with eight cards in hand. Players alternate turns and play one card per turn.
+- After each card play, draw one replacement if a card remains in the deck. This applies to Units, Landmarks, and Control Spells.
+- Each player has one row with eight spaces. A Unit or Landmark occupies one space. A Control Spell uses no space.
+- Players may play a Control Spell while their row is full. A Unit or Landmark played to a full row replaces one card already there; the replaced card leaves play and no longer contributes to the score or combos.
+- Every card play counts toward a limit of ten plays per player per round, including Spells and replacements.
+- If both rows fill before both players use ten plays, the round ends. Otherwise, the round ends when both players have used ten plays. A player who fills their row first may still use remaining plays on Spells or replacements.
+- Between rounds, clear both rows, reshuffle the deck, and deal eight fresh cards to each player.
+- There is no pass action. The row replacement rule and the ten-play limit prevent a full-row player from being stuck without a legal card play.
+
+### 5.3 Scoring and Unit combos
+
+- Score is derived from the cards and effects currently active on each player’s row. The displayed score updates live as cards are played, replaced, disabled, or otherwise affected. No points are permanently banked merely because a card was played.
+- At the end of a round, bank each player's final score once into their match total. A tied round adds equal points and does not end the match. After round three, the higher cumulative total wins; a tied total is a match draw.
+- Each active Unit contributes its printed 1–5 points.
+- Evaluate every pair of active Units once. For each pair:
+  - Shared region tag(s), but no shared class tag: +3 combo points.
+  - Shared class tag(s), but no shared region tag: +3 combo points.
+  - At least one shared region and at least one shared class: +9 total combo points for that pair, replacing the separate +3 bonuses.
+  - Multiple overlapping tags within the same category do not repeat that category’s bonus. A Unit matching several different Units can earn a separate pair bonus against each one.
+- Combos are based on the Units currently on the row. Replacing or removing a Unit removes its printed points and all pair bonuses involving it; remaining combos are recalculated.
+- A disable lasts until the round ends. The Spell or Landmark text defines what it suppresses: printed points, region/class tags, combo contribution, or another explicitly named ability.
+
+### 5.4 Landmarks
+
+- A Landmark has no printed score. It occupies one space and has one clear Joker-style effect.
+- A Landmark becomes active as soon as it is played and affects later plays or combos during that round. It remains active until the round ends unless removed.
+- Its single effect may award bonus points or apply a multiplier. The card text defines its trigger and whether it affects a Unit’s full score or only combo points.
+- Landmark effects stack. Identical copies each contribute their effect. Multipliers multiply together; for example, ×2 and ×3 produce ×6.
+- Some Control Spells may remove a Landmark. A removed Landmark stops affecting future/live score calculations; scoring is not banked independently of the current board and effects.
+
+### 5.5 Control Spells
+
+- A Control Spell has no printed score, uses no row space, resolves one effect, and is then discarded.
+- Spells may affect either player, as specified by each card.
+- Some Spells may remove or disable Units, affect points or combos, or remove Landmarks. Every Spell must have one clear effect with explicit target, score impact, and duration where relevant.
+- A removed Unit leaves the row. Its printed points and any pair combos involving it no longer count. A disabled Unit remains in its space; its contribution is determined by the card’s effect text.
+- Spells remain playable while a player’s row is full, subject to the ten-play round limit.
+
+### 5.6 Open design work
+
+The following content still needs to be designed before implementation can be considered complete:
+
+- The named Unit, Landmark, and Control Spell libraries, including each card’s exact effect text and legal targets. Card-library design is deferred; do not invent the catalog as part of unrelated implementation work.
+- Any additional card-specific combo effects or interactions. The base pair-scoring rule in §5.3 is already adopted: +3 for a shared region only, +3 for a shared class only, and +9 when both match.
+- How a chosen three-region set determines the available 21 Unit definitions and how multi-region tags are distributed.
+- Final balance and score display details beyond the adopted score rules above.
+
+Do not silently settle deferred content by adding made-up cards or effects. Ask the user or present a clearly labeled proposal.
+
+## 6. Migration workflow
+
+- Read the relevant source and tests before changing code. Work in bounded, reviewable steps; the approved design does not authorize rewriting the entire engine in one change.
+- Keep existing login, registration, rooms, find-match queue, leaderboard, practice, bots, rematch, chat, reconnect, Elo, and persistence capabilities unless a user-approved change explicitly affects them.
+- Replace obsolete gameplay tests only when behavior is intentionally migrated. Add meaningful tests for each new rule in the same implementation task. Never remove or disable tests just to make the suite pass.
+- Preserve security, serialization-filter, concurrency, reconnect, and database-transaction coverage even while replacing gameplay assertions.
+- Update both peers and all game routes together: server, online client, practice, bot fleet, and demo. Do not leave a route using legacy rules.
+- On a documentation-only change, do not claim the new game is implemented or tested. On code changes, run mvn test; use mvn clean verify for release verification and report actual counts/results.
+- Keep changes local-first. No web/mobile client, HTTP/WebSocket service, spectator system, cloud service, or cross-server matchmaking is part of the approved scope.
+
+### Suggested bounded migration order
+
+1. Define immutable Unit, Landmark, Spell, region, class-tag, score, and player-view data contracts in core. Add focused tests for deck composition, tag overlap, pair scoring, Landmark stacking, replacement, disable, and round completion.
+2. Add authoritative round/hand/deck/turn state and validate play, draw, replacement, Spell targets, and ten-play accounting. Make score calculation deterministic from the current board and active effects.
+3. Define the new protocol records and allowlist, deliberately increment the protocol version, then update the server and client together. Verify recipient-specific privacy, rejected-action atomicity, sequence retries, and reconnect.
+4. Migrate persistence additively, preserving old accounts and results. Record the new rule version and enough round data to report the result accurately.
+5. Update Swing presentation, practice policy, bot fleet, demo, rematch, and every route to use the shared card-game core. No route may keep the old game after migration is declared complete.
+6. Remove obsolete gameplay assets/tests only when no active route references them and the replacement coverage exists. Retain shared account, protocol-filter, concurrency, reconnect, and transaction tests.
+
+### Regression coverage expected during migration
+
+- Setup and deck composition: three selected regions, seven Units contributed by each, 21 Units total, 16 non-Unit cards drawn only from those regions with any Landmark/Spell mix, duplicate caps, and eight-card starting hands.
+- Rules: one play per turn; one replacement draw after a play; ten-play accounting; eight row spaces; full-row Spell play and replacement; early round completion when both rows fill; three-round reset.
+- Score: printed values, overlapping region/class tags, one combined region+class bonus per Unit pair, multiple matching pairs, live recalculation after replacement/removal/disable, and round/match ties.
+- Effects: Landmark triggers, score-vs-combo multiplier scope, multiplicative stacking, duplicate stacking, removed Landmark behavior, one-shot Spell discard, target legality, and effect-defined Unit disable behavior.
+- Security and consistency: validation before mutation, no score or draw on rejected actions, private hands/deck order, serialization allowlist, action retries/revisions, reconnect, and deterministic seeded setup.
+- Product services: login/password storage, room and match admission, FIFO matchmaking, leaderboard/Elo, rematch, ephemeral chat, bot legality, and atomic database rollback.
+
+Use temporary databases and ephemeral localhost ports. Tests must not depend on a live server, external network, or developer-specific files. Keep the suite meaningful; never lower coverage by removing assertions unrelated to the changed rule.
+
+## 7. Source map
+
+- src/main/java/deckduel/core — shared pure logic; currently contains the legacy board-game implementation.
+- src/main/java/deckduel/net — serialized protocol.
+- src/main/java/deckduel/server — authoritative sessions and server routes.
+- src/main/java/deckduel/db — SQLite persistence and account data.
+- src/main/java/deckduel/config — current configuration loading and legacy skill text.
+- src/main/java/deckduel/client/state and client/ui — Swing client state and views.
+- src/main/java/deckduel/client/bot — practice and bot policies.
+- src/test/java/deckduel — core, database, network, server, and client regression coverage.
+- src/main/resources — bundled configuration, artwork, fonts, and audio.
+- docs/examples/game-balance.properties — current legacy balance template; it is not yet the card-game library.
