@@ -5,9 +5,15 @@ import onitama.core.Offset;
 import onitama.core.PlayerColor;
 import onitama.core.duel.SkillCategory;
 import onitama.core.duel.SkillDefinition;
+import onitama.config.SkillText;
 import java.awt.*;
+import java.awt.font.LineBreakMeasurer;
+import java.awt.font.TextAttribute;
+import java.awt.font.TextLayout;
 import java.awt.geom.Path2D;
 import java.awt.image.BufferedImage;
+import java.text.AttributedString;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -47,7 +53,7 @@ public final class CardArt {
     /** Neutral reverse shared by both decks and every hidden-card animation. */
     public static BufferedImage backFace() { return BACK; }
 
-    /** Skill face contains live name/cost and art; full rules are reserved for inspection. */
+    /** Skill face prints live name, cost and rules; inspection retains unabridged text. */
     public static BufferedImage skillFace(SkillDefinition definition) {
         return SKILLS.computeIfAbsent(definition, CardArt::createSkill);
     }
@@ -94,7 +100,8 @@ public final class CardArt {
             String path = definition.artworkPath();
             Image art = AssetStore.optional(path.startsWith("assets/") ? path.substring(7) : path);
             if (art == null) art = AssetStore.optional("medieval/skills/" + definition.id() + ".png");
-            if (art != null) g.drawImage(art, 24, 53, 151, 151, null);
+            if (art != null) g.drawImage(art, 65, 51, 70, 70, null);
+            drawSkillDescription(g, SkillText.render(definition));
             g.setColor(accent); g.drawLine(18, 211, 182, 211);
             g.setFont(Theme.cardTitle(10)); centered(g, definition.category().name(), 100, 225);
             for (int x : new int[]{20, 174}) {
@@ -110,6 +117,44 @@ public final class CardArt {
             }
         } finally { g.dispose(); }
         return image;
+    }
+
+    private static void drawSkillDescription(Graphics2D parent, String text) {
+        var g = (Graphics2D) parent.create();
+        try {
+            // Keep unusually long configured descriptions inside the face; the popup retains all text.
+            g.clipRect(18, 128, 164, 79);
+            g.setColor(Theme.INK);
+            List<TextLayout> lines = List.of();
+            for (int size = 11; size >= 9; size--) {
+                g.setFont(Theme.normal(size));
+                var attributed = new AttributedString(text);
+                attributed.addAttribute(TextAttribute.FONT, g.getFont());
+                var measure = new LineBreakMeasurer(attributed.getIterator(), g.getFontRenderContext());
+                lines = new ArrayList<>();
+                float height = 0;
+                while (measure.getPosition() < text.length()) {
+                    var line = measure.nextLayout(164);
+                    lines.add(line);
+                    height += line.getAscent() + line.getDescent() + line.getLeading();
+                }
+                if (height <= 79) break;
+            }
+            float y = 128;
+            for (int i = 0; i < lines.size(); i++) {
+                var line = lines.get(i);
+                float height = line.getAscent() + line.getDescent() + line.getLeading();
+                if (i + 1 < lines.size()) {
+                    var next = lines.get(i + 1);
+                    if (y + height + next.getAscent() + next.getDescent() + next.getLeading() > 207) {
+                        g.drawString("More in card details\u2026", 18, y + g.getFontMetrics().getAscent());
+                        break;
+                    }
+                }
+                line.draw(g, 18, y + line.getAscent());
+                y += height;
+            }
+        } finally { g.dispose(); }
     }
 
     private static BufferedImage createMovement(FaceKey key) {

@@ -1,0 +1,24 @@
+{
+  "scope": "Static inspection of three user-selected LoR files; no target execution",
+  "date": "2026-10-18",
+  "rea_package_version": "6.7.0",
+  "rea_catalog_sha256": "96d8f6e6ea1b1ba13557216624a3461c738729d53c79b4b0100d1f3a3a32441c",
+  "analysis_directory": "C:\\Users\\Kem\\AppData\\Local\\Temp\\opencode\\lor-analysis-20261018",
+  "inputs": [
+    {"path": "C:\\Riot Games\\LoR\\live\\Game\\LoR.exe", "bytes": 683928, "sha256": "ae020946a0e9e469975a965c0463b4227382558570029b7b437b02233bc98252"},
+    {"path": "C:\\Riot Games\\LoR\\live\\Game\\GameAssembly.dll", "bytes": 56072928, "sha256": "93673081f7c74805d1d2ffdd45bac8c101d1b7c56e007e852ccee1edc5edea9f"},
+    {"path": "C:\\Riot Games\\LoR\\live\\PatcherData\\PatchableFiles\\AssetBundles\\lor.bbm", "bytes": 3172744, "sha256": "7a40bda618665ff432db7c763c248730757e915002f286a550bb92d1e4177731"}
+  ],
+  "observations": [
+    {"id": "R1", "operation": "inspect_pe_resources", "evidence_id": "ev_cf39687b9b399a30ae90ea3e638318996940ca9b223c8c2bf62883bb1d16a8a2", "resource_count": 12, "entries_examined": 28},
+    {"id": "R2", "operation": "inspect_managed_artifact", "evidence_id": "ev_69dd36e44cbcaeb7035cfbe2a5d6bae3d06873d80c4a85ca8cb6df59030539a9", "summary_evidence_id": "ev_4eb9e5d32f94245cf601ab539cfce8e7ccfd385a5cb1252aba0e052e52cbca20", "classification": "not-managed", "reason": "cli-directory-absent", "coverage": "unavailable"},
+    {"id": "R3", "operation": "open_binary", "target": "GameAssembly.dll", "provider_id": "ghidra", "evidence_id": null, "error_code": "provider_unavailable", "reason": "GHIDRA_INSTALL_DIR is not set", "note": "Failure diagnostic, not successful REA Evidence"},
+    {"id": "R4", "operation": "open_binary", "target": "lor.bbm", "evidence_id": null, "error_code": "target_unavailable", "category": "unsupported_target", "constraint": "file_format_rejected", "reason": "unsupported binary format", "note": "Failure diagnostic, not successful REA Evidence"}
+  ],
+  "supplemental_not_rea": {
+    "S1": {"source": "LoR.exe", "resource_type": 24, "resource_name": 1, "language": 1033, "offset": 663100, "bytes": 1687, "payload_sha256": "1c718faa15956b412c0eaece21a1cc5aeae9fe1bf0ab07beb70268f582995113", "output": "LoR.manifest.xml", "interpretation": "Unity identity and declared per-monitor DPI support; not execution evidence"},
+    "version_payload": {"source": "LoR.exe", "resource_type": 16, "resource_name": 1, "language": 1033, "offset": 662204, "bytes": 896, "payload_sha256": "4508cdeccfab4582a415e87ee5f8255d2493daa3fd6153391a51b7d61e91c2ef", "output": "LoR.version.bin", "interpretation": "Raw version payload only; product version not decoded"},
+    "S2": {"source": "GameAssembly.dll", "method": "ASCII printable runs >=5 bytes with recorded keyword filter", "examples": [{"offset": 41568952, "text": "UnityEngine.GUIStyle::IsTooltipActive(System.String)"}, {"offset": 41569504, "text": "UnityEngine.GUIStyle::SetMouseTooltip_Injected(System.String,UnityEngine.Rect&)"}], "limitation": "Generic engine strings do not establish LoR call sites, gameplay behavior or UI design"},
+    "S3": {"source": "lor.bbm", "method": "Candidate little-endian count followed by 7-bit-length-prefixed UTF-8 strings; analyst parser, not REA", "first_uint32": 1, "candidate_paths": 21319, "decoded_until": 810104, "undecoded_bytes": 2362640, "named_records": [{"index": 14693, "offset": 558373, "name": "alwaysloaded.bbq"}, {"index": 21317, "offset": 810076, "name": "monobehavior.bbq"}, {"index": 21318, "offset": 810093, "name": "shaders.bbq"}], "limitation": "No decoded bundle contents, dependency model or gameplay semantics"}
+  }
+}

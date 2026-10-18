@@ -61,21 +61,53 @@ class MedievalPresentationTest {
                 .mapToInt(offset -> Math.max(Math.abs(offset.dx()), Math.abs(offset.dy()))).max().orElseThrow());
     }
 
-    @Test void ruleDescriptionsStayOffTheFaceButRemainAvailableForInspection() throws Exception {
+    @Test void liveRuleDescriptionsAppearOnTheFaceAndRemainAvailableForInspection() throws Exception {
         SwingUtilities.invokeAndWait(() -> {
             var base = RulesConfigLoader.load(null);
             var first = base.skills().get(0);
             var changed = new SkillDefinition(first.id(), first.name(), first.category(), first.manaCost(), first.copies(),
                     first.parameters(), "A distinctive updated live rule.", first.artworkPath());
             var before = CardArt.skillFace(first); var after = CardArt.skillFace(changed);
-            assertArrayEquals(before.getRGB(0, 0, 400, 480, null, 0, 400),
-                    after.getRGB(0, 0, 400, 480, null, 0, 400), "rule text must not be printed on the art");
+            assertFalse(java.util.Arrays.equals(before.getRGB(36, 256, 328, 158, null, 0, 328),
+                    after.getRGB(36, 256, 328, 158, null, 0, 328)), "live rules must be printed on the face");
+            assertArrayEquals(before.getRGB(0, 0, 400, 256, null, 0, 400),
+                    after.getRGB(0, 0, 400, 256, null, 0, 400), "description must not overwrite the name, cost or artwork");
             var skills = base.skills().stream().map(skill -> skill.id().equals(first.id()) ? changed : skill).toList();
             var rules = new RulesConfig(base.rulesVersion(), 2, 3, 2, 1, 5, 60, base.movementCards(), skills);
             var panel = new SkillCardPanel(new CardInstance(first.id() + "#1", first.id()), rules,
                     PlayerColor.BLUE, 5, TurnPhase.SKILL, true, false, null);
             assertTrue(panel.getToolTipText().contains("A distinctive updated live rule."));
             assertTrue(java.util.Arrays.stream(panel.getMouseListeners()).anyMatch(CardDetails.class::isInstance));
+        });
+    }
+
+    @Test void parameterChangesUpdatePrintedRulesWithoutChangingArtOrFooter() {
+        var first = RulesConfigLoader.load(null).skill("blink");
+        var parameters = new java.util.HashMap<>(first.parameters());
+        parameters.put(SkillParameter.RANGE, 6);
+        var changed = new SkillDefinition(first.id(), first.name(), first.category(), first.manaCost(), first.copies(),
+                parameters, first.descriptionTemplate(), first.artworkPath());
+        var before = CardArt.skillFace(first); var after = CardArt.skillFace(changed);
+        assertFalse(java.util.Arrays.equals(before.getRGB(36, 256, 328, 158, null, 0, 328),
+                after.getRGB(36, 256, 328, 158, null, 0, 328)));
+        assertArrayEquals(before.getRGB(0, 414, 400, 66, null, 0, 400),
+                after.getRGB(0, 414, 400, 66, null, 0, 400));
+    }
+
+    @Test void longLiteralRulesStayInsideTheBodyAndRemainCompleteInDetails() throws Exception {
+        SwingUtilities.invokeAndWait(() -> {
+            var base = RulesConfigLoader.load(null); var first = base.skill("blink");
+            String text = "<literal & rule> " + "unbroken".repeat(120);
+            var changed = new SkillDefinition(first.id(), first.name(), first.category(), first.manaCost(), first.copies(),
+                    first.parameters(), text, first.artworkPath());
+            var before = CardArt.skillFace(first); var after = CardArt.skillFace(changed);
+            assertArrayEquals(before.getRGB(0, 414, 400, 66, null, 0, 400),
+                    after.getRGB(0, 414, 400, 66, null, 0, 400), "long rules cannot cover the category/footer");
+            var skills = base.skills().stream().map(s -> s.id().equals(first.id()) ? changed : s).toList();
+            var rules = new RulesConfig(base.rulesVersion(), 2, 3, 2, 1, 5, 60, base.movementCards(), skills);
+            var panel = new SkillCardPanel(new CardInstance("blink#1", "blink"), rules,
+                    PlayerColor.BLUE, 5, TurnPhase.SKILL, true, false, null);
+            assertTrue(panel.getToolTipText().contains("&lt;literal &amp; rule&gt; " + "unbroken".repeat(120)));
         });
     }
 
