@@ -1,4 +1,4 @@
-# Grid Duel
+# Deck Duel
 
 A two-player strategy game on a 7×7 board, built with Java 17 and Swing.
 Each player controls seven identical pieces and combines public movement cards
@@ -16,25 +16,25 @@ Install **JDK 17 or newer** and **Maven**. Open a terminal in this project's fol
 mvn package
 ```
 
-Wait for `BUILD SUCCESS`. This creates `target/onitama.jar`.
+Wait for `BUILD SUCCESS`. This creates `target/deck-duel.jar`.
 
 ### 2. Start the server
 
 In the same terminal, run:
 
 ```bash
-java -jar target/onitama.jar server --port 5555 --db data/onitama.db
+java -jar target/deck-duel.jar server --port 5555 --db data/deck-duel.db
 ```
 
 Keep this terminal open while playing. The server saves accounts and results in
-`data/onitama.db`; no separate database installation is needed.
+`data/deck-duel.db`; no separate database installation is needed.
 
 ### 3. Open the game
 
 Open a **second terminal** in the same project folder and run:
 
 ```bash
-java -jar target/onitama.jar client --host 127.0.0.1 --port 5555
+java -jar target/deck-duel.jar client --host 127.0.0.1 --port 5555
 ```
 
 In the game window:
@@ -73,14 +73,13 @@ may already be running.
 - Otherwise, 60 completed player turns is a draw. Elimination and score wins
   take priority over the turn limit.
 
-These are bundled defaults. The [authoritative spec](GRID-DUEL-BOARD-GAME_SPEC.md)
-defines effects, targeting and configurable balance.
+These are bundled defaults. [AGENTS.md](AGENTS.md) contains the authoritative specification for effects, targeting and configurable balance.
 
 Additional modes:
 
 ```bash
-java -jar target/onitama.jar demo --seed 42
-java -jar target/onitama.jar bots --host 127.0.0.1 --port 5555 --bots 8 --games 4
+java -jar target/deck-duel.jar demo --seed 42
+java -jar target/deck-duel.jar bots --host 127.0.0.1 --port 5555 --bots 8 --games 4
 ```
 
 Server/demo accept `--config path/to/balance.properties`. See
@@ -90,17 +89,16 @@ Skill text and costs are rendered from that snapshot.
 
 ## Validation and source map
 
-`mvn test` covers the Grid Duel engine and skills, atomic rejection, privacy,
+`mvn test` covers the Deck Duel engine and skills, atomic rejection, privacy,
 protocol retries/reconnects, SQLite/Elo, bots and Swing presentation. Tests use
 local ephemeral ports and temporary databases; no running server is required.
 Some older engine classes remain solely for regression and wire-rejection tests.
 
-- `src/main/java/onitama/core/duel`: live engine, effects and recipient views.
-- `src/main/java/onitama/config`: validated balance loader and skill text.
-- `src/main/java/onitama/client`: Swing client, state observers and bot harness.
-- `src/main/java/onitama/{server,net,db}`: sessions, protocol and persistence.
+- `src/main/java/deckduel/core/duel`: live engine, effects and recipient views.
+- `src/main/java/deckduel/config`: validated balance loader and skill text.
+- `src/main/java/deckduel/client`: Swing client, state observers and bot harness.
+- `src/main/java/deckduel/{server,net,db}`: sessions, protocol and persistence.
 - `src/main/resources`: bundled config, artwork, fonts and audio.
 - `data/`, `results/`: local databases and bot output; do not commit personal data.
 
-Read [AGENTS.md](AGENTS.md) before coding and
-[the Step 6 readiness handoff](docs/handoffs/step-06-readiness.md) before continuing.
+Read [AGENTS.md](AGENTS.md), which contains the harness and authoritative specification, before changing the project.

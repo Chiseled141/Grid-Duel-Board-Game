@@ -4,13 +4,13 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
 
-  <groupId>onitama</groupId>
-  <artifactId>onitama</artifactId>
+  <groupId>deckduel</groupId>
+  <artifactId>deck-duel</artifactId>
   <version>1.0.0</version>
   <packaging>jar</packaging>
 
-  <name>Onitama Online</name>
-  <description>Networked two-player Onitama with authoritative Java server, Swing client and SQLite persistence.</description>
+  <name>Deck Duel</name>
+  <description>Networked two-player Deck Duel with authoritative Java server, Swing client and SQLite persistence.</description>
 
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
@@ -33,7 +33,7 @@
   </dependencies>
 
   <build>
-    <finalName>onitama</finalName>
+    <finalName>deck-duel</finalName>
     <plugins>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
@@ -68,7 +68,7 @@
               <createDependencyReducedPom>false</createDependencyReducedPom>
               <transformers>
                 <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
-                  <mainClass>onitama.Main</mainClass>
+                  <mainClass>deckduel.Main</mainClass>
                 </transformer>
               </transformers>
             </configuration>

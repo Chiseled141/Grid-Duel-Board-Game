@@ -1,16 +1,16 @@
-package onitama.client.ui;
+package deckduel.client.ui;
 
 import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.nio.file.*;
 import javax.imageio.ImageIO;
 import javax.swing.*;
-import onitama.config.RulesConfigLoader;
-import onitama.core.CardDeck;
-import onitama.core.PlayerColor;
-import onitama.core.duel.RulesEngine;
-import onitama.client.state.*;
-import onitama.net.*;
+import deckduel.config.RulesConfigLoader;
+import deckduel.core.CardDeck;
+import deckduel.core.PlayerColor;
+import deckduel.core.duel.RulesEngine;
+import deckduel.client.state.*;
+import deckduel.net.*;
 
 /** Offline visual QA sheets and a complete practice-layout preview for the medieval reskin. */
 public final class RenderMedievalPreview {
