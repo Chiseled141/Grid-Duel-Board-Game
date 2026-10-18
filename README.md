@@ -1,104 +1,43 @@
 # Deck Duel
 
-A two-player strategy game on a 7×7 board, built with Java 17 and Swing.
-Each player controls seven identical pieces and combines public movement cards
-with private skill cards. The authoritative server handles accounts, rooms,
-match rules, reconnects, Elo and SQLite persistence.
+Deck Duel is being redesigned as a short, two-player card game with Gwent-style turns and Balatro-style scoring combos.
 
-## How to run the game
+## The planned game
 
-Install **JDK 17 or newer** and **Maven**. Open a terminal in this project's folder
-(the folder containing `pom.xml`).
+Each player chooses three Atlas regions. The game builds 21 Units—seven from each region. Each region has its own Landmark and Control Spell library; players choose 16 non-Unit cards only from their three selected regions, in any mix of Landmarks and Spells. Cards from unselected regions are unavailable. Decks have 37 cards total, with up to two copies of any named Landmark or Spell.
 
-### 1. Build the game
+Each round, players start with eight cards and take turns playing one card. They draw a replacement after each play and can play up to ten cards per round. Each player has one row with eight spaces. Units and Landmarks use a space; Spells do not. If your row is full, you can play a Spell or replace one of your cards. The round ends when both rows fill or both players use their ten plays.
 
-```bash
-mvn package
-```
+Units have printed values from 1 to 5, plus region and class tags. Each matching Unit pair adds +3 for a region match, +3 for a class match, or +9 when both match. Count a pair once even if it shares several tags of the same kind. The score updates live from cards currently on the rows, so replacing a card can change the score and combos.
 
-Wait for `BUILD SUCCESS`. This creates `target/deck-duel.jar`.
+Landmarks have no printed points. Each has one Joker-style effect, and Landmark multipliers multiply together—for example, ×2 and ×3 make ×6. Control Spells have one effect, then are discarded. Effects can score, multiply, disable, or remove cards as described by each card.
 
-### 2. Start the server
+The card library and extra card-specific combo effects are future design work. The base Unit-pair bonuses above are already defined.
 
-In the same terminal, run:
+Play exactly three rounds. Each round’s final score is added to your match total; the higher total after round three wins. A tied round simply adds equal points, and a tied match total is a draw.
 
-```bash
-java -jar target/deck-duel.jar server --port 5555 --db data/deck-duel.db
-```
+## Current implementation status
 
-Keep this terminal open while playing. The server saves accounts and results in
-`data/deck-duel.db`; no separate database installation is needed.
+The card-game rules above are the approved redesign, but they are **not implemented yet**. The current Java application still runs the previous 7×7 board game. The commands below build and run that existing version.
 
-### 3. Open the game
+## Run the current application
 
-Open a **second terminal** in the same project folder and run:
+Install JDK 17 or newer and Maven. From the folder containing pom.xml:
 
-```bash
-java -jar target/deck-duel.jar client --host 127.0.0.1 --port 5555
-```
+    mvn package
+    java -jar target/deck-duel.jar server --port 5555 --db data/deck-duel.db
 
-In the game window:
+Open a second terminal and run:
 
-- **Register** an account, or **Login** if you already have one.
-- Choose **Play → Practice** to play against a bot.
-- For two players, open another client with the same command, log in with a
-  different account, and choose **Play → Find match** in both clients to pair
-  automatically, or create/join a room from **Play**. Find match waits for another
-  player on the same server; **Cancel search** stops waiting.
-- In the main menu, Play and Practice, use the mouse or **arrow keys / WASD**
-  to choose an action, **Enter** to open it, and **Esc / Backspace** to go back. Backspace still
-  deletes text when editing a room code.
-- When a new match finishes loading, press **Enter Match**. **Return to Match**
-  opens an ongoing match immediately.
+    java -jar target/deck-duel.jar client --host 127.0.0.1 --port 5555
 
-Next time, repeat steps 2 and 3. Rebuild only after changing or updating the code.
-To stop, close the game windows and press **Ctrl+C** in the server terminal.
+Register or log in. Choose Practice to play a bot, or start a second client to play another person through Find match or a room.
 
-If the game cannot connect, check that the server is running and both commands
-use port `5555`. If the server says the port is already in use, an existing server
-may already be running.
+The demo and bot fleet are also available:
 
-## Gameplay
+    java -jar target/deck-duel.jar demo --seed 42
+    java -jar target/deck-duel.jar bots --host 127.0.0.1 --port 5555 --bots 8 --games 4
 
-- Each turn: optional movement, optional one skill, then End Turn. Passing is legal.
-- Shared movement deck: 16 cards, two in each player's hand. A played card returns
-  to the deck, which is shuffled before drawing a replacement; the same card may return.
-- Shared skill deck: 24 unique effects, three starting skills per player. Successfully
-  cast skills are spent permanently; draw a replacement while the deck has cards.
-- Start with 2 mana, gain 1 at each own-turn start (including the first), cap 5.
-- Movement jumps. Friendly landing is illegal; landing on an enemy eliminates it.
-- Win by eliminating every enemy or reaching 8 points. Each enemy eliminated
-  earns 1 point; holding a gold square until your turn starts earns +1 point.
-- Blue squares award +1 bonus mana at your turn start, within the 5-mana cap.
-- Otherwise, 60 completed player turns is a draw. Elimination and score wins
-  take priority over the turn limit.
+## Project notes
 
-These are bundled defaults. [AGENTS.md](AGENTS.md) contains the authoritative specification for effects, targeting and configurable balance.
-
-Additional modes:
-
-```bash
-java -jar target/deck-duel.jar demo --seed 42
-java -jar target/deck-duel.jar bots --host 127.0.0.1 --port 5555 --bots 8 --games 4
-```
-
-Server/demo accept `--config path/to/balance.properties`. See
-[the balance template](docs/examples/game-balance.properties). Matches retain an
-immutable rules snapshot; editing a file does not change an ongoing match.
-Skill text and costs are rendered from that snapshot.
-
-## Validation and source map
-
-`mvn test` covers the Deck Duel engine and skills, atomic rejection, privacy,
-protocol retries/reconnects, SQLite/Elo, bots and Swing presentation. Tests use
-local ephemeral ports and temporary databases; no running server is required.
-Some older engine classes remain solely for regression and wire-rejection tests.
-
-- `src/main/java/deckduel/core/duel`: live engine, effects and recipient views.
-- `src/main/java/deckduel/config`: validated balance loader and skill text.
-- `src/main/java/deckduel/client`: Swing client, state observers and bot harness.
-- `src/main/java/deckduel/{server,net,db}`: sessions, protocol and persistence.
-- `src/main/resources`: bundled config, artwork, fonts and audio.
-- `data/`, `results/`: local databases and bot output; do not commit personal data.
-
-Read [AGENTS.md](AGENTS.md), which contains the harness and authoritative specification, before changing the project.
+The app uses Java 17, Swing, localhost TCP, and SQLite. AGENTS.md contains the detailed agent instructions, technical constraints, and authoritative target rules. Run mvn test after code changes.
