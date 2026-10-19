@@ -1,7 +1,7 @@
 package deckduel.server;
 
 import deckduel.core.PlayerColor;
-import deckduel.core.duel.EndReason;
+import deckduel.core.EndReason;
 
 /**
  * Everything known about a finished match: players, result, ratings, rules version,

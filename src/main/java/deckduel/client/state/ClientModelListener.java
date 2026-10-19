@@ -1,77 +1,19 @@
 package deckduel.client.state;
 
-import deckduel.net.GameOver;
-
-/**
- * Observer interface for the client model. Panels subscribe with method
- * references and override only what they show; all callbacks run on the
- * Swing EDT, so implementations may touch Swing components directly.
- */
+/** Account/lobby observers; callbacks are delivered on the Swing EDT. */
 public interface ClientModelListener {
-
-    /** The active screen changed. */
-    default void onScreenChanged(Screen screen) {
-    }
-
-    /** Returns to an already-running match without preparing a new match. */
-    default void onMatchResumed() {
-        onScreenChanged(Screen.GAME);
-    }
-
-    /** Any in-match data changed (new state, selection, opponent info). */
-    default void onMatchChanged() {
-    }
-
-    /**
-     * An accepted action/event batch occurred in the match.
-     * Carries immutable permitted before and after views and the public event batch.
-     */
-    default void onAcceptedPresentation(deckduel.core.duel.PlayerView priorView,
-                                        deckduel.core.duel.PlayerView currentView,
-                                        java.util.List<deckduel.core.duel.PublicEvent> events) {
-    }
-
-    /** Abandons transient effects when a match or reconnect establishes a new baseline. */
-    default void onPresentationReset() {
-    }
-
-    /** The current match chat history changed or was cleared. */
-    default void onChatChanged() {
-    }
-
-    /** Lobby data changed (open matches, profile). */
-    default void onLobbyChanged() {
-    }
-
-    /** A leaderboard response arrived. */
-    default void onLeaderboardChanged() {
-    }
-
-    /** The server acknowledged a created match with its room code. */
-    default void onMatchCreated(String roomCode) {
-    }
-
-    /** The match ended; carries winner, way and the updated Elo ratings. */
-    default void onGameOver(GameOver over) {
-    }
-
-    /** The opponent disconnected; the match is parked for the grace period. */
-    default void onOpponentLeft(int graceSeconds) {
-    }
-
-    /** The opponent offered a rematch. */
-    default void onRematchOffered() {
-    }
-
-    /** A server error message arrived; show it to the user. */
-    default void onError(String text) {
-    }
-
-    /** Login or registration failed; the login screen shows the reason inline. */
-    default void onLoginFailed(String reason) {
-    }
-
-    /** The connection to the server dropped unexpectedly. */
-    default void onConnectionLost() {
-    }
+    /** The visible shell page changed. */
+    default void onScreenChanged(Screen screen) { }
+    /** Open rooms or account data changed. */
+    default void onLobbyChanged() { }
+    /** Ranking data changed. */
+    default void onLeaderboardChanged() { }
+    /** A hosted room was created. */
+    default void onMatchCreated(String code) { }
+    /** A request failed. */
+    default void onError(String text) { }
+    /** Login or registration failed. */
+    default void onLoginFailed(String reason) { }
+    /** The connection closed unexpectedly. */
+    default void onConnectionLost() { }
 }

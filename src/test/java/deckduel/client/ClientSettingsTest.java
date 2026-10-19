@@ -19,7 +19,7 @@ class ClientSettingsTest {
             settings.setClickToSelectCards(enabled); settings.save(file);
             var loaded = ClientSettings.load(file);
             assertEquals(enabled, loaded.clickToSelectCards());
-            assertEquals(2, loaded.pieceStyle());
+            assertFalse(Files.readString(file).contains("pieceStyle="), "retired piece preferences are not saved");
         }
     }
 
@@ -28,7 +28,6 @@ class ClientSettingsTest {
         var settings = new ClientSettings();
         settings.setHost("example.test");
         settings.setPort(4321);
-        settings.setPieceStyle(3);
         settings.setReducedMotion(true);
         settings.setMenuTheme(MenuTheme.GOLDEN_FIELDS);
         settings.save(file);
@@ -36,7 +35,6 @@ class ClientSettingsTest {
         assertEquals(MenuTheme.GOLDEN_FIELDS, restored.menuTheme());
         assertEquals("example.test", restored.host());
         assertEquals(4321, restored.port());
-        assertEquals(3, restored.pieceStyle());
         assertTrue(restored.reducedMotion());
         Files.writeString(file, "menuTheme=VALLEY\n");
         assertEquals(MenuTheme.GOLDEN_FIELDS, ClientSettings.load(file).menuTheme(),

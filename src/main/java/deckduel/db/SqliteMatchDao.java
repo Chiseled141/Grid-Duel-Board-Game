@@ -1,7 +1,7 @@
 package deckduel.db;
 
 import deckduel.core.PlayerColor;
-import deckduel.core.duel.EndReason;
+import deckduel.core.EndReason;
 import deckduel.server.MatchResult;
 
 import java.sql.Connection;

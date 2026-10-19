@@ -1,43 +1,25 @@
 # Deck Duel
 
-Deck Duel is being redesigned as a short, two-player card game with Gwent-style turns and Balatro-style scoring combos.
+A two-player card duel being built around Gwent-inspired turns and Balatro-style scoring combinations.
 
-## The planned game
+The previous chess/piece-and-skill game has been removed. The current application is a clean **menu and account/lobby shell**; the new gameplay is not implemented yet.
 
-Each player chooses three Atlas regions. The game builds 21 Units—seven from each region. Each region has its own Landmark and Control Spell library; players choose 16 non-Unit cards only from their three selected regions, in any mix of Landmarks and Spells. Cards from unselected regions are unavailable. Decks have 37 cards total, with up to two copies of any named Landmark or Spell.
+The medieval menu, music, login/registration, hosted-room directory, rankings, historical account/results storage, and Deck region browser remain. Play → Practice → Preview table opens the new empty card-table layout with its score sidebar. Online join and find-match requests clearly report that gameplay is not ready. Demo and bots are unavailable.
 
-Each round, players start with eight cards and take turns playing one card. They draw a replacement after each play and can play up to ten cards per round. Each player has one row with eight spaces. Units and Landmarks use a space; Spells do not. If your row is full, you can play a Spell or replace one of your cards. The round ends when both rows fill or both players use their ten plays.
+## Build and run
 
-Units have printed values from 1 to 5, plus region and class tags. Each matching Unit pair adds +3 for a region match, +3 for a class match, or +9 when both match. Count a pair once even if it shares several tags of the same kind. The score updates live from cards currently on the rows, so replacing a card can change the score and combos.
+Use JDK 17 or newer and Maven:
 
-Landmarks have no printed points. Each has one Joker-style effect, and Landmark multipliers multiply together—for example, ×2 and ×3 make ×6. Control Spells have one effect, then are discarded. Effects can score, multiply, disable, or remove cards as described by each card.
+```sh
+mvn clean verify
+java -jar target/deck-duel.jar server --port 5555 --db data/deck-duel.db
+java -jar target/deck-duel.jar client --host 127.0.0.1 --port 5555
+```
 
-The card library and extra card-specific combo effects are future design work. The base Unit-pair bonuses above are already defined.
+Tests use temporary databases and local ephemeral ports. Swing tests need a graphical session. Client and server use shell protocol 8; old protocol 7 applications cannot connect.
 
-Play exactly three rounds. Each round’s final score is added to your match total; the higher total after round three wins. A tied round simply adds equal points, and a tied match total is a draw.
+## New gameplay direction
 
-## Current implementation status
+Players select three regions and build a 37-card deck: 21 Units and 16 Landmarks/Control Spells. Alternate one play per turn, draw replacements, and build combinations on an eight-space row. Play exactly three rounds; the higher cumulative score wins. The complete approved target rules are in [AGENTS.md](AGENTS.md). The card library is still undecided.
 
-The card-game rules above are the approved redesign, but they are **not implemented yet**. The current Java application still runs the previous 7×7 board game. The commands below build and run that existing version.
-
-## Run the current application
-
-Install JDK 17 or newer and Maven. From the folder containing pom.xml:
-
-    mvn package
-    java -jar target/deck-duel.jar server --port 5555 --db data/deck-duel.db
-
-Open a second terminal and run:
-
-    java -jar target/deck-duel.jar client --host 127.0.0.1 --port 5555
-
-Register or log in. Choose Practice to play a bot, or start a second client to play another person through Find match or a room.
-
-The demo and bot fleet are also available:
-
-    java -jar target/deck-duel.jar demo --seed 42
-    java -jar target/deck-duel.jar bots --host 127.0.0.1 --port 5555 --bots 8 --games 4
-
-## Project notes
-
-The app uses Java 17, Swing, localhost TCP, and SQLite. AGENTS.md contains the detailed agent instructions, technical constraints, and authoritative target rules. Run mvn test after code changes.
+For implementation, start with [the Claude handoff](docs/claude-handoff.md) and [the short gameplay brief](docs/gameplay-migration-brief.md). The [board and score-panel notes](docs/design/card-table-design.md) include a runnable visual preview. None of these target rules should be mistaken for implemented gameplay.

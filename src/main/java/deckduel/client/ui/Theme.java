@@ -6,7 +6,6 @@ import java.io.InputStream;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-import deckduel.core.PlayerColor;
 
 /** Parchment, walnut, muted heraldic colors and old brass for the medieval setting. */
 public final class Theme {
@@ -24,18 +23,10 @@ public final class Theme {
     public static final Color INK = new Color(0x382A20);
     /** Highlight: primary buttons, selection, turn banner ("gold"). */
     public static final Color AMBER = new Color(0xF4BF60);
-    /** Blue player pieces and labels ("brand blue"). */
+    /** Muted blue accent. */
     public static final Color SKY = new Color(0x8AB1CB);
-    /** Red player pieces, errors, danger ("brand red"). */
+    /** Muted red accent. */
     public static final Color CORAL = new Color(0xDA9B8A);
-    /** Board light square. */
-    public static final Color BOARD_LIGHT = new Color(0xF8EDCF);
-    /** Jade ceramic squares, paired with warm ivory. */
-    public static final Color BOARD_JADE = new Color(0x807461);
-    /** Deep lacquered jade frame. */
-    public static final Color BOARD_FRAME = new Color(0x634832);
-    /** Brass inlay on the board frame. */
-    public static final Color BOARD_GOLD = new Color(0xDBB77B);
     /** Tile outlines. */
     public static final Color OUTLINE = new Color(0x382A20);
     /** Hard offset shadow fill (never blurred). */
@@ -59,32 +50,16 @@ public final class Theme {
     public static final Color GREEN = new Color(0x0BA95B);
     /** Muted sage disabled controls. */
     public static final Color DISABLED = new Color(0xB3AB98);
-    /** Pale gold wash behind the last-played squares. */
-    public static final Color LAST_MOVE = new Color(0xFFF8E1);
     /** Leaderboard medal tints: gold reuses AMBER, silver and bronze below. */
     public static final Color MEDAL_SILVER = new Color(0xC9C2B8);
     public static final Color MEDAL_BRONZE = new Color(0xB0793C);
     /** Table grid lines on the dark surface. */
     public static final Color GRID_LINE = new Color(0x756650);
 
-    // --- player identities: blue system vs coral system ---
-    /** Player 1 (Blue) primary. */
-    public static final Color P1 = SKY;
-    /** Player 1 darker shade (two-tone pawns, pressed states). */
-    public static final Color P1_DARK = new Color(0x31566D);
-    /** Player 1 light tint (selection tints, watermarks). */
-    public static final Color P1_LIGHT = new Color(0xDAE5EB);
-    /** Player 2 (Red) primary. */
-    public static final Color P2 = CORAL;
-    /** Player 2 darker shade (two-tone pawns, pressed states). */
-    public static final Color P2_DARK = new Color(0x8B3D35);
-    /** Player 2 light tint (selection tints, watermarks). */
-    public static final Color P2_LIGHT = new Color(0xFFE0CF);
-
-    /** Returns the player color family for a side. */
-    public static Color playerColor(PlayerColor color) {
-        return color == PlayerColor.BLUE ? P1 : P2;
-    }
+    /** Warm paper for login input fields. */
+    public static final Color INPUT_PAPER = new Color(0xF8EDCF);
+    /** Pale blue focus background for shared controls. */
+    public static final Color FOCUS_WASH = new Color(0xDAE5EB);
 
     // --- shape tokens ---
     /** Medium radius (cards, headings). */
@@ -96,13 +71,7 @@ public final class Theme {
     /** Standard outer padding for a screen-filling panel. */
     public static final int PANEL_PAD = 16;
 
-    /**
-     * Darker shade of a player color for TEXT on light parchment — the plain
-     * player colors (sky, coral) fail contrast on light backgrounds.
-     */
-    public static Color playerTextColor(PlayerColor color) {
-        return color == PlayerColor.BLUE ? P1_DARK : P2_DARK;
-    }
+
 
     /** The same color at a new alpha (washes and scrims over painted art). */
     public static Color withAlpha(Color color, int alpha) {

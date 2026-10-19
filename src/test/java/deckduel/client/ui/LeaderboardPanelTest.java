@@ -45,7 +45,7 @@ class LeaderboardPanelTest {
                 public void ensureConnected(String host, int port) { }
             });
             var me = new UserProfile("<html>alice</html>", 1200, 4, 2);
-            model.handleMessage(new LoginResponse(true, null, me, null)); sent.clear();
+            model.handleMessage(new LoginResponse(true, null, me)); sent.clear();
             var back = new AtomicInteger();
             var panel = new LeaderboardPanel(model, new ClientSettings(), back::incrementAndGet);
             assertTrue(panel instanceof BattlefieldMenuPanel);

@@ -1,139 +1,31 @@
 package deckduel.net;
 
 import deckduel.SerializationProbe;
-import deckduel.config.RulesConfigLoader;
-import deckduel.core.PlayerColor;
-import deckduel.core.Square;
-import deckduel.core.duel.Board;
-import deckduel.core.duel.EndReason;
-import deckduel.core.duel.GameAction;
-import deckduel.core.duel.GameState;
-import deckduel.core.duel.PlayerView;
-import deckduel.core.duel.PublicEvent;
-import deckduel.core.duel.RulesConfig;
-import deckduel.core.duel.RulesEngine;
-import org.junit.jupiter.api.Test;
-
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
-import java.io.Serializable;
+import java.io.*;
 import java.util.List;
+import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.*;
 
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
-/**
- * Verifies that legitimate protocol messages and recipient-specific views deserialize
- * under WIRE_FILTER, while prohibited classes (GameState, Board, RNG, host pending state,
- * and foreign classes) are rejected immediately.
- */
 class MessageWireFilterTest {
-
-    @Test
-    void legitimateMessagesDeserializeUnderTheFilter() throws Exception {
-        RulesConfig rules = RulesConfigLoader.load(null);
-        GameState game = RulesEngine.newGame(rules, 42L);
-        PlayerView view = RulesEngine.project(game, PlayerColor.BLUE);
-
-        MatchSync sync = new MatchSync("match-1", "ROOM1", view, false, 1L);
-        assertDeserializes(sync);
-        assertDeserializes(new ActionRequest("match-1", 1L, 0L,
-                new GameAction.MovePiece(1, new Square(2, 2))));
-        assertDeserializes(new ActionReply("match-1", 1L,
-                new ActionReceipt(true, 1L, null), sync));
-        assertDeserializes(new GameUpdate(sync, List.of(
-                new PublicEvent.TurnStarted(PlayerColor.BLUE, 1))));
-        assertDeserializes(new GameOver(null, EndReason.DRAW, 1000, 1000));
-        assertDeserializes(new LoginResponse(true, null,
-                new UserProfile("alice", 1016, 3, 1), "token"));
-        assertDeserializes(new ProtocolHello(7));
-        assertDeserializes(new ProtocolReady(7));
-        assertDeserializes(new deckduel.net.FindMatchRequest(true));
-        assertDeserializes(new deckduel.net.FindMatchRequest(false));
-        assertDeserializes(new deckduel.net.MatchmakingStatus(true, null));
-        assertDeserializes(new deckduel.net.MatchmakingStatus(false, "Please log in first."));
-        assertDeserializes(new ChatRequest("match-1", "Hello 👋"));
-        assertDeserializes(new ChatMessage("match-1", "alice", "Good luck!"));
-    }
-
-    @Test
-    void nonMessageObjectIsRejectedByTheFilter() throws Exception {
-        assertObjectRejected(new SerializationProbe());
-    }
-
-    @Test
-    void coreAuthoritativeObjectsAreNotWireSerializable() {
-        assertFalse(Serializable.class.isAssignableFrom(GameState.class),
-                "authoritative GameState must not be serializable over the wire");
-        assertFalse(Serializable.class.isAssignableFrom(Board.class),
-                "authoritative Board must not be serializable over the wire");
-    }
-
-    @Test
-    void unrelatedJdkAndCoreValuesAreRejected() throws Exception {
-        assertObjectRejected(new java.util.Date(0));
-        assertObjectRejected(new java.util.Random(1));
-        assertObjectRejected(deckduel.core.Difficulty.ROOKIE);
-        assertObjectRejected(deckduel.core.duel.SelectionDraft.empty());
-        assertObjectRejected(new Object[1001]);
-    }
-
-    @Test
-    void supportedCollectionImplementationsAndAllActionShapesRoundTrip() throws Exception {
-        var profile = new UserProfile("alice", 1000, 0, 0);
-        for (List<UserProfile> list : List.of(
-                new java.util.ArrayList<>(List.of(profile)),
-                new java.util.LinkedList<>(List.of(profile)),
-                java.util.Arrays.asList(profile),
-                java.util.Collections.unmodifiableList(new java.util.ArrayList<>(List.of(profile))),
-                java.util.Collections.singletonList(profile),
-                java.util.Collections.<UserProfile>emptyList())) {
-            assertDeserializes(new LeaderboardResponse(list));
-        }
-        for (var target : List.of(
-                new deckduel.core.duel.SkillTargets.Relocate(0, new Square(1, 1)),
-                new deckduel.core.duel.SkillTargets.Swap(0, 1),
-                new deckduel.core.duel.SkillTargets.Attack(0, List.of(6, 7)),
-                new deckduel.core.duel.SkillTargets.Enemy(6),
-                new deckduel.core.duel.SkillTargets.Displace(0, 6),
-                new deckduel.core.duel.SkillTargets.RelocateEnemy(0, 6, new Square(3, 6)),
-                new deckduel.core.duel.SkillTargets.ShiftEnemies(List.of(6), deckduel.core.duel.Direction.NORTH),
-                new deckduel.core.duel.SkillTargets.MoveGroup(List.of(new deckduel.core.duel.Relocation(0, new Square(1, 1)))),
-                new deckduel.core.duel.SkillTargets.Rally(1, List.of(new deckduel.core.duel.Relocation(0, new Square(1, 1)))),
-                new deckduel.core.duel.SkillTargets.None())) {
-            assertDeserializes(new ActionRequest("match", 1, 0, new GameAction.CastSkill("skill#1", target)));
-        }
-        assertDeserializes(new ActionRequest("match", 1, 0, new GameAction.ResolveForesight(1, List.of("a", "b"))));
-        assertDeserializes(new ActionRequest("match", 1, 0, new GameAction.Resign()));
-    }
-
-    private static void assertDeserializes(Message message) throws Exception {
-        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
-        try (ObjectOutputStream out = new ObjectOutputStream(bytes)) {
-            out.writeObject(message);
-        }
-        try (ObjectInputStream in = new ObjectInputStream(
-                new ByteArrayInputStream(bytes.toByteArray()))) {
+    private Object read(Object value) throws Exception {
+        var bytes = new ByteArrayOutputStream();
+        try (var out = new ObjectOutputStream(bytes)) { out.writeObject(value); }
+        try (var in = new ObjectInputStream(new ByteArrayInputStream(bytes.toByteArray()))) {
             in.setObjectInputFilter(Message.WIRE_FILTER);
-            assertTrue(in.readObject() instanceof Message,
-                    message.getClass().getSimpleName() + " must pass the wire filter");
+            return in.readObject();
         }
     }
-
-    private static void assertObjectRejected(Object obj) throws Exception {
-        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
-        try (ObjectOutputStream out = new ObjectOutputStream(bytes)) {
-            out.writeObject(obj);
-        }
-        try (ObjectInputStream in = new ObjectInputStream(
-                new ByteArrayInputStream(bytes.toByteArray()))) {
-            in.setObjectInputFilter(Message.WIRE_FILTER);
-            assertThrows(IOException.class, in::readObject,
-                    obj.getClass().getSimpleName() + " must be rejected by WIRE_FILTER");
+    @Test void foreignClassesRandomStateAndOversizedArraysAreRejected() {
+        for (Object value : List.of(new SerializationProbe(), new java.util.Date(), new java.util.Random(), new Object[1001]))
+            assertThrows(IOException.class, () -> read(value));
+    }
+    @Test void supportedRankingCollectionsRemainReadable() throws Exception {
+        var user = new UserProfile("alice", 1000, 0, 0);
+        for (List<UserProfile> list : List.of(new java.util.ArrayList<>(List.of(user)),
+                new java.util.LinkedList<>(List.of(user)), java.util.Arrays.asList(user),
+                java.util.Collections.unmodifiableList(new java.util.ArrayList<>(List.of(user))),
+                java.util.Collections.singletonList(user), java.util.Collections.<UserProfile>emptyList())) {
+            assertEquals(new LeaderboardResponse(list), read(new LeaderboardResponse(list)));
         }
     }
 }

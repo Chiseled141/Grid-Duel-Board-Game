@@ -82,22 +82,22 @@ public final class DeckDuelClient implements AutoCloseable, ServerConnection {
         try {
             Object greetingObj = in.readObject();
             if (!(greetingObj instanceof deckduel.net.ErrorMessage greeting)
-                    || !"DECK_DUEL_PROTOCOL:7".equals(greeting.text())) {
+                    || !Message.GREETING.equals(greeting.text())) {
                 newSocket.close();
-                throw new IOException("server handshake failed: expected DECK_DUEL_PROTOCOL:7 greeting, got " + greetingObj);
+                throw new IOException("server handshake failed: expected DECK_DUEL_PROTOCOL:8 greeting, got " + greetingObj);
             }
             out.reset();
-            out.writeObject(new deckduel.net.ProtocolHello(7));
+            out.writeObject(new deckduel.net.ProtocolHello(Message.PROTOCOL_VERSION));
             out.flush();
 
             Object readyObj = in.readObject();
-            if (!(readyObj instanceof deckduel.net.ProtocolReady ready) || ready.version() != 7) {
+            if (!(readyObj instanceof deckduel.net.ProtocolReady ready) || ready.version() != Message.PROTOCOL_VERSION) {
                 newSocket.close();
-                throw new IOException("server handshake failed: expected ProtocolReady(7), got " + readyObj);
+                throw new IOException("server handshake failed: expected ProtocolReady(8), got " + readyObj);
             }
         } catch (java.net.SocketTimeoutException e) {
             newSocket.close();
-            throw new IOException("handshake timed out waiting for DECK_DUEL_PROTOCOL:7: server upgrade required", e);
+            throw new IOException("handshake timed out waiting for DECK_DUEL_PROTOCOL:8: server upgrade required", e);
         } catch (ClassNotFoundException e) {
             newSocket.close();
             throw new IOException("protocol error during handshake", e);
