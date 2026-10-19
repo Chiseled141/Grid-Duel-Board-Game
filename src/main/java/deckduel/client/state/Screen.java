@@ -1,12 +1,4 @@
 package deckduel.client.state;
 
-/**
- * The screens of the client UI, shown one at a time by the main frame.
- */
-public enum Screen {
-    LOGIN,
-    LOBBY,
-    GAME,
-    ATLAS,
-    LEADERBOARD
-}
+/** Shell pages; TABLE is a visual preview without gameplay. */
+public enum Screen { LOGIN, LOBBY, TABLE, DECK, LEADERBOARD }

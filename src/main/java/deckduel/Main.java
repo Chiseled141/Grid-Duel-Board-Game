@@ -1,248 +1,79 @@
 package deckduel;
 
-import deckduel.config.RulesConfigLoader;
-import deckduel.core.PlayerColor;
-import deckduel.core.duel.CardInstance;
-import deckduel.core.duel.GameAction;
-import deckduel.core.duel.GameState;
-import deckduel.core.duel.PlayerView;
-import deckduel.core.duel.RulesConfig;
-import deckduel.core.duel.RulesEngine;
-import deckduel.core.duel.SkillDefinition;
-import deckduel.core.duel.Targeting;
 import deckduel.db.Database;
-import deckduel.db.MatchDao;
-import deckduel.db.SqliteMatchDao;
 import deckduel.db.SqliteUserDao;
 import deckduel.server.GameServer;
-import deckduel.server.MatchPersistence;
 import deckduel.server.ServerConfig;
-
 import java.awt.GraphicsEnvironment;
-import java.io.IOException;
 import java.nio.file.Path;
-import java.sql.SQLException;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-
 import javax.swing.SwingUtilities;
 
-/**
- * Command-line entry point (Factory Method): builds the right application
- * from the first argument.
- *
- * <pre>
- *   java -jar deck-duel.jar demo   [--seed n] [--config file] # print a board and legal moves
- *   java -jar deck-duel.jar server --port 5555 [--config file]# headless server
- *   java -jar deck-duel.jar client [--host &lt;ip&gt; --port 5555] # Swing client
- *   java -jar deck-duel.jar bots   --host 127.0.0.1 --port 5555 --bots 8 --games 4
- * </pre>
- */
+/** Starts the account/lobby shell; gameplay routes remain unavailable until the new engine exists. */
 public final class Main {
-
     private static final Logger LOG = Logger.getLogger(Main.class.getName());
+    private Main() { }
 
-    private Main() {
-    }
-
-    /** Program entry; dispatches on args[0]. */
+    /** Dispatches client/server; retired demo and bots fail clearly rather than running old rules. */
     public static void main(String[] args) {
-        if (args.length == 0) {
-            usage();
-            System.exit(1);
-        }
-        Map<String, String> options;
+        if (args.length == 0) { usage(); return; }
         try {
-            options = parseOptions(args);
-        } catch (IllegalArgumentException e) {
-            System.err.println(e.getMessage());
-            usage();
-            System.exit(1);
-            return;
-        }
-        switch (args[0]) {
-            case "demo" -> runDemo(options);
-            case "server" -> runServer(options);
-            case "client" -> launchClient(options);
-            case "bots" -> runBots(options);
-            default -> {
-                usage();
-                System.exit(1);
+            Map<String, String> options = parseOptions(args);
+            switch (args[0]) {
+                case "server" -> server(options);
+                case "client" -> client(options);
+                case "demo", "bots" -> {
+                    LOG.warning("New card gameplay is not ready. The old engine and bots were removed.");
+                    System.exit(2);
+                }
+                default -> { usage(); System.exit(2); }
             }
+        } catch (Exception exception) {
+            LOG.log(Level.SEVERE, "Unable to start Deck Duel", exception);
+            System.exit(1);
         }
     }
 
-    private static void usage() {
-        System.err.println("usage: deckduel demo [--seed n] [--config <path>]");
-        System.err.println("       deckduel server --port <port> [--config <path>] [--db <path>]");
-        System.err.println("       deckduel client [--host <host>] [--port <port>]");
-        System.err.println("       deckduel bots --host <host> --port <port> --bots <n> --games <g> [--seed n]");
-    }
-
-    /**
-     * Parses "--key value" pairs after the mode argument into a map. Throws
-     * {@link IllegalArgumentException} on a malformed option — never calls
-     * {@code System.exit}, so tests and embedded callers stay in control; the
-     * CLI entry point in {@link #main} turns it into usage + exit 1.
-     */
     private static Map<String, String> parseOptions(String[] args) {
         Map<String, String> options = new HashMap<>();
-        for (int i = 1; i < args.length; i++) {
-            if (args[i].startsWith("--")) {
-                if (i + 1 >= args.length) {
-                    throw new IllegalArgumentException("missing value for " + args[i]);
-                }
-                options.put(args[i].substring(2), args[i + 1]);
-                i++;
-            }
+        for (int i = 1; i < args.length; i += 2) {
+            if (!args[i].startsWith("--") || i + 1 >= args.length)
+                throw new IllegalArgumentException("Expected --option value");
+            options.put(args[i].substring(2), args[i + 1]);
         }
         return options;
     }
 
-    // ------------------------------------------------------------------
-    // demo
-    // ------------------------------------------------------------------
-
-    /** Prints the starting position, the dealt cards and all legal first moves. */
-    private static void runDemo(Map<String, String> options) {
-        long seed = Long.parseLong(options.getOrDefault("seed", "42"));
-        Path configOverride = options.containsKey("config") ? Path.of(options.get("config")) : null;
-        RulesConfig rules = RulesConfigLoader.load(configOverride);
-        GameState state = RulesEngine.newOpeningGame(rules, seed);
-        for (PlayerColor color : PlayerColor.values()) {
-            state = ((deckduel.core.duel.ActionResult.Accepted) RulesEngine.apply(state, color,
-                    new GameAction.ConfirmOpening(List.of()))).nextState();
-        }
-        System.out.println("Deck Duel 7x7 Demo (Rules version: " + rules.rulesVersion() + ")");
-        System.out.println("First to move: " + state.turn());
-        System.out.println("Blue skills:   " + skillNames(rules, state.blueSkillHand()));
-        System.out.println("Red skills:    " + skillNames(rules, state.redSkillHand()));
-        System.out.println("Mana: Blue=" + state.blueMana() + ", Red=" + state.redMana());
-        System.out.println();
-        System.out.print(state.board());
-
-        PlayerView moverView = RulesEngine.viewFor(state, state.turn());
-        List<GameAction.MovePiece> legal = Targeting.legalMoves(moverView);
-        System.out.println(legal.size() + " legal movement moves for " + state.turn() + ":");
-        for (GameAction.MovePiece move : legal) {
-            LOG.info(() -> "  piece#" + move.pieceId() + " -> " + move.to());
-        }
-    }
-
-    private static String skillNames(RulesConfig rules, List<CardInstance> cards) {
-        return cards.stream()
-                .map(card -> {
-                    SkillDefinition def = rules.skill(card.definitionId());
-                    String name = def != null ? def.name() : card.definitionId();
-                    int cost = def != null ? def.manaCost() : 0;
-                    return name + " (" + cost + "m) [" + card.instanceId() + "]";
-                })
-                .collect(java.util.stream.Collectors.joining(", "));
-    }
-
-    // ------------------------------------------------------------------
-    // server
-    // ------------------------------------------------------------------
-
-    private static void runServer(Map<String, String> options) {
-        int port = Integer.parseInt(options.getOrDefault("port", "5555"));
-        Path dbFile = Path.of(options.getOrDefault("db", "data/deck-duel.db"));
-        Path configOverride = options.containsKey("config") ? Path.of(options.get("config")) : null;
-        RulesConfig rules = RulesConfigLoader.load(configOverride);
-        installFileLogging();
-        try (Database database = new Database(dbFile)) {
-            SqliteUserDao userDao = new SqliteUserDao(database);
-            MatchDao matchDao = new SqliteMatchDao(database, userDao);
-            GameServer server = new GameServer(ServerConfig.defaults(port, rules), userDao,
-                    new MatchPersistence(database, matchDao));
-
-            Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+    private static void server(Map<String, String> options) throws Exception {
+        if (options.containsKey("config"))
+            throw new IllegalArgumentException("Legacy balance configuration was removed; the shell has no game rules.");
+        try (var database = new Database(Path.of(options.getOrDefault("db", "data/deck-duel.db")))) {
+            var server = new GameServer(ServerConfig.defaults(Integer.parseInt(options.getOrDefault("port", "5555"))),
+                    new SqliteUserDao(database));
+            Thread shutdown = new Thread(server::stop, "deckduel-shutdown");
+            Runtime.getRuntime().addShutdownHook(shutdown);
+            try {
+                LOG.info("Account/lobby server listening on port " + server.start());
+                server.awaitShutdown();
+            } finally {
                 server.stop();
-                try {
-                    database.close();
-                } catch (SQLException e) {
-                    LOG.log(Level.WARNING, "closing database failed", e);
-                }
-            }, "deckduel-shutdown"));
-            server.start();
-            server.awaitShutdown();
-        } catch (Exception e) {
-            System.err.println("server failed: " + e.getMessage());
-            System.exit(1);
+                try { Runtime.getRuntime().removeShutdownHook(shutdown); }
+                catch (IllegalStateException ignored) { /* Shutdown is already running. */ }
+            }
         }
     }
 
-    /**
-     * Adds a file log handler (logs/deck-duel-server.log, 5 MB x 3 files) next
-     * to the console handler the JUL default already provides. Truncates on
-     * startup (append=false) so each server run starts with a fresh log;
-     * rotation still keeps the last 15 MB within a run.
-     */
-    private static void installFileLogging() {
-        try {
-            java.nio.file.Files.createDirectories(Path.of("logs"));
-            java.util.logging.FileHandler fileHandler = new java.util.logging.FileHandler(
-                    "logs/deck-duel-server.log", 5_000_000, 3, false);
-            fileHandler.setFormatter(new java.util.logging.SimpleFormatter());
-            Logger rootLogger = Logger.getLogger("");
-            rootLogger.addHandler(fileHandler);
-        } catch (IOException e) {
-            System.err.println("file logging unavailable: " + e.getMessage());
-        }
-    }
-
-    // ------------------------------------------------------------------
-    // client
-    // ------------------------------------------------------------------
-
-    /** Launches the Swing client on the EDT; CLI host/port override settings. */
-    private static void launchClient(Map<String, String> options) {
-        if (GraphicsEnvironment.isHeadless()) {
-            System.err.println("client mode needs a graphical environment");
-            System.exit(1);
-        }
+    private static void client(Map<String, String> options) {
+        if (GraphicsEnvironment.isHeadless()) throw new IllegalStateException("Client needs a graphical environment");
         String host = options.get("host");
-        Integer port = options.containsKey("port")
-                ? Integer.valueOf(options.get("port")) : null;
+        Integer port = options.containsKey("port") ? Integer.valueOf(options.get("port")) : null;
         SwingUtilities.invokeLater(() -> new deckduel.client.ui.ClientFrame(host, port).setVisible(true));
     }
 
-    // ------------------------------------------------------------------
-    // bots (load-test harness)
-    // ------------------------------------------------------------------
-
-    /** Runs the headless bot fleet and writes CSV results; exit 1 on failures. */
-    private static void runBots(Map<String, String> options) {
-        int bots = Integer.parseInt(options.getOrDefault("bots", "2"));
-        int games = Integer.parseInt(options.getOrDefault("games", "1"));
-        String host = options.getOrDefault("host", "127.0.0.1");
-        int port = Integer.parseInt(options.getOrDefault("port", "5555"));
-        Long seed = options.containsKey("seed") ? Long.valueOf(options.get("seed")) : null;
-        if (bots % 2 != 0) {
-            System.err.println("bots must be even (they pair up)");
-            System.exit(1);
-        }
-        try {
-            deckduel.client.bot.BotHarness.Summary summary = new deckduel.client.bot.BotHarness(
-                    Path.of(options.getOrDefault("results", "results")))
-                    .run(bots, games, host, port, seed);
-            System.out.println("bots=" + summary.botCount()
-                    + " gamesCompleted=" + summary.gamesCompleted() + "/" + summary.gamesRequested()
-                    + " failedBots=" + summary.failedBots()
-                    + " wallMillis=" + summary.wallMillis());
-            System.out.println("games/minute=" + String.format("%.1f", summary.gamesPerMinute())
-                    + " move RTT ms mean/p50/p95/max="
-                    + String.format("%.1f/%.1f/%.1f/%.1f", summary.meanRttMillis(),
-                            summary.p50RttMillis(), summary.p95RttMillis(), summary.maxRttMillis()));
-            System.out.println("CSV written to " + options.getOrDefault("results", "results") + "/");
-            System.exit(summary.failedBots() == 0
-                    && summary.gamesCompleted() == summary.gamesRequested() ? 0 : 1);
-        } catch (Exception e) {
-            System.err.println("bot run failed: " + e.getMessage());
-            System.exit(1);
-        }
+    private static void usage() {
+        LOG.info("Usage: client [--host 127.0.0.1 --port 5555] | server [--port 5555 --db data/deck-duel.db]");
     }
 }

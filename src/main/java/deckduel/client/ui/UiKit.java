@@ -59,7 +59,7 @@ public final class UiKit {
         /** Deep jade fill, gold border and text — secondary action on dark. */
         GOLD_OUTLINE(Theme.BG, Theme.AMBER, Theme.AMBER, true),
         /** Jade fill, mint border and ivory text — neutral action on dark. */
-        CREAM_OUTLINE(Theme.JADE, Theme.P1_LIGHT, Theme.CREAM, true),
+        CREAM_OUTLINE(Theme.JADE, Theme.FOCUS_WASH, Theme.CREAM, true),
         /** Vermilion fill, coral border and ivory text — destructive action. */
         DANGER(Theme.VERMILION, Theme.CORAL, Theme.CREAM, false);
 

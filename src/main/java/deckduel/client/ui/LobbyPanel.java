@@ -4,7 +4,6 @@ import deckduel.client.ClientSettings;
 import deckduel.client.state.ClientModel;
 import deckduel.client.state.ClientModelListener;
 import deckduel.client.state.Screen;
-import deckduel.core.Difficulty;
 import deckduel.net.MatchSummary;
 
 import java.awt.*;
@@ -17,7 +16,7 @@ import javax.swing.event.DocumentListener;
 public final class LobbyPanel extends BattlefieldMenuPanel {
     private final ClientModel model;
     private final ClientSettings settings;
-    private final Runnable openAtlas;
+    private final Runnable openDeck;
     private final Runnable quitGame;
     private final Runnable saveSettings;
     private final JPanel surface = new JPanel(new BorderLayout()) {
@@ -63,9 +62,7 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
     private final JLabel searchDetail = caption("You can cancel while you wait.");
     private final JButton searchAgain = MenuSettingsOption.route("Search again", "Look for another online player.", this::findMatch);
     private final JButton cancelSearch = MenuSettingsOption.route("Cancel search", "Stop looking for an opponent.", this::cancelFindMatch);
-    private final JButton resume;
     private final JButton[] cardControls = new JButton[2];
-    private final JButton[] styles = new JButton[3];
     private final java.util.Map<String, JPanel> pages = new java.util.LinkedHashMap<>();
     private final java.util.Map<String, MenuNavigation> navigation = new java.util.HashMap<>();
     private String currentPage = "home";
@@ -79,8 +76,8 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
     });
 
     /** Builds the menu; Quit uses the frame's normal save-and-close path. */
-    public LobbyPanel(ClientModel model, ClientSettings settings, Runnable openAtlas, Runnable quitGame) {
-        this(model, settings, openAtlas, quitGame, () -> {
+    public LobbyPanel(ClientModel model, ClientSettings settings, Runnable openDeck, Runnable quitGame) {
+        this(model, settings, openDeck, quitGame, () -> {
             Thread writer = new Thread(() -> {
                 synchronized (settings) { settings.save(); }
             }, "deck-duel-save-settings");
@@ -90,14 +87,13 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
     }
 
     // Inject persistence in UI tests so selecting a style never writes real user preferences.
-    LobbyPanel(ClientModel model, ClientSettings settings, Runnable openAtlas,
+    LobbyPanel(ClientModel model, ClientSettings settings, Runnable openDeck,
                Runnable quitGame, Runnable saveSettings) {
         super(model, Screen.LOBBY, settings);
         this.model = model;
-        this.resume = new MenuAction("Resume match", model::returnToParkedMatch, true);
         this.refreshTimer = new Timer(5000, event -> model.refreshMatches());
         this.settings = settings;
-        this.openAtlas = openAtlas;
+        this.openDeck = openDeck;
         this.quitGame = quitGame;
         this.saveSettings = saveSettings;
         setLayout(new GridBagLayout());
@@ -105,7 +101,7 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
         surface.setOpaque(false);
         surface.setName("mainMenuSurface");
         getAccessibleContext().setAccessibleName("Deck Duel main menu");
-        getAccessibleContext().setAccessibleDescription("A Card-Based Strategy Board Game");
+        getAccessibleContext().setAccessibleDescription("A Card-Based Strategy Game");
         surface.setBorder(BorderFactory.createEmptyBorder(8, 0, 8, 0));
         var anchor = new GridBagConstraints();
         anchor.gridx = 0; anchor.gridy = 0;
@@ -146,8 +142,7 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
                 }
                 updatePolling();
             }
-            @Override public void onLobbyChanged() { refreshState(); }
-            @Override public void onMatchChanged() { updatePetals(); }
+            @Override public void onLobbyChanged() { refreshState(); updatePolling(); }
             @Override public void onMatchCreated(String code) {
                 creatingRoom = false;
                 refreshState();
@@ -189,10 +184,9 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
         petalTargets.add(play); petalTargets.add(preferences); petalTargets.add(quit);
         line(page, play);
         line(page, preferences);
-        line(page, new MenuAction("Atlas", openAtlas, false));
+        line(page, new MenuAction("Deck", openDeck, false));
         line(page, quit);
         page.add(Box.createVerticalStrut(14));
-        line(page, resume);
         return page;
     }
 
@@ -396,44 +390,13 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
     }
 
     private JPanel buildPractice() {
-        JPanel page = page("Practice", "Choose your opponent.", "play");
-        for (Difficulty difficulty : Difficulty.values()) {
-            String label = switch (difficulty) {
-                case ROOKIE -> "Rookie";
-                case SENIOR -> "Senior";
-                case LEGEND -> "Legend";
-            };
-            String detail = switch (difficulty) {
-                case ROOKIE -> "A gentler opponent to learn against.";
-                case SENIOR -> "More pressure and tactical choices.";
-                case LEGEND -> "The toughest practice opponent.";
-            };
-            line(page, MenuSettingsOption.route(label, detail, () -> model.startPracticeMatch(difficulty)));
-            if (difficulty != Difficulty.LEGEND) page.add(Box.createVerticalStrut(8));
-        }
+        JPanel page = page("Practice", "The new card game is coming soon.", "play");
+        line(page, MenuSettingsOption.route("Preview table", "View the new board and score panel.", model::openTablePreview));
         return page;
     }
 
     private JPanel buildSettings() {
         JPanel page = page("Settings", null, "home");
-        line(page, settingLabel("PIECE STYLE"));
-        page.add(Box.createVerticalStrut(7));
-        JPanel previews = new JPanel(new GridLayout(1, 3, 8, 0));
-        previews.setOpaque(false);
-        previews.setPreferredSize(new Dimension(330, 104));
-        String[] names = {"Steel helms", "Heraldic shields", "Carved pawns"};
-        for (int i = 0; i < names.length; i++) {
-            int style = i + 1;
-            styles[i] = MenuSettingsOption.piece(names[i], style, () -> {
-                synchronized (settings) { settings.setPieceStyle(style); }
-                BoardPanel.setDefaultPieceStyle(style);
-                updateStyles();
-                saveSettings.run();
-            });
-            previews.add(styles[i]);
-        }
-        line(page, previews);
-        page.add(Box.createVerticalStrut(20));
         line(page, settingLabel("CARD SELECTION"));
         page.add(Box.createVerticalStrut(7));
         String[] controls = {"Click or slide up", "Slide up only"};
@@ -466,7 +429,6 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
         page.add(Box.createVerticalStrut(12));
         line(page, caption("Changes saved automatically"));
         updateCardControls();
-        updateStyles();
         return page;
     }
 
@@ -573,7 +535,7 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
     }
 
     private void createRoom() {
-        if (model.hasParkedMatch() || creatingRoom) return;
+        if (creatingRoom) return;
         if (model.pendingRoomCode() == null) {
             creatingRoom = true;
             roomStatus.setText("Creating your room…");
@@ -588,19 +550,17 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
     }
 
     private void refreshAvailability() {
-        boolean parked = model.hasParkedMatch();
         boolean searching = model.isFindingMatch();
-        find.setEnabled(!parked && !searching && !creatingRoom);
+        find.setEnabled(!searching && !creatingRoom);
         searchStatus.setText(searching ? "Searching for a player…" : "Search stopped");
         searchDetail.setText(searching ? "You can cancel while you wait." : "Ready when you are.");
         cancelSearch.setVisible(searching);
         searchAgain.setVisible(!searching);
-        searchAgain.setEnabled(!parked);
-        create.setEnabled(!parked && !searching && !creatingRoom);
-        browse.setEnabled(!parked && !searching);
-        practice.setEnabled(!parked && !searching);
-        join.setEnabled(!parked && !searching && joinField.getText().trim().toUpperCase(java.util.Locale.ROOT).matches("[A-Z2-9]{5}"));
-        resume.setVisible(parked);
+        searchAgain.setEnabled(true);
+        create.setEnabled(!searching && !creatingRoom);
+        browse.setEnabled(!searching);
+        practice.setEnabled(!searching);
+        join.setEnabled(!searching && joinField.getText().trim().toUpperCase(java.util.Locale.ROOT).matches("[A-Z2-9]{5}"));
         navigation.values().forEach(MenuNavigation::refresh);
     }
 
@@ -621,12 +581,6 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
         noRooms.setVisible(roomRows.isEmpty());
         roomScroll.setVisible(!roomRows.isEmpty());
         refreshAvailability();
-    }
-
-    private void updateStyles() {
-        for (int i = 0; i < styles.length; i++) {
-            if (styles[i] != null) styles[i].setSelected(i + 1 == settings.pieceStyle());
-        }
     }
 
     private void updatePolling() {

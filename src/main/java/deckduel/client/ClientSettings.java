@@ -24,7 +24,6 @@ public final class ClientSettings {
     private int port = 5555;
     private int windowWidth = 1100;
     private int windowHeight = 880;
-    private int pieceStyle = 1;
     private boolean soundEnabled = true;
     private boolean reducedMotion = false;
     private volatile boolean clickToSelectCards = true;
@@ -51,7 +50,6 @@ public final class ClientSettings {
         settings.port = parseInt(properties.getProperty("port"), settings.port);
         settings.windowWidth = parseInt(properties.getProperty("windowWidth"), settings.windowWidth);
         settings.windowHeight = parseInt(properties.getProperty("windowHeight"), settings.windowHeight);
-        settings.pieceStyle = parseInt(properties.getProperty("pieceStyle"), settings.pieceStyle);
         settings.soundEnabled = parseBoolean(
                 properties.getProperty("soundEnabled"), settings.soundEnabled);
         settings.reducedMotion = parseBoolean(
@@ -73,7 +71,6 @@ public final class ClientSettings {
         properties.setProperty("port", String.valueOf(port));
         properties.setProperty("windowWidth", String.valueOf(windowWidth));
         properties.setProperty("windowHeight", String.valueOf(windowHeight));
-        properties.setProperty("pieceStyle", String.valueOf(pieceStyle));
         properties.setProperty("soundEnabled", String.valueOf(soundEnabled));
         properties.setProperty("reducedMotion", String.valueOf(reducedMotion));
         properties.setProperty("clickToSelectCards", String.valueOf(clickToSelectCards));
@@ -127,15 +124,6 @@ public final class ClientSettings {
     public void setWindowSize(int width, int height) {
         this.windowWidth = width;
         this.windowHeight = height;
-    }
-
-    /** The preferred board-piece style (1 steel helms, 2 heraldic shields, 3 carved pawns). */
-    public int pieceStyle() {
-        return pieceStyle;
-    }
-
-    public void setPieceStyle(int pieceStyle) {
-        this.pieceStyle = pieceStyle;
     }
 
     /** Whether menu music is enabled by the persisted header sound toggle. */

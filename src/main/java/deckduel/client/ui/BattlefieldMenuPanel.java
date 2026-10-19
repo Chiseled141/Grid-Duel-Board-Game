@@ -37,7 +37,7 @@ abstract class BattlefieldMenuPanel extends JPanel {
         setBackground(Theme.BG);
         model.addListener(new ClientModelListener() {
             @Override public void onScreenChanged(Screen next) { repaint(); }
-            @Override public void onMatchChanged() { repaint(); }
+            @Override public void onLobbyChanged() { repaint(); }
         });
         requestClip();
     }

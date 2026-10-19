@@ -5,7 +5,7 @@ import java.io.Serial;
 /**
  * Base class of the project's exception hierarchy. Unchecked, so call sites
  * that cannot recover stay readable; every subclass describes one concrete
- * failure domain (illegal move, protocol misuse, authentication, persistence).
+ * failure domain (authentication or persistence).
  */
 public class DeckDuelException extends RuntimeException {
 

@@ -1,45 +1,39 @@
 package deckduel.client.ui;
 
-import deckduel.core.PlayerColor;
 import java.awt.*;
 import javax.swing.*;
 
 /** Compact settings controls that keep previews and selection visible over the scenery. */
 final class MenuSettingsOption extends JButton {
-    private enum Kind { PIECE, CHOICE, TOGGLE, ACTION }
+    private enum Kind { CHOICE, TOGGLE, ACTION }
     private final Kind kind;
-    private final int style;
     private final String detail;
     private static final Color IVORY = new Color(255, 238, 200);
     private static final Color DARK = new Color(25, 26, 23);
 
-    private MenuSettingsOption(String title, String detail, Kind kind, int style, Runnable action) {
+    private MenuSettingsOption(String title, String detail, Kind kind, Runnable action) {
         super(title);
-        this.kind = kind; this.style = style; this.detail = detail;
+        this.kind = kind; this.detail = detail;
         setFont(Theme.normal(15f));
-        setPreferredSize(new Dimension(kind == Kind.PIECE ? 104 : 330, kind == Kind.PIECE ? 104 : 56));
+        setPreferredSize(new Dimension(330, 56));
         setContentAreaFilled(false); setBorderPainted(false); setFocusPainted(false);
         setRolloverEnabled(true); setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
         getAccessibleContext().setAccessibleDescription(detail);
         if (action != null) addActionListener(event -> action.run());
     }
 
-    static JButton piece(String title, int style, Runnable action) {
-        return new MenuSettingsOption(title, "Preview of " + title, Kind.PIECE, style, action);
-    }
-
     static JButton choice(String title, String detail, Runnable action) {
-        return new MenuSettingsOption(title, detail, Kind.CHOICE, 0, action);
+        return new MenuSettingsOption(title, detail, Kind.CHOICE, action);
     }
 
     static JButton route(String title, String detail, Runnable action) {
-        var button = new MenuSettingsOption(title, detail, Kind.ACTION, 0, action);
+        var button = new MenuSettingsOption(title, detail, Kind.ACTION, action);
         button.putClientProperty(MenuNavigation.ROUTE, Boolean.TRUE);
         return button;
     }
 
     static JButton motion() {
-        return new MenuSettingsOption("Reduced motion: Off", "Limit background and card animation.", Kind.TOGGLE, 0, null);
+        return new MenuSettingsOption("Reduced motion: Off", "Limit background and card animation.", Kind.TOGGLE, null);
     }
 
     @Override protected void paintComponent(Graphics graphics) {
@@ -59,23 +53,9 @@ final class MenuSettingsOption extends JButton {
             g.setStroke(new BasicStroke(isFocusOwner() ? 2f : 1f));
             g.drawRoundRect(1, 1, width - 3, height - 3, 8, 8);
             g.setColor(selected ? DARK : IVORY);
-            if (kind == Kind.PIECE) paintPiece(g);
-            else if (kind == Kind.TOGGLE) paintToggle(g);
+            if (kind == Kind.TOGGLE) paintToggle(g);
             else paintChoice(g, selected);
         } finally { g.dispose(); }
-    }
-
-    private void paintPiece(Graphics2D g) {
-        g.drawImage(MedievalPieces.image(PlayerColor.BLUE, style), (getWidth() - 51) / 2, 9, 51, 51, null);
-        g.setFont(Theme.normal(12f));
-        String[] words = getText().split(" ", 2);
-        centered(g, words[0], 77); centered(g, words[1], 92);
-        if (isSelected()) {
-            g.setColor(DARK); g.fillOval(getWidth() - 20, 8, 12, 12);
-            g.setColor(IVORY); g.setStroke(new BasicStroke(1.4f));
-            g.drawLine(getWidth() - 17, 14, getWidth() - 15, 16);
-            g.drawLine(getWidth() - 15, 16, getWidth() - 11, 12);
-        }
     }
 
     private void paintChoice(Graphics2D g, boolean selected) {
@@ -101,7 +81,4 @@ final class MenuSettingsOption extends JButton {
         g.fillOval(x + (isSelected() ? 22 : 3), 20, 16, 16);
     }
 
-    private void centered(Graphics2D g, String text, int baseline) {
-        g.drawString(text, (getWidth() - g.getFontMetrics().stringWidth(text)) / 2, baseline);
-    }
 }

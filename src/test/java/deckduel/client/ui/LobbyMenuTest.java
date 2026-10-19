@@ -52,7 +52,7 @@ class LobbyMenuTest {
         var saved = new AtomicInteger();
         var quit = new AtomicInteger();
         var panel = new LobbyPanel(model, settings, () -> { }, quit::incrementAndGet, saved::incrementAndGet);
-        model.handleMessage(new LoginResponse(true, null, new UserProfile("alice", 1000, 0, 0), null));
+        model.handleMessage(new LoginResponse(true, null, new UserProfile("alice", 1000, 0, 0)));
         sent.clear();
         panel.setSize(1280, 660);
         layout(panel);
@@ -99,7 +99,7 @@ class LobbyMenuTest {
         SwingUtilities.invokeAndWait(() -> {
             var ui = ui();
             var texts = find(ui.panel, JButton.class).stream().filter(Component::isVisible).map(JButton::getText).toList();
-            assertEquals(List.of("Play", "Settings", "Atlas", "Quit game"), texts);
+            assertEquals(List.of("Play", "Settings", "Deck", "Quit game"), texts);
             JPanel surface = find(ui.panel, JPanel.class).stream().filter(p -> "mainMenuSurface".equals(p.getName())).findFirst().orElseThrow();
             assertTrue(surface.getWidth() <= 340);
             assertTrue(surface.getHeight() < 450);
@@ -150,10 +150,8 @@ class LobbyMenuTest {
             assertEquals(new JoinMatchRequest("ABCD2"), ui.sent.get(2));
             button(ui, "Back").doClick();
             button(ui, "Practice").doClick();
-            button(ui, "Rookie").doClick();
-            assertTrue(ui.model.isPracticeMode());
-            assertEquals(Screen.GAME, ui.model.screen());
-            ui.model.resign();
+            button(ui, "Preview table").doClick();
+            assertEquals(Screen.TABLE, ui.model.screen());
         });
     }
 
@@ -180,19 +178,6 @@ class LobbyMenuTest {
         });
     }
 
-    @Test void lateSearchAcknowledgementCannotReopenSearchAfterMatchStartOrParking() throws Exception {
-        SwingUtilities.invokeAndWait(() -> {
-            var ui = ui(); button(ui, "Play").doClick(); button(ui, "Find match").doClick();
-            var game = deckduel.core.duel.RulesEngine.newGame(deckduel.config.RulesConfigLoader.load(null), 42);
-            var view = deckduel.core.duel.RulesEngine.viewFor(game, deckduel.core.PlayerColor.BLUE);
-            ui.model.handleMatchSync(new MatchSync("auto", "ROOM1", view, false, 1));
-            ui.model.handleMessage(new MatchmakingStatus(true, null));
-            assertEquals(Screen.GAME, ui.model.screen()); assertFalse(ui.model.isFindingMatch());
-            ui.model.leaveToLobby();
-            ui.model.handleMessage(new MatchmakingStatus(true, null));
-            assertTrue(ui.model.hasParkedMatch()); assertFalse(ui.model.isFindingMatch());
-        });
-    }
 
     private void menuKey(Ui ui, String pageName, String key) {
         JPanel page = find(ui.panel, JPanel.class).stream().filter(panel -> pageName.equals(panel.getName())).findFirst().orElseThrow();
@@ -217,7 +202,7 @@ class LobbyMenuTest {
             selected(ui, "Settings");
             assertEquals(34f, settings.getFont().getSize2D());
             assertEquals(25f, button(ui, "Play").getFont().getSize2D());
-            menuKey(ui, "menu-home", "S"); selected(ui, "Atlas");
+            menuKey(ui, "menu-home", "S"); selected(ui, "Deck");
             menuKey(ui, "menu-home", "W"); selected(ui, "Settings");
             menuKey(ui, "menu-home", "LEFT"); selected(ui, "Play");
             menuKey(ui, "menu-home", "ENTER"); selected(ui, "Find match");
@@ -232,17 +217,16 @@ class LobbyMenuTest {
             menuKey(ui, "menu-play", "DOWN"); selected(ui, "Create match");
             menuKey(ui, "menu-play", "D"); selected(ui, "Join a game");
             menuKey(ui, "menu-play", "RIGHT"); selected(ui, "Practice");
-            menuKey(ui, "menu-play", "ENTER"); selected(ui, "Rookie");
-            menuKey(ui, "menu-practice", "DOWN"); selected(ui, "Senior");
-            menuKey(ui, "menu-practice", "A"); selected(ui, "Rookie");
+            menuKey(ui, "menu-play", "ENTER"); selected(ui, "Preview table");
+            menuKey(ui, "menu-practice", "DOWN"); selected(ui, "Back");
+            menuKey(ui, "menu-practice", "A"); selected(ui, "Preview table");
             menuKey(ui, "menu-practice", "ESCAPE"); selected(ui, "Find match");
             menuKey(ui, "menu-play", "ESCAPE"); selected(ui, "Play");
             menuKey(ui, "menu-home", "UP"); selected(ui, "Quit game"); // hidden Resume is skipped
             menuKey(ui, "menu-home", "DOWN"); menuKey(ui, "menu-home", "ENTER");
             button(ui, "Practice").doClick();
             menuKey(ui, "menu-practice", "ENTER");
-            assertTrue(ui.model.isPracticeMode()); assertEquals(Screen.GAME, ui.model.screen());
-            ui.model.resign();
+            assertEquals(Screen.TABLE, ui.model.screen());
         });
     }
 
@@ -284,23 +268,6 @@ class LobbyMenuTest {
         });
     }
 
-    @Test void settingsAreHiddenAtHomeAndChoosingStylePersistsOnce() throws Exception {
-        SwingUtilities.invokeAndWait(() -> {
-            var ui = ui();
-            assertTrue(find(ui.panel, JButton.class).stream().noneMatch(b -> b.getText().equals("Heraldic shields")));
-            button(ui, "Settings").doClick();
-            button(ui, "Heraldic shields").doClick();
-            try {
-                assertEquals(2, ui.settings.pieceStyle());
-                assertEquals(1, ui.saved.get());
-                assertTrue(button(ui, "Heraldic shields").isSelected());
-                assertFalse(button(ui, "Steel helms").isSelected());
-                assertTrue(ui.sent.isEmpty());
-                button(ui, "Back").doClick();
-                assertNotNull(button(ui, "Play"));
-            } finally { BoardPanel.setDefaultPieceStyle(1); }
-        });
-    }
 
     @Test void cardControlPickerSavesEitherModeWithoutNetworkTraffic() throws Exception {
         SwingUtilities.invokeAndWait(() -> {
@@ -349,7 +316,7 @@ class LobbyMenuTest {
         });
     }
 
-    @Test void roomBrowserUsesTypedRoomsAndRetainsParkedMatchResume() throws Exception {
+    @Test void roomBrowserUsesTypedRoomsAndPreviewReturnsToMenu() throws Exception {
         SwingUtilities.invokeAndWait(() -> {
             var ui = ui();
             button(ui, "Play").doClick();
@@ -370,18 +337,10 @@ class LobbyMenuTest {
             assertFalse(scroll.isVisible(), "browser collapses again when last room disappears");
             button(ui, "Back").doClick();
             button(ui, "Practice").doClick();
-            button(ui, "Rookie").doClick();
+            button(ui, "Preview table").doClick();
+            assertEquals(Screen.TABLE, ui.model.screen());
             ui.model.leaveToLobby();
-            assertTrue(ui.model.hasParkedMatch());
-            assertTrue(button(ui, "Resume match").isVisible());
-            button(ui, "Play").doClick();
-            assertFalse(button(ui, "Create match").isEnabled());
-            assertFalse(button(ui, "Join a game").isEnabled());
-            assertFalse(button(ui, "Practice").isEnabled());
-            button(ui, "Back").doClick();
-            button(ui, "Resume match").doClick();
-            assertEquals(Screen.GAME, ui.model.screen());
-            ui.model.resign();
+            assertNotNull(button(ui, "Play"));
         });
     }
 }

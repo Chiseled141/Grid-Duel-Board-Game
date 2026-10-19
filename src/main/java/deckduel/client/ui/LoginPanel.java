@@ -194,7 +194,7 @@ public final class LoginPanel extends BattlefieldMenuPanel {
     }
 
     private void styleField(JTextField field) {
-        field.setBackground(Theme.BOARD_LIGHT);
+        field.setBackground(Theme.INPUT_PAPER);
         field.setForeground(Theme.INK);
         field.setCaretColor(Theme.INK);
         field.setBorder(UiKit.fieldBorder());

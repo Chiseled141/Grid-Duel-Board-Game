@@ -1,7 +1,7 @@
 package deckduel.db;
 
 import deckduel.core.PlayerColor;
-import deckduel.core.duel.EndReason;
+import deckduel.core.EndReason;
 import deckduel.net.UserProfile;
 import deckduel.server.MatchResult;
 import org.junit.jupiter.api.AfterEach;
