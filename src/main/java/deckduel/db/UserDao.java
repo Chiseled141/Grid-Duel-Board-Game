@@ -35,9 +35,6 @@ public interface UserDao {
      */
     UserProfile profileOf(String username);
 
-    /** Persists new Elo rating and win/loss counters after a finished match. */
-    void updateStats(String username, int elo, int wins, int losses);
-
-    /** Returns up to {@code limit} users with the highest Elo, best first. */
-    List<UserProfile> leaderboard(int limit);
+    /** Persists win/loss counters after a finished match. */
+    void updateStats(String username, int wins, int losses);
 }

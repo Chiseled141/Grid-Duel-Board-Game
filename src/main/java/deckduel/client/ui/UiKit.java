@@ -353,35 +353,6 @@ public final class UiKit {
     }
 
     // ------------------------------------------------------------------
-    // Motifs
-    // ------------------------------------------------------------------
-
-    /** Draws a gold 8-point starburst (title flourish, master pieces). */
-    public static void starburst(Graphics2D g, int cx, int cy, int outerRadius) {
-        starburst(g, cx, cy, outerRadius, Theme.AMBER);
-    }
-
-    /** Starburst in an arbitrary tint (leaderboard medals). */
-    public static void starburst(Graphics2D g, int cx, int cy, int outerRadius, Color fill) {
-        int innerRadius = outerRadius / 2;
-        int points = 8;
-        int total = points * 2;
-        int[] x = new int[total];
-        int[] y = new int[total];
-        for (int i = 0; i < total; i++) {
-            double angle = Math.PI * i / points - Math.PI / 2;
-            int radius = i % 2 == 0 ? outerRadius : innerRadius;
-            x[i] = (int) Math.round(cx + radius * Math.cos(angle));
-            y[i] = (int) Math.round(cy + radius * Math.sin(angle));
-        }
-        g.setColor(fill);
-        g.fillPolygon(x, y, total);
-        g.setColor(Theme.INK);
-        g.setStroke(new java.awt.BasicStroke(1.5f));
-        g.drawPolygon(x, y, total);
-    }
-
-    // ------------------------------------------------------------------
     // Themed dialogs (game over, help) — no stock JOptionPane chrome
     // ------------------------------------------------------------------
 

@@ -11,7 +11,9 @@ import java.util.logging.Logger;
 
 /**
  * Client settings persisted with {@link Properties} at
- * {@code ~/.deckduel/client.properties}: last host/port and window size.
+ * {@code ~/.deckduel/client.properties}: last host/port, window size and preferences. Deck
+ * entries saved by older versions are kept unchanged in the file but no longer used: the server
+ * supplies every deck.
  * Missing or unreadable files fall back to defaults silently.
  */
 public final class ClientSettings {
@@ -26,8 +28,12 @@ public final class ClientSettings {
     private int windowHeight = 880;
     private boolean soundEnabled = true;
     private boolean reducedMotion = false;
+    private volatile boolean gameSounds = true;
     private volatile boolean clickToSelectCards = true;
     private volatile MenuTheme menuTheme = MenuTheme.GOLDEN_FIELDS;
+    // Written by clients that still had a deck builder; preserved, never read for play.
+    private volatile String deckRegions = "";
+    private volatile String deckCards = "";
 
     /** Loads the settings file; keeps defaults when it does not exist. */
     public static ClientSettings load() {
@@ -54,9 +60,12 @@ public final class ClientSettings {
                 properties.getProperty("soundEnabled"), settings.soundEnabled);
         settings.reducedMotion = parseBoolean(
                 properties.getProperty("reducedMotion"), settings.reducedMotion);
+        settings.gameSounds = parseBoolean(properties.getProperty("gameSounds"), settings.gameSounds);
         settings.clickToSelectCards = parseBoolean(
                 properties.getProperty("clickToSelectCards"), settings.clickToSelectCards);
         settings.menuTheme = MenuTheme.fromPreference(properties.getProperty("menuTheme"));
+        settings.deckRegions = properties.getProperty("deckRegions", "");
+        settings.deckCards = properties.getProperty("deckCards", "");
         return settings;
     }
 
@@ -74,7 +83,10 @@ public final class ClientSettings {
         properties.setProperty("soundEnabled", String.valueOf(soundEnabled));
         properties.setProperty("reducedMotion", String.valueOf(reducedMotion));
         properties.setProperty("clickToSelectCards", String.valueOf(clickToSelectCards));
+        properties.setProperty("gameSounds", String.valueOf(gameSounds));
         properties.setProperty("menuTheme", menuTheme.name());
+        properties.setProperty("deckRegions", deckRegions);
+        properties.setProperty("deckCards", deckCards);
         try {
             Files.createDirectories(file.toAbsolutePath().getParent());
             try (OutputStream out = Files.newOutputStream(file)) {
@@ -143,6 +155,12 @@ public final class ClientSettings {
     public void setReducedMotion(boolean reducedMotion) {
         this.reducedMotion = reducedMotion;
     }
+
+    /** Whether match scoring sounds play; separate from the menu music toggle. */
+    public boolean gameSounds() { return gameSounds; }
+
+    /** Turns match scoring sounds on or off. */
+    public void setGameSounds(boolean enabled) { gameSounds = enabled; }
 
     /** Whether a click may draw a card; upward dragging works in either mode. */
     public boolean clickToSelectCards() { return clickToSelectCards; }

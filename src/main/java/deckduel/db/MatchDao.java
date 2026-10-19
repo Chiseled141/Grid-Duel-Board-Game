@@ -16,19 +16,32 @@ public interface MatchDao {
      * Inserts one finished match and updates both players' stats, all inside
      * the given transaction.
      *
-     * @return the generated match id
+     * @return the generecorded match id
      * @throws SQLException to roll the whole transaction back
      */
     long recordMatch(Connection connection, deckduel.server.MatchResult result)
             throws SQLException;
 
-    /** Recent matches, newest first (for future UI use). */
+    /**
+     * Stores a card match's banked round scores (blue = first seat) inside the same
+     * transaction as {@link #recordMatch}.
+     */
+    void recordRounds(Connection connection, long matchId, List<deckduel.core.card.RoundResult> rounds)
+            throws SQLException;
+
+    /** Banked round scores of one match, by round number (empty for legacy matches). */
+    List<deckduel.core.card.RoundResult> roundsOf(long matchId) throws SQLException;
+
+    /** Recent matches, newest first. */
     List<MatchRecord> recentMatches(int limit) throws SQLException;
+
+    /** Recent matches in which the user played either seat, newest first. */
+    List<MatchRecord> recentMatchesFor(String username, int limit) throws SQLException;
 
     /** One row of the matches table joined with the players' names. */
     record MatchRecord(long id, String blueUsername, String redUsername,
                        String winnerUsername, String endReason, int moveCount,
-                       int eloBlueAfter, int eloRedAfter, String playedAt,
+                       String playedAt,
                        String rulesVersion, Integer startedTurns, Integer completedTurns) {
     }
 }

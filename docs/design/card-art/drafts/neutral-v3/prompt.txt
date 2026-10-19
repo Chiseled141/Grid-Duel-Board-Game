@@ -1,0 +1,20 @@
+Use case: precise-object-edit / stylized-concept.
+Asset type: revised landscape card design DRAFT comparison sheet for Deck Duel.
+Input image: reference and edit target is the supplied previous two-card draft. Preserve its exact warm hand-painted medieval manuscript look, subdued natural pigments, fine ink lines, carefully made ivory/aged-gold borders, matching rounded portrait 2:3 card proportions, left charcoal-indigo scroll Spell frame and right sandstone architectural arch Landmark frame. Preserve two equal-size large cards side by side on clean ivory paper, straight-on, not tilted. The draft should be polished and legible.
+Changes requested:
+1) LEFT SPELL: remove the scout and ALL humans completely. Replace the entire illustration with an intimate, coherent medieval reconnaissance still life: a hand-drawn parchment map of roads and a walled town laid across a weathered wooden desk, small brass compass and dividers, wax seal and feather quill. Background a low stone window looking over distant hills and a walled town. Natural calm daylight. No hands, faces, figures, statues, human silhouettes, portraits or people anywhere, including on the map or in the distant scene. Keep objects anatomically sensible and proportions natural. No glowing magic, floating cards, neon, photography, shiny CGI or generic swirls.
+2) BOTH CARDS: add a short readable rules description BELOW the card name in a clearly separated parchment text area inside the card. Inspired ONLY by readable collectible-card information hierarchy: expansive illustration above, bold title, compact 2–4-line rules block beneath title; useful whitespace and high text contrast. Do not copy Runeterra logos, mana gems, health, attack stats or specific frames. Reduce illustration height to about 68 percent of each card to make room for title+rules. Both cards retain strong illustration area and slim balanced borders, not ornate clutter. Use dark warm ink text, clean serif typography. Rules text materially smaller than title but readable, with restrained bold emphasis on action words/numbers. Tiny SPELL or LANDMARK type label can sit above title; persistent label in bottom ornament if space.
+Exact board heading: "DECK DUEL — NEUTRAL CARDS"
+Exact subheading: "REVISED VISUAL DRAFT"
+LEFT card exact title: "RECONNAISSANCE"
+LEFT card exact type label: "SPELL"
+LEFT card exact rules text, wrapped neatly:
+"Look at your deck's top 3 cards.
+Take 1. Put the other 2 on the bottom."
+RIGHT card: keep the beautiful empty medieval civic hall courtyard architecture, no people or heraldry. Exact title: "LANDMARK"
+RIGHT card exact type label: "LANDMARK"
+RIGHT card exact rules text:
+"All seven nations on your row unlock a bonus.
+Persists across rounds unless destroyed."
+Board small footnote outside cards: "Landmark name and bonus pending."
+The landmark effect is a design placeholder and must NOT invent any numeric reward. No nationality crests on either card, no flags, no class symbols, no costs, no numerical stats, no royalty, no watermarks, no other text. Remove the earlier bottom 'PERSISTENT' label if it competes with text. Readability and object-led art are the priority. Generate ONE comparison-board image.

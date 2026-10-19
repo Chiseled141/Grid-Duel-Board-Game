@@ -15,4 +15,7 @@ public interface ServerConnection extends MessageSender {
 
     /** Connects to the server if not already connected. */
     void ensureConnected(String host, int port) throws IOException;
+
+    /** Drops the current connection, if any, before a reconnect attempt. */
+    default void close() { }
 }

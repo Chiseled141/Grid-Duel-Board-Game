@@ -19,13 +19,13 @@ class MessageWireFilterTest {
         for (Object value : List.of(new SerializationProbe(), new java.util.Date(), new java.util.Random(), new Object[1001]))
             assertThrows(IOException.class, () -> read(value));
     }
-    @Test void supportedRankingCollectionsRemainReadable() throws Exception {
-        var user = new UserProfile("alice", 1000, 0, 0);
-        for (List<UserProfile> list : List.of(new java.util.ArrayList<>(List.of(user)),
-                new java.util.LinkedList<>(List.of(user)), java.util.Arrays.asList(user),
-                java.util.Collections.unmodifiableList(new java.util.ArrayList<>(List.of(user))),
-                java.util.Collections.singletonList(user), java.util.Collections.<UserProfile>emptyList())) {
-            assertEquals(new LeaderboardResponse(list), read(new LeaderboardResponse(list)));
+    @Test void supportedListCollectionsRemainReadable() throws Exception {
+        var room = new MatchSummary("ABCDE", "alice");
+        for (List<MatchSummary> list : List.of(new java.util.ArrayList<>(List.of(room)),
+                new java.util.LinkedList<>(List.of(room)), java.util.Arrays.asList(room),
+                java.util.Collections.unmodifiableList(new java.util.ArrayList<>(List.of(room))),
+                java.util.Collections.singletonList(room), java.util.Collections.<MatchSummary>emptyList())) {
+            assertEquals(new ListMatchesResponse(list), read(new ListMatchesResponse(list)));
         }
     }
 }

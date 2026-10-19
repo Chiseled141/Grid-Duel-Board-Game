@@ -50,7 +50,6 @@ public final class Database implements AutoCloseable {
                       id            INTEGER PRIMARY KEY AUTOINCREMENT,
                       username      TEXT UNIQUE NOT NULL,
                       password_hash TEXT NOT NULL,
-                      elo           INTEGER NOT NULL DEFAULT 1000,
                       wins          INTEGER NOT NULL DEFAULT 0,
                       losses        INTEGER NOT NULL DEFAULT 0,
                       created_at    TEXT NOT NULL
@@ -63,12 +62,44 @@ public final class Database implements AutoCloseable {
                       winner_user_id INTEGER REFERENCES users(id),
                       end_reason     TEXT NOT NULL,
                       move_count     INTEGER NOT NULL,
-                      elo_blue_after INTEGER NOT NULL,
-                      elo_red_after  INTEGER NOT NULL,
                       played_at      TEXT NOT NULL
+                    )""");
+            // Additive table for card-game round scores; legacy match rows simply have none.
+            statement.execute("""
+                    CREATE TABLE IF NOT EXISTS match_rounds (
+                      match_id     INTEGER NOT NULL REFERENCES matches(id),
+                      round_number INTEGER NOT NULL,
+                      blue_score   INTEGER NOT NULL,
+                      red_score    INTEGER NOT NULL,
+                      PRIMARY KEY (match_id, round_number)
                     )""");
         }
         migrateMatchesTable();
+        removeLegacyRatings();
+    }
+
+    /** Removes retired rating columns without rebuilding accounts, match rows or foreign keys. */
+    private void removeLegacyRatings() throws SQLException {
+        inTransaction(conn -> {
+            for (String table : java.util.List.of("users", "matches")) {
+                java.util.List<String> obsolete = new java.util.ArrayList<>();
+                try (var query = conn.prepareStatement("PRAGMA table_info(" + table + ")");
+                     var columns = query.executeQuery()) {
+                    while (columns.next()) {
+                        String name = columns.getString("name");
+                        if (java.util.Set.of("elo", "elo_blue_after", "elo_red_after").contains(name))
+                            obsolete.add(name);
+                    }
+                }
+                for (String column : obsolete) {
+                    // Table and column names come only from the fixed allowlists above.
+                    try (Statement drop = conn.createStatement()) {
+                        drop.execute("ALTER TABLE " + table + " DROP COLUMN " + column);
+                    }
+                }
+            }
+            return null;
+        });
     }
 
     private void migrateMatchesTable() throws SQLException {
