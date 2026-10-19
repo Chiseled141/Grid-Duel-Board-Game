@@ -1,26 +1,89 @@
-# Claude handoff — clean card-game starting point
+# Claude handoff — card game on the neutral catalog
 
-Read `AGENTS.md`, then `gameplay-migration-brief.md`. The user requested a full retirement of the old gameplay. This branch now has an account/lobby shell, not a working card game.
+Read `AGENTS.md` first. The old chess-like game is gone; the card game described there is
+implemented end to end on catalog `cards-neutral-1` (`docs/card-catalog.md`): the approved
+35-Unit library and 46-card automatic deck, 11 neutral Spells and 6 neutral Landmarks. Landmark
+numbers, the seven-nation bonus and some edge cases are provisional (AGENTS.md lists them).
 
-## Keep
+## Where things live
 
-- The medieval menu: appearance, artwork, animation, music, navigation, account display, and remaining settings.
-- Login, registration, PBKDF2 passwords, local TCP transport, rooms, rankings, and SQLite account/history data.
-- `DeckPanel`: the renamed Atlas page, retaining its historical region map and banners. Deck selection and the card catalog are not implemented.
-- `CardTablePanel`: accessible through Play → Practice → Preview table. It shows the existing room background and two empty eight-space rows.
-- `DuelScorePanel`: real Swing score presentation with a large total, Units + Combos tiles, effects, counters, and cosmetic feedback. It has no game arithmetic or server connection. The local preview remains in `docs/design/`.
-- Historical match persistence and its rollback tests, Elo, serialization allowlisting, menu tests, and shell integration tests.
+- `core/card`: immutable contracts (`CardDef`, `Effect`, `Row`, `RowCard`, `LandmarkCard`, the
+  `Move` family `PickLandmarks`/`PlayCard`/`DrawCard`/`KeepCard`/`SkipTurn`, `PlayerView`, `SideView`,
+  `ScoreBreakdown`, …), `Scoring` (§5.3–5.4, with Landmarks), `Rules` (legal plays and the public
+  board part of every resolution, shared by server, bots and previews), `DeckRules` (the
+  46-card automatic deck), `MatchState` (Landmark choice, deals, manual draws, hidden-card
+  Spells with seeded server-side randomness, Reconnaissance keep, Spy knowledge, turn passing,
+  banking, forfeit), `GreedyBot` (easy) and `PlannerBot` (hard: plays out its known hand, holds
+  disruption Spells; 113 wins to 85 against `GreedyBot` over 200 seeded matches on this catalog).
+- `cards/CatalogLoader`: parses `resources/cards/catalog.txt` into a validated `Catalog`.
+- `server`: `ClientHandler` dispatch, `LobbyManager` (rooms + queue), `MatchRegistry`
+  (one match per account), `MatchSession` (per-match executor, privacy, revisions, retries,
+  grace, rematch, practice bot and recording), `MatchPersistence` (+ `match_rounds`,
+  and per-account history reads for the Match history page).
+- `client`: `ClientModel` (match state, request ids, one pending play, in-memory reconnect),
+  `CardTableView` (live table, JavaFX: seven-space rows, Landmark areas, Landmark choice and
+  Reconnaissance overlays, Draw and Skip turn buttons (D/S), larger hand cards, Spy-revealed cards, Watchtower top card), `ScoreRail` (rail, JavaFX), `CardDetails` (read-only modal for Landmark buffs and current Spy-revealed cards), `TableEffects` (performs a
+  `PlayAnimator` plan), `FxScreens` (shows the JavaFX window in place of the Swing frame for the
+  table and Atlas; marshals between the EDT and the JavaFX thread),
+  `client/bot/CardBot` (headless protocol bot for `demo` and `bots`).
 
-## Removed
+## Atlas
 
-The entire 7×7 engine, movement deck, skills, mana, pieces, targeting, Foresight, opening-hand and old action animations; the old config/artwork and generation tools; practice/load-test bots; MatchSession; gameplay, chat, rematch and match-reconnect payloads; and tests asserting those retired features. Their old test count is no longer a target.
+`AtlasView` (JavaFX) layers its header and a floating country chronicle over the full-screen
+`AtlasMapView`, which draws terrain, context mask and borders as one transformed node group. Select a country directly on the map or browse using arrow keys; there is no
+bottom nation button strip. The removed heraldry link, Unit previews and deck controls stay
+removed. Zoom/pan and reduced-motion fly-to remain supported.
 
-Only historical `core.PlayerColor`/`core.EndReason` and `server.MatchResult` remain to support the existing DB format. They are not a template for the new game model. No schema/data reset was performed.
+`AtlasMapData` parses the exported boundary SVG off the UI threads; the view decodes the terrain. The SVG is
+also the hit-test/selection geometry, so clicks follow the same shapes used to export the
+transparent PNG layers. Runtime copies live in `assets/atlas/researched-map/`. Full-size
+country cutouts, placement offsets, generation prompt, sources and accuracy notes live in
+`docs/design/map-cutouts/researched-v2/`. `tools/ExportAtlasLayers.java` rebuilds them.
 
-## Runtime boundaries
+This is a source-based circa-1444 reconstruction, not surveyed exact historical borders.
+Poland, Bohemia and Hungary use Cliopatria's 1440–1449 records; Austria/Styria and the
+Croatia/Transylvania game subdivisions are documented regional reconstructions. Do not
+present those internal cuts as independently verified GIS records. The old procedural
+`AtlasGeography` map has been removed. `AtlasViewTest` checks exported boundaries, direct
+selection, offline navigation, the floating layout, keyboard browsing and zoom limits.
 
-Protocol 8 is intentionally incompatible with old gameplay peers. It carries accounts, room directory, ranking and heartbeat messages only. There is no game, queue, match executor or reconnect token. Join requests return a useful not-ready error without consuming the room. Find-match requests return searching=false and a not-ready error; cancellation remains safe. No fake game or bot is created. The demo/bots commands exit with code 2 until reimplemented. Legacy --config is rejected by the server.
+## Routes
 
-Start implementation with the new card contracts and deterministic scoring/round rules. Define the actual new gameplay payloads before adding them to the allowlist. Wire server, Swing, practice, bots, demo, reconnect, chat and rematch to the new core in bounded steps. Keep account and historical persistence behavior intact.
+Elo ratings are removed from profiles, history, the UI, match recording and the database.
+On database startup, an idempotent transactional migration drops retired rating columns
+while preserving accounts, win/loss counters, match history and round scores.
 
-The full card library remains undecided. Do not silently turn the mockup's generic cards or sample scores into card definitions.
+In-match chat was removed entirely: no table controls, client history/callbacks, server relay,
+or chat protocol messages remain. Reconnect, errors/notices and rematch remain supported.
+
+The deck builder and Deck menu were removed at the user’s request. No client sends a deck
+(protocol 11 has no deck field and supports voluntary skips); `MatchSession` builds the same 46-card deck for both seats every
+game and shuffles each independently. Deck entries saved in `client.properties` by older clients
+are preserved unchanged and never read.
+
+Play → Find match / Create match / Join a game / Practice → Easy bot or Hard bot all start
+real matches. Home → History shows the account's recorded matches. The old leaderboard was
+removed at the user's request. `demo` runs two bots against a throwaway local server and database; `bots` connects
+`--count` bots to a running server.
+
+## Remaining work
+
+- Confirm or change the provisional values (AGENTS.md "Provisional implementation values"):
+  Embassy/Guild Hall +3, Armory ≤2 +1, Ruined Keep +2, all seven nations +15, empty-hand
+  skipping with plays kept, own-turn manual draws, private random offers of five, and the
+  Spy/Reconnaissance/Exchange/Archive edge cases.
+- Card-specific combo interactions beyond the base pair rule need new `Effect` types.
+- Card artwork: Units use the manuscript set in `docs/design/card-art/`; Spells and Landmarks
+  use `docs/design/card-art/drafts/neutral-v4/` (runtime copies in `assets/cards/runtime`,
+  loaded by `CardImages`). Retired national Spell/Landmark and Chaplain/Envoy art is archived in
+  `docs/design/card-art/retired/`. The neutral set is reviewed draft art; Unit card faces still
+  show the older manuscript titles (for example "KNIGHT" on the Knights class).
+- The hard bot cannot see the opponent's hand, so it does not anticipate replies; a sampling
+  or search bot over the opponent's possible cards would be the next step.
+- The first opening deal of a session can pause up to about 0.2 s while card faces render for
+  the first time (measurements in `docs/design/card-table-design.md`).
+- The JavaFX native libraries in the shaded jar are those of the building machine's platform.
+- The table shows the Exchange discard and Random Steal/Discard cards as simple card flights;
+  there is no dedicated Spy or Reconnaissance animation beyond the cast and the private overlay.
+- Reconnect relies on in-memory credentials; a client restart re-enters the held seat by
+  logging in again within the grace period.

@@ -136,7 +136,7 @@ class BattlefieldMenuPanelTest {
             assertFalse(panel.animationEnabled());
             panel.visible = true;
             assertTrue(panel.animationEnabled());
-            model.handleMessage(new LoginResponse(true, null, new UserProfile("alice", 1000, 0, 0)));
+            model.handleMessage(new LoginResponse(true, null, new UserProfile("alice", 0, 0)));
             assertFalse(panel.animationEnabled());
         });
     }

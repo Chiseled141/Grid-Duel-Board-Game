@@ -16,7 +16,6 @@ import javax.swing.event.DocumentListener;
 public final class LobbyPanel extends BattlefieldMenuPanel {
     private final ClientModel model;
     private final ClientSettings settings;
-    private final Runnable openDeck;
     private final Runnable quitGame;
     private final Runnable saveSettings;
     private final JPanel surface = new JPanel(new BorderLayout()) {
@@ -27,7 +26,6 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
 
     };
     private final JLabel profile = caption(" ");
-    private final JLabel rating = caption(" ");
     private final JLabel roomCode = caption("· · · · ·");
     private final JLabel roomStatus = caption("Creating your room…");
     private final JLabel noRooms = caption("No open rooms yet.");
@@ -76,8 +74,8 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
     });
 
     /** Builds the menu; Quit uses the frame's normal save-and-close path. */
-    public LobbyPanel(ClientModel model, ClientSettings settings, Runnable openDeck, Runnable quitGame) {
-        this(model, settings, openDeck, quitGame, () -> {
+    public LobbyPanel(ClientModel model, ClientSettings settings, Runnable quitGame) {
+        this(model, settings, quitGame, () -> {
             Thread writer = new Thread(() -> {
                 synchronized (settings) { settings.save(); }
             }, "deck-duel-save-settings");
@@ -87,13 +85,11 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
     }
 
     // Inject persistence in UI tests so selecting a style never writes real user preferences.
-    LobbyPanel(ClientModel model, ClientSettings settings, Runnable openDeck,
-               Runnable quitGame, Runnable saveSettings) {
+    LobbyPanel(ClientModel model, ClientSettings settings, Runnable quitGame, Runnable saveSettings) {
         super(model, Screen.LOBBY, settings);
         this.model = model;
         this.refreshTimer = new Timer(5000, event -> model.refreshMatches());
         this.settings = settings;
-        this.openDeck = openDeck;
         this.quitGame = quitGame;
         this.saveSettings = saveSettings;
         setLayout(new GridBagLayout());
@@ -112,11 +108,6 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
         profile.setFont(Theme.bold(20f));
         profile.setName("menuPlayerName");
         add(profile, anchor);
-        rating.setName("menuPlayerElo");
-        rating.setFont(Theme.bold(11f));
-        rating.setForeground(new Color(255, 218, 151));
-        rating.setBorder(BorderFactory.createEmptyBorder(3, 0, 3, 0));
-        add(rating, anchor);
         pages.put("home", buildHome());
         pages.put("play", buildPlay());
         pages.put("create", buildCreate());
@@ -168,12 +159,10 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
                     getHeight() - getInsets().bottom - surface.getY() - surface.getHeight()));
             surface.setLocation(surface.getX(), surface.getY() + offset);
         }
-        int ratingWidth = rating.getPreferredSize().width;
-        int width = Math.min(profile.getPreferredSize().width, Math.max(0, getWidth() - 122 - ratingWidth));
-        // Align the account pair with the floating sound button without a header bar.
+        int width = Math.min(profile.getPreferredSize().width, Math.max(0, getWidth() - 122));
+        // Align the account name with the floating sound button without a header bar.
         int right = getWidth() - 84;
-        rating.setBounds(Math.max(0, right - ratingWidth), 22, ratingWidth, 24);
-        profile.setBounds(Math.max(0, right - ratingWidth - 14 - width), 16, width, 36);
+        profile.setBounds(Math.max(0, right - width), 16, width, 36);
     }
 
     private JPanel buildHome() {
@@ -184,7 +173,7 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
         petalTargets.add(play); petalTargets.add(preferences); petalTargets.add(quit);
         line(page, play);
         line(page, preferences);
-        line(page, new MenuAction("Deck", openDeck, false));
+        line(page, new MenuAction("Atlas", model::openAtlas, false));
         line(page, quit);
         page.add(Box.createVerticalStrut(14));
         return page;
@@ -390,8 +379,10 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
     }
 
     private JPanel buildPractice() {
-        JPanel page = page("Practice", "The new card game is coming soon.", "play");
-        line(page, MenuSettingsOption.route("Preview table", "View the new board and score panel.", model::openTablePreview));
+        JPanel page = page("Practice", "An practice match against the bot.", "play");
+        line(page, MenuSettingsOption.route("Easy bot", "Plays the best card for this turn only.", () -> model.startPractice(false)));
+        page.add(Box.createVerticalStrut(8));
+        line(page, MenuSettingsOption.route("Hard bot", "Plans ahead with its hand and saves its Spells.", () -> model.startPractice(true)));
         return page;
     }
 
@@ -412,9 +403,9 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
             if (i == 0) page.add(Box.createVerticalStrut(6));
         }
         page.add(Box.createVerticalStrut(20));
-        line(page, settingLabel("ANIMATION"));
+        line(page, settingLabel("ANIMATION & SOUND"));
         page.add(Box.createVerticalStrut(7));
-        JButton motion = MenuSettingsOption.motion();
+        JButton motion = MenuSettingsOption.toggle("Reduced motion", "Limit background and card animation.");
         motion.setSelected(settings.reducedMotion());
         motion.setText("Reduced motion: " + (settings.reducedMotion() ? "On" : "Off"));
         motion.setName("reducedMotion");
@@ -426,6 +417,20 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
             saveSettings.run();
         });
         line(page, motion);
+        page.add(Box.createVerticalStrut(6));
+        JButton sounds = MenuSettingsOption.toggle("Game sounds", "Card, combo and score sounds in matches.");
+        sounds.setName("gameSounds");
+        Runnable showSounds = () -> {
+            sounds.setText("Game sounds: " + (settings.gameSounds() ? "On" : "Off"));
+            sounds.setSelected(settings.gameSounds());
+        };
+        showSounds.run();
+        sounds.addActionListener(event -> {
+            settings.setGameSounds(!settings.gameSounds());
+            showSounds.run();
+            saveSettings.run();
+        });
+        line(page, sounds);
         page.add(Box.createVerticalStrut(12));
         line(page, caption("Changes saved automatically"));
         updateCardControls();
@@ -567,8 +572,7 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
     private void refreshState() {
         if (model.me() != null) {
             profile.setText(model.me().username());
-            profile.setToolTipText(model.me().username() + " · ELO " + model.me().elo());
-            rating.setText("ELO " + model.me().elo());
+            profile.setToolTipText(model.me().username());
         }
         String code = model.pendingRoomCode();
         if (code != null) {

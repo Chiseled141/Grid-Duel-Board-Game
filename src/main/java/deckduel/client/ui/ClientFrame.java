@@ -4,20 +4,26 @@ import deckduel.client.ClientSettings;
 import deckduel.client.MenuMusic;
 import deckduel.client.DeckDuelClient;
 import deckduel.client.state.*;
+import deckduel.cards.CatalogLoader;
 import java.awt.CardLayout;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import javax.swing.*;
 
-/** Owns the account connection and switches between the preserved menu and local shell pages. */
+/**
+ * Owns the server connection and switches between the Swing menu and match history;
+ * the match table and the Atlas are JavaFX screens shown in their own window by {@link FxScreens}.
+ */
 public final class ClientFrame extends JFrame {
     private final DeckDuelClient client;
     private final ClientModel model;
     private final ClientSettings settings;
     private final MenuMusic menuMusic = new MenuMusic();
+    private final deckduel.client.ScoringSounds scoringSounds;
     private final CardLayout screens = new CardLayout();
     private final JPanel content = new JPanel(screens);
     private JToggleButton soundToggle;
+    private final FxScreens fxScreens;
 
     /** Builds the original menu scene; optional host/port override saved connection settings. */
     public ClientFrame(String host, Integer port) {
@@ -30,19 +36,24 @@ public final class ClientFrame extends JFrame {
                 reason -> SwingUtilities.invokeLater(this::connectionLost));
         model = new ClientModel(client);
         model.setReducedMotion(settings.reducedMotion());
+        var catalog = CatalogLoader.loadBundled();
+        CardImages.shared().preload(catalog.cards().stream().map(deckduel.core.card.CardDef::id).toList());
         content.add(new LoginPanel(model, settings), Screen.LOGIN.name());
-        content.add(new LobbyPanel(model, settings, model::openDeck, this::closeAndSave), Screen.LOBBY.name());
-        content.add(new DeckPanel(model::closeDeck), Screen.DECK.name());
-        content.add(new CardTablePanel(model::leaveToLobby), Screen.TABLE.name());
-        content.add(new LeaderboardPanel(model, settings, model::leaveToLobby), Screen.LEADERBOARD.name());
+        content.add(new LobbyPanel(model, settings, this::closeAndSave), Screen.LOBBY.name());
+        scoringSounds = new deckduel.client.ScoringSounds(settings::gameSounds);
+        content.add(new HistoryPanel(model, settings, model::leaveToLobby), Screen.HISTORY.name());
         add(buildScene());
+        fxScreens = new FxScreens(model, settings, scoringSounds, this, () -> soundToggle.doClick(),
+                settings::soundEnabled, bounds -> { setBounds(bounds); closeAndSave(); });
         model.addListener(new ClientModelListener() {
             @Override public void onScreenChanged(Screen screen) {
-                screens.show(content, screen.name());
+                // The JavaFX screens have no card here; the menu stays behind them, hidden.
+                if (screen != Screen.TABLE && screen != Screen.ATLAS) screens.show(content, screen.name());
                 updateMenuMusic();
             }
             @Override public void onError(String text) {
-                JOptionPane.showMessageDialog(ClientFrame.this, text, "Deck Duel", JOptionPane.INFORMATION_MESSAGE);
+                if (fxScreens.showing()) fxScreens.notice(text);
+                else JOptionPane.showMessageDialog(ClientFrame.this, text, "Deck Duel", JOptionPane.INFORMATION_MESSAGE);
             }
         });
         screens.show(content, Screen.LOGIN.name());
@@ -91,12 +102,15 @@ public final class ClientFrame extends JFrame {
         settings.setWindowSize(getWidth(), getHeight());
         settings.save();
         dispose();
+        fxScreens.quit();
     }
 
     /** Closes audio and the account socket without leaving background connection threads running. */
     @Override public void dispose() {
         client.close();
         menuMusic.close();
+        scoringSounds.close();
+        fxScreens.dispose();
         super.dispose();
     }
 }

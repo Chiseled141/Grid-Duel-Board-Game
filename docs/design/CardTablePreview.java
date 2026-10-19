@@ -3,7 +3,7 @@ import java.awt.image.BufferedImage;
 import javax.imageio.ImageIO;
 import java.io.File;
 
-/** Local composition preview using the real Swing rail and placeholder card faces. */
+/** Local composition preview using the real JavaFX score rail and placeholder card faces. */
 class CardTablePreview {
  static Graphics2D g;
  static Color cream=new Color(242,225,189),gold=new Color(192,151,83);
@@ -55,41 +55,40 @@ class CardTablePreview {
   for(int i=0;i<8;i++)card(291+i*112,785-(i==3?20:0),100,166,i<5?"UNIT":i==5?"LANDMARK":"SPELL",i<5?"REGION · CLASS":i==5?"ONGOING EFFECT":"ONE-TIME EFFECT",i<5?"3":i==5?"◇":"✦",i==3);
   text("Chat",48,955,16,cream);text("Layout preview · cards and values are placeholders",1128,977,12,cream);
   g.dispose();
-  var rail = new deckduel.client.ui.DuelScorePanel();
-  javax.swing.SwingUtilities.invokeAndWait(() -> {
-   rail.setBounds(24,249,252,620);
-   rail.update(sample(36),true);
-   if(args.length>0 && args[0].equals("--render")) {
-    var output=im.createGraphics(); output.translate(24,249); rail.paint(output); output.dispose();
-   } else {
-    var scene=new javax.swing.JPanel(null){
-     @Override protected void paintComponent(Graphics graphics){super.paintComponent(graphics);graphics.drawImage(im,0,0,getWidth(),getHeight(),null);}
-     @Override public void doLayout(){
-      double scale=Math.min(getWidth()/1600.0,getHeight()/1000.0);
-      rail.setBounds((int)(24*scale),(int)(249*scale),(int)(252*scale),(int)(620*scale));
-      for(var child:getComponents()) if(child!=rail) child.setBounds((int)(1260*scale),(int)(70*scale),240,32);
-     }
-    };
-    scene.add(rail);
-    var replay=new javax.swing.JButton("Replay scoring: 15 → 36");
-    final javax.swing.Timer[] pending={null};
-    replay.addActionListener(event -> {
-     if(pending[0]!=null)pending[0].stop();
-     rail.update(sample(15),true);
-     pending[0]=new javax.swing.Timer(450,e -> rail.update(sample(36),false));
-     pending[0].setRepeats(false);pending[0].start();
-    });scene.add(replay);
-    var frame=new javax.swing.JFrame("Deck Duel — score panel preview");
-    frame.setDefaultCloseOperation(javax.swing.JFrame.DISPOSE_ON_CLOSE);
-    frame.addWindowListener(new java.awt.event.WindowAdapter(){
-     @Override public void windowClosed(java.awt.event.WindowEvent event){if(pending[0]!=null)pending[0].stop();rail.stopFeedback();}
-    });
-    scene.setPreferredSize(new Dimension(1280,800));frame.setContentPane(scene);frame.pack();frame.setLocationRelativeTo(null);frame.setVisible(true);
+  boolean render=args.length>0 && args[0].equals("--render");
+  java.util.concurrent.CountDownLatch done=new java.util.concurrent.CountDownLatch(1);
+  javafx.application.Platform.startup(() -> {
+   var rail = new deckduel.client.ui.ScoreRail();
+   rail.update(sample(36),true,0);
+   if(render){
+    new javafx.scene.Scene(new javafx.scene.Group(rail),252,620);rail.resize(252,620);
+    rail.layout();
+    var output=im.createGraphics();
+    output.drawImage(javafx.embed.swing.SwingFXUtils.fromFXImage(rail.snapshot(transparent(),null),null),24,249,null);
+    output.dispose();
+    done.countDown();
+    return;
    }
+   var backdrop=new javafx.scene.image.ImageView(javafx.embed.swing.SwingFXUtils.toFXImage(im,null));
+   backdrop.setFitWidth(1280);backdrop.setFitHeight(800);
+   var replay=new javafx.scene.control.Button("Replay scoring: 15 → 36");
+   var pending=new javafx.animation.PauseTransition(javafx.util.Duration.millis(450));
+   pending.setOnFinished(e -> rail.update(sample(36),false,0));
+   replay.setOnAction(e -> { rail.update(sample(15),true,0); pending.playFromStart(); });
+   rail.relocate(19,199);rail.resize(202,496);replay.relocate(1008,56);
+   var scene=new javafx.scene.Scene(new javafx.scene.layout.Pane(backdrop,rail,replay),1280,800);
+   var stage=new javafx.stage.Stage();
+   stage.setTitle("Deck Duel — score panel preview");
+   stage.setScene(scene);
+   stage.setOnHidden(e -> { pending.stop(); rail.stopFeedback(); javafx.application.Platform.exit(); });
+   stage.show();
   });
-  if(args.length>0 && args[0].equals("--render"))ImageIO.write(im,"png",new File("docs/design/card-table-preview.png"));
+  if(render){done.await();ImageIO.write(im,"png",new File("docs/design/card-table-preview.png"));javafx.application.Platform.exit();}
  }
- static deckduel.client.ui.DuelScorePanel.Display sample(long value){
-  return new deckduel.client.ui.DuelScorePanel.Display(value,18,value==15?6:9,value==15?9:27,0,value==15?8:7,1,"No active multiplier");
+ static javafx.scene.SnapshotParameters transparent(){
+  var parameters=new javafx.scene.SnapshotParameters();parameters.setFill(javafx.scene.paint.Color.TRANSPARENT);return parameters;
+ }
+ static deckduel.client.ui.ScoreRail.Display sample(long value){
+  return new deckduel.client.ui.ScoreRail.Display(value,18,value==15?6:9,value==15?9:27,0,value==15?8:7,1);
  }
 }

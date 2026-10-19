@@ -1,0 +1,56 @@
+/* JavaFX look for the match table and the Atlas, matching the Swing menu's UiKit pills and leather panels. */
+
+.pill {
+    -fx-background-color: #241E19, -fx-pill-fill;
+    -fx-background-insets: 4 0 0 4, 0 4 4 0;
+    -fx-background-radius: 22;
+    -fx-border-color: -fx-pill-border;
+    -fx-border-width: 2;
+    -fx-border-radius: 22;
+    -fx-border-insets: 0 4 4 0;
+    -fx-padding: 8 26 12 22;
+    -fx-text-fill: -fx-pill-text;
+    -fx-cursor: hand;
+}
+.pill:hover { -fx-background-color: #241E19, derive(-fx-pill-fill, 14%); }
+.pill:pressed { -fx-background-insets: 4 0 0 4, 2 2 2 2; -fx-border-insets: 2 2 2 2; }
+.pill:disabled { -fx-opacity: 1; -fx-pill-fill: #B3AB98; -fx-pill-border: #8C8676; -fx-pill-text: #382A20; }
+.pill.mini { -fx-padding: 4 12 8 10; -fx-background-radius: 14; -fx-border-radius: 14; }
+
+.gold { -fx-pill-fill: #F4BF60; -fx-pill-border: #382A20; -fx-pill-text: #382A20; }
+.gold-outline { -fx-pill-fill: #2C2925; -fx-pill-border: #F4BF60; -fx-pill-text: #F4BF60; }
+.cream-outline { -fx-pill-fill: #5D6447; -fx-pill-border: #DAE5EB; -fx-pill-text: #FFF2D7; }
+.danger { -fx-pill-fill: #AA4438; -fx-pill-border: #DA9B8A; -fx-pill-text: #FFF2D7; }
+
+/* Floating leather panels: the match result and the leave confirmation. */
+.leather {
+    -fx-background-color: #352B24;
+    -fx-background-radius: 14;
+    -fx-border-color: #AD8954;
+    -fx-border-width: 1.5;
+    -fx-border-radius: 10;
+    -fx-border-insets: 3;
+    -fx-padding: 12;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.55), 22, 0.2, 0, 8);
+}
+
+.scroll-bar:vertical { -fx-background-color: transparent; -fx-pref-width: 8; }
+.scroll-bar .thumb { -fx-background-color: #A98D60; -fx-background-radius: 4; }
+.scroll-bar .increment-button, .scroll-bar .decrement-button { -fx-padding: 0; -fx-pref-height: 0; }
+.scroll-bar .increment-arrow, .scroll-bar .decrement-arrow { -fx-shape: ""; -fx-padding: 0; }
+.scroll-bar .track { -fx-background-color: transparent; }
+
+/* Atlas */
+.atlas-bar { -fx-background-color: #231E17; -fx-background-radius: 8; -fx-padding: 8 64 8 12; }
+.atlas-hint { -fx-background-color: #231E17; -fx-background-radius: 6; -fx-padding: 4 10 4 10; -fx-text-fill: #F0E5CB; }
+.atlas-inspector, .atlas-inspector .viewport {
+    -fx-background-color: #EBDDB8;
+}
+.atlas-inspector {
+    -fx-border-color: transparent transparent transparent #8C6E45;
+    -fx-border-width: 0 0 0 3;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.5), 24, 0.15, 0, 6);
+}
+.atlas-section { -fx-text-fill: #8C6E45; }
+
+.sound-toggle { -fx-background-color: transparent; -fx-cursor: hand; -fx-padding: 6; }

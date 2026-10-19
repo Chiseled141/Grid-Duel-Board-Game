@@ -13,7 +13,7 @@ import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.io.TempDir;
 import static org.junit.jupiter.api.Assertions.*;
 
-/** Real sockets and temporary SQLite cover the remaining account/lobby boundary. */
+/** Real sockets and temporary SQLite cover the account/lobby boundary. */
 class AccountLobbyIntegrationTest {
     @TempDir Path temporary;
     private Database database;
@@ -46,30 +46,26 @@ class AccountLobbyIntegrationTest {
         public void close() throws IOException { socket.close(); }
     }
 
-    @Test void registrationLoginRoomsRankingsAndHeartbeatsWork() throws Exception {
+    @Test void registrationLoginRoomsHistoryAndHeartbeatsWork() throws Exception {
         try (var alice = new Peer(true); var bob = new Peer(true)) {
             alice.register("alice"); bob.register("bob");
             alice.send(new CreateMatchRequest()); var room = alice.expect(MatchCreated.class);
             assertTrue(room.roomCode().matches("[A-Z2-9]{5}"));
             bob.send(new ListMatchesRequest());
             assertEquals(java.util.List.of(new MatchSummary(room.roomCode(), "alice")), bob.expect(ListMatchesResponse.class).openMatches());
-            bob.send(new LeaderboardRequest()); assertEquals(2, bob.expect(LeaderboardResponse.class).topPlayers().size());
+            bob.send(new HistoryRequest()); assertTrue(bob.expect(HistoryResponse.class).matches().isEmpty());
             bob.send(new Ping(77)); assertEquals(new Pong(77), bob.expect(Pong.class));
             bob.send(new LoginRequest("bob", "wrong")); assertFalse(bob.expect(LoginResponse.class).ok());
             bob.send(new LoginRequest("bob", "secret123")); assertTrue(bob.expect(LoginResponse.class).ok());
         }
     }
 
-    @Test void joinAndFindNeverConsumeRoomsOrCreateFakeGames() throws Exception {
+    @Test void unknownRoomCodesNeverConsumeRoomsOrCreateGames() throws Exception {
         try (var alice = new Peer(true); var bob = new Peer(true)) {
             alice.register("alice"); bob.register("bob");
-            alice.send(new CreateMatchRequest()); var room = alice.expect(MatchCreated.class);
-            bob.send(new JoinMatchRequest(room.roomCode()));
-            assertEquals(ClientHandler.GAMEPLAY_UNAVAILABLE, bob.expect(ErrorMessage.class).text());
-            bob.send(new FindMatchRequest(true));
-            var status = bob.expect(MatchmakingStatus.class); assertFalse(status.searching());
-            assertEquals(ClientHandler.GAMEPLAY_UNAVAILABLE, status.error());
-            bob.send(new FindMatchRequest(false)); assertNull(bob.expect(MatchmakingStatus.class).error());
+            alice.send(new CreateMatchRequest()); alice.expect(MatchCreated.class);
+            bob.send(new JoinMatchRequest("ZZZZZ"));
+            assertTrue(bob.expect(ErrorMessage.class).text().contains("no longer open"));
             bob.send(new ListMatchesRequest()); assertEquals(1, bob.expect(ListMatchesResponse.class).openMatches().size());
             database.query(connection -> {
                 try (var query = connection.prepareStatement("SELECT COUNT(*) FROM matches"); var rows = query.executeQuery()) {
@@ -80,10 +76,11 @@ class AccountLobbyIntegrationTest {
         }
     }
 
-    @Test void authenticationIsRequiredForRoomAndRankingRequests() throws Exception {
+    @Test void authenticationIsRequiredForLobbyMatchAndHistoryRequests() throws Exception {
         try (var peer = new Peer(true)) {
             for (Object request : java.util.List.of(new CreateMatchRequest(), new ListMatchesRequest(),
-                    new LeaderboardRequest(), new JoinMatchRequest("ABCDE"), new FindMatchRequest(true))) {
+                    new HistoryRequest(), new JoinMatchRequest("ABCDE"), new FindMatchRequest(true),
+                    new PracticeRequest(false), new LeaveMatchRequest(), new RematchRequest())) {
                 peer.send(request); assertTrue(peer.expect(ErrorMessage.class).text().contains("log in"));
             }
         }
@@ -91,7 +88,8 @@ class AccountLobbyIntegrationTest {
 
     @Test void oldProtocolIsRejectedBeforeAccountCommands() throws Exception {
         try (var peer = new Peer(false)) {
-            peer.send(new ProtocolHello(7)); assertTrue(peer.expect(ErrorMessage.class).text().contains("PROTOCOL:8"));
+            // Version 10 clients do not know SkipTurn.
+            peer.send(new ProtocolHello(10)); assertTrue(peer.expect(ErrorMessage.class).text().contains(Message.GREETING));
             assertThrows(IOException.class, peer.in::readObject);
         }
     }
@@ -117,7 +115,7 @@ class AccountLobbyIntegrationTest {
         }
     }
 
-    @Test void productionClientSpeaksTheNewShellProtocol() throws Exception {
+    @Test void productionClientSpeaksTheCurrentProtocol() throws Exception {
         var received = new LinkedBlockingQueue<Message>();
         try (var client = new DeckDuelClient(received::add, reason -> { })) {
             client.ensureConnected("127.0.0.1", port);

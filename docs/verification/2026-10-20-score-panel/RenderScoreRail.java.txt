@@ -1,0 +1,28 @@
+package deckduel.client.ui;
+import java.io.File;
+import java.util.concurrent.CompletableFuture;
+import javafx.application.Platform;
+import javafx.embed.swing.SwingFXUtils;
+import javafx.scene.Scene;
+import javafx.scene.SnapshotParameters;
+import javafx.scene.paint.Color;
+import javax.imageio.ImageIO;
+public class RenderScoreRail {
+ public static void main(String[] args) throws Exception {
+  FxKit.start();
+  var done=new CompletableFuture<Void>();
+  Platform.runLater(()->{try {
+   var rail=new ScoreRail();
+   new Scene(rail);
+   rail.update(new ScoreRail.Display(39,47,12,27,0,1,1),true,0);
+   for(int width:new int[]{196,260,360}) {
+    rail.resize(width,width*550.0/260); rail.layout();
+    var params=new SnapshotParameters(); params.setFill(Color.TRANSPARENT);
+    ImageIO.write(SwingFXUtils.fromFXImage(rail.snapshot(params,null),null),"png",new File(args[0]+"/score-panel-"+width+".png"));
+   }
+   done.complete(null);
+  }catch(Throwable e){done.completeExceptionally(e);}});
+  try {done.get();} finally {Platform.exit();}
+  System.exit(0);
+ }
+}

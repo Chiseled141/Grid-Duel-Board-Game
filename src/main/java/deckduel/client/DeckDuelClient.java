@@ -45,6 +45,8 @@ public final class DeckDuelClient implements AutoCloseable, ServerConnection {
 
     private volatile Socket socket;
     private volatile boolean running;
+    // Each connection's reader and writer stop once a newer connection replaces it.
+    private volatile long generation;
     private volatile long lastReceivedAt;
     private volatile java.util.concurrent.ScheduledFuture<?> heartbeatTask;
 
@@ -84,7 +86,7 @@ public final class DeckDuelClient implements AutoCloseable, ServerConnection {
             if (!(greetingObj instanceof deckduel.net.ErrorMessage greeting)
                     || !Message.GREETING.equals(greeting.text())) {
                 newSocket.close();
-                throw new IOException("server handshake failed: expected DECK_DUEL_PROTOCOL:8 greeting, got " + greetingObj);
+                throw new IOException("server handshake failed: expected " + Message.GREETING + " greeting, got " + greetingObj);
             }
             out.reset();
             out.writeObject(new deckduel.net.ProtocolHello(Message.PROTOCOL_VERSION));
@@ -93,11 +95,11 @@ public final class DeckDuelClient implements AutoCloseable, ServerConnection {
             Object readyObj = in.readObject();
             if (!(readyObj instanceof deckduel.net.ProtocolReady ready) || ready.version() != Message.PROTOCOL_VERSION) {
                 newSocket.close();
-                throw new IOException("server handshake failed: expected ProtocolReady(8), got " + readyObj);
+                throw new IOException("server handshake failed: expected ProtocolReady(" + Message.PROTOCOL_VERSION + "), got " + readyObj);
             }
         } catch (java.net.SocketTimeoutException e) {
             newSocket.close();
-            throw new IOException("handshake timed out waiting for DECK_DUEL_PROTOCOL:8: server upgrade required", e);
+            throw new IOException("handshake timed out waiting for " + Message.GREETING + ": server upgrade required", e);
         } catch (ClassNotFoundException e) {
             newSocket.close();
             throw new IOException("protocol error during handshake", e);
@@ -105,10 +107,13 @@ public final class DeckDuelClient implements AutoCloseable, ServerConnection {
         newSocket.setSoTimeout(0);
 
         socket = newSocket;
+        // Messages queued for a dropped connection are stale; the server needs a fresh login first.
+        outgoing.clear();
+        long current = ++generation;
         running = true;
         lastReceivedAt = System.currentTimeMillis();
-        Thread reader = new Thread(() -> readLoop(in), "deckduel-client-reader");
-        Thread writer = new Thread(() -> writeLoop(out), "deckduel-client-writer");
+        Thread reader = new Thread(() -> readLoop(in, current), "deckduel-client-reader");
+        Thread writer = new Thread(() -> writeLoop(out, current), "deckduel-client-writer");
         reader.setDaemon(true);
         writer.setDaemon(true);
         reader.start();
@@ -172,9 +177,11 @@ public final class DeckDuelClient implements AutoCloseable, ServerConnection {
         }
     }
 
-    private void readLoop(ObjectInputStream in) {
+    private boolean active(long connection) { return running && generation == connection; }
+
+    private void readLoop(ObjectInputStream in, long connection) {
         try {
-            while (running) {
+            while (active(connection)) {
                 Object raw = in.readObject();
                 lastReceivedAt = System.currentTimeMillis();
                 if (raw instanceof Message message) {
@@ -182,16 +189,18 @@ public final class DeckDuelClient implements AutoCloseable, ServerConnection {
                 }
             }
         } catch (Exception e) {
-            if (running) {
+            if (active(connection)) {
                 LOG.log(Level.INFO, e, () -> "connection lost");
+                // Close first so isConnected() is false before the model reacts.
+                close();
                 connectionLostHandler.accept(String.valueOf(e.getMessage()));
             }
         }
     }
 
-    private void writeLoop(ObjectOutputStream out) {
+    private void writeLoop(ObjectOutputStream out, long connection) {
         try {
-            while (running) {
+            while (active(connection)) {
                 Message message = outgoing.poll(500, TimeUnit.MILLISECONDS);
                 if (message != null) {
                     // Full snapshot per message, same reason as on the server:
@@ -203,7 +212,7 @@ public final class DeckDuelClient implements AutoCloseable, ServerConnection {
                 }
             }
         } catch (Exception e) {
-            if (running) {
+            if (active(connection)) {
                 LOG.log(Level.INFO, e, () -> "writer stopped");
             }
         }

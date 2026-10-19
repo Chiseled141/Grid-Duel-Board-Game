@@ -4,14 +4,15 @@ import deckduel.core.PlayerColor;
 import deckduel.core.EndReason;
 
 /**
- * Everything known about a finished match: players, result, ratings, rules version,
+ * Everything known about a finished match: players, result, rules version,
  * and turn counters. Consumed by the persistence hook (match row + both
- * players' Elo/wins/losses, one transaction).
+ * players' wins/losses, one transaction). Card matches store the first seat as
+ * blue and count rounds started/completed in the turn columns; their rules version
+ * distinguishes them from legacy rows.
  */
 public record MatchResult(String roomCode,
                           String blueUsername, String redUsername,
                           PlayerColor winnerColor, EndReason way,
-                          int blueEloAfter, int redEloAfter,
                           String rulesVersion, int startedTurns, int completedTurns) {
 
     /** Returns the winner's username, or null on a draw. */

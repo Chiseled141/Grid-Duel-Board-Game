@@ -63,16 +63,12 @@ class MatchDaoTest {
         assertEquals("deck-duel-v1", record.rulesVersion());
         assertEquals(4, record.startedTurns());
         assertEquals(3, record.completedTurns());
-        assertEquals(1016, record.eloBlueAfter());
-        assertEquals(984, record.eloRedAfter());
 
         // Both users' rows were updated inside the same transaction.
         UserProfile blue = userDao.profileOf("alice");
-        assertEquals(1016, blue.elo());
         assertEquals(1, blue.wins());
         assertEquals(0, blue.losses());
         UserProfile red = userDao.profileOf("bob");
-        assertEquals(984, red.elo());
         assertEquals(0, red.wins());
         assertEquals(1, red.losses());
     }
@@ -88,7 +84,7 @@ class MatchDaoTest {
         database.inTransaction(connection -> matchDao.recordMatch(connection, result));
         assertNull(matchDao.recentMatches(1).get(0).winnerUsername());
 
-        // A draw moves Elo only: neither player's wins nor losses may change.
+        // A draw changes neither record: neither player's wins nor losses may change.
         UserProfile blue = userDao.profileOf("alice");
         assertEquals(1, blue.wins(), "a draw must not change wins");
         assertEquals(0, blue.losses(), "a draw must not be counted as a loss");
@@ -106,13 +102,12 @@ class MatchDaoTest {
         // A match referencing an unknown user fails the transaction mid-way:
         // the match insert alone would succeed, so this proves the rollback.
         MatchResult bad = new MatchResult("ROOM9", "ghost", "bob",
-                PlayerColor.RED, EndReason.FORFEIT, 1000, 1000, "deck-duel-v1", 2, 2);
+                PlayerColor.RED, EndReason.FORFEIT, "deck-duel-v1", 2, 2);
         assertThrows(SQLException.class, () ->
                 database.inTransaction(connection -> matchDao.recordMatch(connection, bad)));
 
         assertEquals(1, matchDao.recentMatches(10).size(), "no partial match row survived");
         UserProfile blueAfter = userDao.profileOf("alice");
-        assertEquals(blueBefore.elo(), blueAfter.elo(), "stats untouched by the rolled-back transaction");
         assertEquals(blueBefore.wins(), blueAfter.wins());
     }
 
@@ -138,9 +133,9 @@ class MatchDaoTest {
         database.inTransaction(connection -> {
             try (PreparedStatement insert = connection.prepareStatement("""
                     INSERT INTO matches (blue_user_id, red_user_id, winner_user_id, end_reason,
-                                         move_count, elo_blue_after, elo_red_after, played_at,
+                                         move_count, played_at,
                                          rules_version, started_turns, completed_turns)
-                    VALUES (1, 2, 1, 'STONE', 17, 1016, 984, '2026-09-01T12:00:00',
+                    VALUES (1, 2, 1, 'STONE', 17, '2026-09-01T12:00:00',
                             'legacy-deckduel-v1', NULL, NULL)
                     """)) {
                 insert.executeUpdate();
@@ -158,10 +153,53 @@ class MatchDaoTest {
         assertNull(legacy.completedTurns());
     }
 
+    @Test
+    void removingLegacyRatingsPreservesAccountsHistoryRoundsAndFutureResults() throws SQLException {
+        database.inTransaction(connection -> {
+            try (var statement = connection.createStatement()) {
+                statement.execute("ALTER TABLE users ADD COLUMN elo INTEGER NOT NULL DEFAULT 1234");
+                statement.execute("ALTER TABLE matches ADD COLUMN elo_blue_after INTEGER NOT NULL DEFAULT 1250");
+                statement.execute("ALTER TABLE matches ADD COLUMN elo_red_after INTEGER NOT NULL DEFAULT 1218");
+            }
+            long id = matchDao.recordMatch(connection, sampleResult("OLD", PlayerColor.BLUE, EndReason.SCORE));
+            matchDao.recordRounds(connection, id, List.of(new deckduel.core.card.RoundResult(1, null, 25, 19)));
+            return null;
+        });
+        // Reopening twice checks both migration from rating-bearing tables and idempotence.
+        for (int attempt = 0; attempt < 2; attempt++) {
+            database.close();
+            database = new Database(tempDir.resolve("ut08.db"));
+            userDao = new SqliteUserDao(database);
+            matchDao = new SqliteMatchDao(database, userDao);
+            assertEquals(1, userDao.login("alice", "alicepw").wins());
+            assertEquals(1, userDao.profileOf("bob").losses());
+            var record = matchDao.recentMatches(1).get(0);
+            assertEquals("alice", record.winnerUsername());
+            assertEquals(25, matchDao.roundsOf(record.id()).get(0).firstScore());
+            database.query(connection -> {
+                for (String table : List.of("users", "matches")) {
+                    try (var query = connection.prepareStatement("PRAGMA table_info(" + table + ")");
+                         var columns = query.executeQuery()) {
+                        while (columns.next())
+                            org.junit.jupiter.api.Assertions.assertFalse(columns.getString("name").startsWith("elo"));
+                    }
+                }
+                try (var query = connection.prepareStatement("PRAGMA foreign_key_check");
+                     var violations = query.executeQuery()) {
+                    org.junit.jupiter.api.Assertions.assertFalse(violations.next());
+                }
+                return null;
+            });
+        }
+        database.inTransaction(connection -> matchDao.recordMatch(connection,
+                sampleResult("NEW", PlayerColor.RED, EndReason.SCORE)));
+        assertEquals(2, matchDao.recentMatches(10).size());
+        assertEquals(1, userDao.profileOf("alice").losses());
+        assertEquals(1, userDao.profileOf("bob").wins());
+    }
+
     private MatchResult sampleResult(String roomCode, PlayerColor winner, EndReason way) {
         return new MatchResult(roomCode, "alice", "bob", winner, way,
-                winner == PlayerColor.BLUE ? 1016 : winner == PlayerColor.RED ? 984 : 1000,
-                winner == PlayerColor.BLUE ? 984 : winner == PlayerColor.RED ? 1016 : 1000,
                 "deck-duel-v1", 4, 3);
     }
 }

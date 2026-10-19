@@ -6,8 +6,6 @@ import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.regex.Pattern;
 
 /**
@@ -36,8 +34,8 @@ public final class SqliteUserDao implements UserDao {
         try {
             database.query(connection -> {
                 try (var insert = connection.prepareStatement(
-                        "INSERT INTO users (username, password_hash, elo, wins, losses, created_at) "
-                                + "VALUES (?, ?, 1000, 0, 0, ?)")) {
+                        "INSERT INTO users (username, password_hash, wins, losses, created_at) "
+                                + "VALUES (?, ?, 0, 0, ?)")) {
                     insert.setString(1, username);
                     insert.setString(2, hash);
                     insert.setString(3, createdAt);
@@ -54,7 +52,7 @@ public final class SqliteUserDao implements UserDao {
             }
             throw new PersistenceException("could not register user", e);
         }
-        return new UserProfile(username, 1000, 0, 0);
+        return new UserProfile(username, 0, 0);
     }
 
     @Override
@@ -63,11 +61,11 @@ public final class SqliteUserDao implements UserDao {
         try {
             row = database.query(connection -> {
                 try (var select = connection.prepareStatement(
-                        "SELECT password_hash, elo, wins, losses FROM users WHERE username = ?")) {
+                        "SELECT password_hash, wins, losses FROM users WHERE username = ?")) {
                     select.setString(1, username);
                     try (ResultSet result = select.executeQuery()) {
                         if (result.next()) {
-                            return new Row(result.getString("password_hash"), result.getInt("elo"),
+                            return new Row(result.getString("password_hash"),
                                     result.getInt("wins"), result.getInt("losses"));
                         }
                         return null;
@@ -81,7 +79,7 @@ public final class SqliteUserDao implements UserDao {
         if (row == null || !PasswordHasher.verify(password, row.passwordHash())) {
             throw new AuthenticationException("wrong username or password");
         }
-        return new UserProfile(username, row.elo(), row.wins(), row.losses());
+        return new UserProfile(username, row.wins(), row.losses());
     }
 
     @Override
@@ -89,13 +87,13 @@ public final class SqliteUserDao implements UserDao {
         try {
             return database.query(connection -> {
                 try (var select = connection.prepareStatement(
-                        "SELECT elo, wins, losses FROM users WHERE username = ?")) {
+                        "SELECT wins, losses FROM users WHERE username = ?")) {
                     select.setString(1, username);
                     try (ResultSet result = select.executeQuery()) {
                         if (!result.next()) {
                             throw new AuthenticationException("unknown user: " + username);
                         }
-                        return new UserProfile(username, result.getInt("elo"),
+                        return new UserProfile(username,
                                 result.getInt("wins"), result.getInt("losses"));
                     }
                 }
@@ -106,44 +104,20 @@ public final class SqliteUserDao implements UserDao {
     }
 
     @Override
-    public void updateStats(String username, int elo, int wins, int losses) throws PersistenceException {
+    public void updateStats(String username, int wins, int losses) throws PersistenceException {
         try {
             database.query(connection -> {
                 try (var update = connection.prepareStatement(
-                        "UPDATE users SET elo = ?, wins = ?, losses = ? WHERE username = ?")) {
-                    update.setInt(1, elo);
-                    update.setInt(2, wins);
-                    update.setInt(3, losses);
-                    update.setString(4, username);
+                        "UPDATE users SET wins = ?, losses = ? WHERE username = ?")) {
+                    update.setInt(1, wins);
+                    update.setInt(2, losses);
+                    update.setString(3, username);
                     update.executeUpdate();
                 }
                 return null;
             });
         } catch (SQLException e) {
             throw new PersistenceException("could not update stats for " + username, e);
-        }
-    }
-
-    @Override
-    public List<UserProfile> leaderboard(int limit) {
-        try {
-            return database.query(connection -> {
-                List<UserProfile> top = new ArrayList<>();
-                try (var select = connection.prepareStatement(
-                        "SELECT username, elo, wins, losses FROM users ORDER BY elo DESC LIMIT ?")) {
-                    select.setInt(1, limit);
-                    try (ResultSet result = select.executeQuery()) {
-                        while (result.next()) {
-                            top.add(new UserProfile(result.getString("username"),
-                                    result.getInt("elo"), result.getInt("wins"),
-                                    result.getInt("losses")));
-                        }
-                    }
-                }
-                return top;
-            });
-        } catch (SQLException e) {
-            throw new PersistenceException("could not load leaderboard", e);
         }
     }
 
@@ -158,15 +132,14 @@ public final class SqliteUserDao implements UserDao {
         }
     }
 
-    /** Updates one user's Elo and counters; used inside the match transaction. */
-    void updateStatsInside(Connection connection, String username, int elo, int wins, int losses)
+    /** Updates one user's counters; used inside the match transaction. */
+    void updateStatsInside(Connection connection, String username, int wins, int losses)
             throws SQLException {
         try (var update = connection.prepareStatement(
-                "UPDATE users SET elo = ?, wins = ?, losses = ? WHERE username = ?")) {
-            update.setInt(1, elo);
-            update.setInt(2, wins);
-            update.setInt(3, losses);
-            update.setString(4, username);
+                "UPDATE users SET wins = ?, losses = ? WHERE username = ?")) {
+            update.setInt(1, wins);
+            update.setInt(2, losses);
+            update.setString(3, username);
             update.executeUpdate();
         }
     }
@@ -181,6 +154,6 @@ public final class SqliteUserDao implements UserDao {
         }
     }
 
-    private record Row(String passwordHash, int elo, int wins, int losses) {
+    private record Row(String passwordHash, int wins, int losses) {
     }
 }

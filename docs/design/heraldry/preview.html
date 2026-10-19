@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Deck Duel — Flags and heraldry</title>
+<style>
+body{margin:0;padding:40px;background:#201b16;color:#f5e7cb;font:17px Georgia,serif}main{max-width:1200px;margin:auto}h1{font-size:36px;margin-top:0}p{line-height:1.6;color:#c9bca5}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:24px}article{background:#30271e;border:1px solid #7c6443;border-radius:10px;padding:18px}h2{margin:0 0 12px;font-size:24px}.flag{display:block;width:100%;aspect-ratio:3/2;object-fit:contain}.arms{display:block;width:100%;height:280px;object-fit:contain;margin-top:20px}small{display:block;color:#cfb77e;min-height:2.4em;margin-top:12px}a{color:#edc578}figcaption{margin-top:10px;color:#c9bca5}figure{margin:0}
+</style>
+<main>
+<h1>Flags &amp; coats of arms</h1>
+<p>Seven game factions. Flat rectangular flags and separate painted shields.<br>AI-generated historical interpretations. See <a href="README.md">research and date notes</a> and <a href="prompts.json">generation prompts</a>.</p>
+<div class="grid" id="gallery"></div>
+</main>
+<script>
+const factions=[['hungary','Hungary','Medieval heraldic interpretation'],['poland','Poland','Medieval royal heraldry'],['bohemia','Bohemia','Medieval royal heraldry'],['austria','Austria','Medieval Bindenschild'],['styria','Styria','Medieval ducal motif'],['croatia','Croatia','Later medieval checkerboard; not verified for 1444'],['transylvania','Transylvania','Later seventeenth-century design; not 1444']];
+for(const [id,name,note] of factions){
+ const article=document.createElement('article');
+ const title=document.createElement('h2');title.textContent=name;article.append(title);
+ for(const [directory,css,caption] of [['flags','flag','Flag'],['coats-of-arms','arms','Coat of arms']]){
+  const figure=document.createElement('figure'),link=document.createElement('a'),image=document.createElement('img'),label=document.createElement('figcaption');
+  link.href=`${directory}/${id}.png`;image.src=link.href;image.alt=`${name} ${caption.toLowerCase()}`;image.className=css;label.textContent=caption;link.append(image);figure.append(link,label);article.append(figure);
+ }
+ const date=document.createElement('small');date.textContent=note;article.append(date);document.getElementById('gallery').append(article);
+}
+</script>
+</html>

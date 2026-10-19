@@ -8,12 +8,14 @@ final class MenuSettingsOption extends JButton {
     private enum Kind { CHOICE, TOGGLE, ACTION }
     private final Kind kind;
     private final String detail;
+    // Fixed caption of a toggle; its button text carries the On/Off state.
+    private final String label;
     private static final Color IVORY = new Color(255, 238, 200);
     private static final Color DARK = new Color(25, 26, 23);
 
     private MenuSettingsOption(String title, String detail, Kind kind, Runnable action) {
         super(title);
-        this.kind = kind; this.detail = detail;
+        this.kind = kind; this.detail = detail; this.label = title;
         setFont(Theme.normal(15f));
         setPreferredSize(new Dimension(330, 56));
         setContentAreaFilled(false); setBorderPainted(false); setFocusPainted(false);
@@ -32,8 +34,9 @@ final class MenuSettingsOption extends JButton {
         return button;
     }
 
-    static JButton motion() {
-        return new MenuSettingsOption("Reduced motion: Off", "Limit background and card animation.", Kind.TOGGLE, null);
+    /** An On/Off switch captioned {@code label}; callers keep its text as "label: On/Off". */
+    static JButton toggle(String label, String detail) {
+        return new MenuSettingsOption(label, detail, Kind.TOGGLE, null);
     }
 
     @Override protected void paintComponent(Graphics graphics) {
@@ -71,7 +74,7 @@ final class MenuSettingsOption extends JButton {
     }
 
     private void paintToggle(Graphics2D g) {
-        g.setFont(getFont()); g.drawString("Reduced motion", 13, 24);
+        g.setFont(getFont()); g.drawString(label, 13, 24);
         g.setFont(Theme.normal(11f)); g.setColor(new Color(224, 215, 194));
         g.drawString(detail, 13, 42);
         int x = getWidth() - 55;

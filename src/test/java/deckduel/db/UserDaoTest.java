@@ -14,7 +14,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /**
  * UT07 — SQLite user accounts: register then login, wrong password rejected,
- * duplicate username rejected, and Elo/wins/losses updates persist across
+ * duplicate username rejected, and wins/losses updates persist across
  * DAO instances. Uses a temporary database file.
  */
 class UserDaoTest {
@@ -39,12 +39,10 @@ class UserDaoTest {
     @Test
     void registerThenLoginSucceeds() {
         UserProfile created = dao.register("alice", "alicepw");
-        assertEquals(1000, created.elo());
         assertEquals(0, created.wins());
 
         UserProfile logged = dao.login("alice", "alicepw");
         assertEquals("alice", logged.username());
-        assertEquals(1000, logged.elo());
     }
 
     @Test
@@ -96,25 +94,21 @@ class UserDaoTest {
     }
 
     @Test
-    void statUpdatesPersistAndLeaderboardIsOrdered() throws SQLException {
+    void statUpdatesPersist() throws SQLException {
         dao.register("alice", "alicepw");
         dao.register("bob", "bobpw");
         dao.register("carol", "carolpw");
 
-        dao.updateStats("alice", 1032, 1, 0);
-        dao.updateStats("bob", 1016, 1, 0);
-        dao.updateStats("carol", 968, 0, 1);
+        dao.updateStats("alice", 1, 0);
+        dao.updateStats("bob", 1, 0);
+        dao.updateStats("carol", 0, 1);
 
         // A fresh DAO instance against the same file must see the same data.
         try (var database = new Database(tempDir.resolve("ut07.db"))) {
             SqliteUserDao reopened = new SqliteUserDao(database);
-            assertEquals(1032, reopened.profileOf("alice").elo());
+            assertEquals(1, reopened.profileOf("alice").wins());
             assertEquals(1, reopened.profileOf("carol").losses());
-
-            var top = reopened.leaderboard(2);
-            assertEquals(2, top.size());
-            assertEquals("alice", top.get(0).username());
-            assertEquals("bob", top.get(1).username());
+            assertEquals(1, reopened.profileOf("bob").wins());
         }
     }
 }

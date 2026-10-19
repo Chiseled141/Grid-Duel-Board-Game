@@ -4,25 +4,12 @@ import java.awt.*;
 import java.awt.font.TextAttribute;
 import java.awt.font.TextLayout;
 import java.awt.geom.*;
-import java.io.InputStream;
 import java.util.Map;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 
 /** Resolution-independent title ornament painted into the home menu's upper sky. */
 final class MenuTitle {
-    private static final Font TITLE = loadTitleFont();
+    private static final Font TITLE = Theme.decorative(57);
     private MenuTitle() { }
-
-    private static Font loadTitleFont() {
-        try (InputStream stream = MenuTitle.class.getResourceAsStream("/fonts/cinzel-decorative-bold.ttf")) {
-            if (stream == null) throw new IllegalStateException("Missing title font");
-            return Font.createFont(Font.TRUETYPE_FONT, stream);
-        } catch (Exception exception) {
-            Logger.getLogger(MenuTitle.class.getName()).log(Level.WARNING, "Could not load title font", exception);
-            return new Font(Font.SERIF, Font.BOLD, 57);
-        }
-    }
 
     static Rectangle bounds(int width, int height) {
         double scale = Math.min(width / 1280.0, height / 800.0);

@@ -50,9 +50,6 @@ public final class Theme {
     public static final Color GREEN = new Color(0x0BA95B);
     /** Muted sage disabled controls. */
     public static final Color DISABLED = new Color(0xB3AB98);
-    /** Leaderboard medal tints: gold reuses AMBER, silver and bronze below. */
-    public static final Color MEDAL_SILVER = new Color(0xC9C2B8);
-    public static final Color MEDAL_BRONZE = new Color(0xB0793C);
     /** Table grid lines on the dark surface. */
     public static final Color GRID_LINE = new Color(0x756650);
 
@@ -82,11 +79,13 @@ public final class Theme {
     private static Font regular;
     private static Font bold;
     private static Font black;
+    private static Font decorative;
 
     static {
         regular = loadFont("outfit-400.ttf");
         bold = loadFont("outfit-700.ttf");
         black = loadFont("outfit-900.ttf");
+        decorative = loadFont("cinzel-decorative-bold.ttf");
     }
 
     private Theme() {
@@ -117,6 +116,11 @@ public final class Theme {
     /** Display font: headlines, banners, buttons ("chunky" weight). */
     public static Font display(float size) {
         return black.deriveFont(size);
+    }
+
+    /** Engraved capitals for the menu title and map lettering. */
+    public static Font decorative(float size) {
+        return decorative.deriveFont(size);
     }
 
     /** Old-book serif titles give card faces a printed rather than UI-label character. */

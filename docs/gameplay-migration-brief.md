@@ -10,6 +10,10 @@ Players take turns building a row of cards, creating scoring combinations and di
 
 ## Gameplay to implement
 
+> **Superseded in part.** The bullets below describe the first migration (eight-space rows,
+> region decks, automatic draws). AGENTS.md now holds the implemented rules: Landmark choice,
+> ten-card hands, seven spaces, three manual draws, the 46-card automatic deck and neutral cards.
+
 - Play exactly three rounds. Bank each round's final score into a match total; the higher total wins, with a draw if tied.
 - Each player selects three regions through Deck. Their deck contains 21 Units (seven per region) and 16 chosen Landmarks/Control Spells from those regions, with at most two copies of a named non-Unit card.
 - Start each round with eight cards. Alternate one card play per turn and draw one replacement if available. Each player has at most ten plays per round; there is no pass action.
@@ -20,11 +24,11 @@ Players take turns building a row of cards, creating scoring combinations and di
 
 ## Scope and freedom
 
-Choose the code structure and implementation steps after inspecting the repository and `docs/claude-handoff.md`. Keep changes bounded and preserve working accounts, menus, room directory, ratings, and historical persistence. Implement matchmaking, chat, reconnect, and rematch for the new game. Carry gameplay through online play, practice, bots, and demo before calling the implementation complete.
+Choose the code structure and implementation steps after inspecting the repository and `docs/claude-handoff.md`. Keep changes bounded and preserve working accounts, menus, room directory, win/loss records, and historical persistence. Implement matchmaking, reconnect, and rematch for the new game. Carry gameplay through online play, practice, bots, and demo before calling the implementation complete.
 
 Keep the existing Java/Swing/local-server stack. Prioritize working rules and a readable playable interface; polished artwork is not required for this stage.
 
-The board direction and runnable score-panel preview are in `docs/design/card-table-design.md`. Reuse `DuelScorePanel` when wiring up the new match screen; its preview values are not live game state.
+The board direction and runnable score-panel preview are in `docs/design/card-table-design.md`. The match screen reuses that rail as the JavaFX `ScoreRail`; the preview values are not live game state.
 
 The full card catalog and exact effects are still undecided. Do not silently turn placeholder cards or invented effects into approved design. Identify missing design decisions and propose a small starter catalog separately if needed.
 
