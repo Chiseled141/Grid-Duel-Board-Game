@@ -114,6 +114,8 @@ final class CardTableView extends Pane {
     // Per hand card {lift in pixels, scale, x}, eased toward their resting, hovered or selected
     // values; easing x lets the hand close a gap or make room instead of jumping.
     private final Map<Long, double[]> handPose = new HashMap<>();
+    // Row motion is keyed by card identity so replacements never inherit another card's position.
+    private final Map<Long, double[]> rowPose = new HashMap<>();
     private long lastTick = System.nanoTime(), hoverCard = -1, hoverSince;
     private double dragLean;
     private Point2D lastPointer;
@@ -152,6 +154,7 @@ final class CardTableView extends Pane {
     // Landmark offers ticked so far while choosing two.
     private final java.util.Set<Long> picking = new LinkedHashSet<>();
     private Integer pressedSlot;
+    private Integer rowPreview;
     private boolean dragging;
     private Point2D pointer;
     private Hit hover;
@@ -207,11 +210,19 @@ final class CardTableView extends Pane {
             cardDetails.close(); inspectedLandmark = null;
             shown = null; selected = null; rail.reset(); result.setVisible(false);
             effects.clear(); staged = false; trace = null;
+            rowPose.clear(); handPose.clear();
+            pressed = null; pressedSlot = null; rowPreview = null; dragging = false;
             redraw();
             return;
         }
         boolean newMatch = shown == null || !shown.matchId().equals(update.matchId());
         boolean newGame = newMatch || shown.game() != update.game();
+        boolean newRound = newGame || shown.view().round() != update.view().round();
+        if (newRound || pressedSlot != null && !java.util.Objects.equals(
+                shown.view().you().row().at(pressedSlot), update.view().you().row().at(pressedSlot))) {
+            pressed = null; pressedSlot = null; rowPreview = null; dragging = false;
+        }
+        if (newRound || next.reducedMotion()) rowPose.clear();
         ScoringTrace change = newGame ? null : ScoringTrace.between(shown.view(), update.view());
         PlayAnimator.Plan plan = plan(newGame, update);
         if (newGame) {
@@ -361,16 +372,17 @@ final class CardTableView extends Pane {
         Point2D jolt = staged ? effects.shake(now) : Point2D.ZERO;
         board.setTranslateX(jolt.getX()); board.setTranslateY(jolt.getY());
         effectsScene.setTranslateX(jolt.getX()); effectsScene.setTranslateY(jolt.getY());
-        boolean lifting = stepHand(now);
+        boolean lifting = stepCards(now);
         redraw();
         if (System.currentTimeMillis() > noticeUntil && trace == null && !staged && !lifting) { frames.stop(); running = false; }
     }
 
-    /** Eases each hand card toward its resting, hovered or selected pose; true while anything still moves. */
-    private boolean stepHand(long now) {
+    /** Eases hand and row cards toward their display positions; true while anything still moves. */
+    private boolean stepCards(long now) {
         if (shown == null) return false;
         // Time-based easing, so the hand feels the same at any frame rate.
-        double ms = Math.min(32, (now - lastTick) / 1e6), step = 1 - Math.exp(-ms / 70);
+        double ms = Math.min(32, (now - lastTick) / 1e6);
+        double step = state.reducedMotion() ? 1 : 1 - Math.exp(-ms / 70);
         lastTick = now;
         boolean moving = false;
         List<CardInstance> hand = hand();
@@ -380,6 +392,16 @@ final class CardTableView extends Pane {
             for (int k = 0; k < 3; k++) {
                 pose[k] = Math.abs(target[k] - pose[k]) < (k == 1 ? .002 : .3) ? target[k] : pose[k] + (target[k] - pose[k]) * step;
                 moving |= pose[k] != target[k];
+            }
+        }
+        rowPose.keySet().retainAll(shown.view().you().row().cards().stream().map(card -> card.card().id()).toList());
+        for (RowCard card : shown.view().you().row().cards()) {
+            Rectangle target = slotBounds(TableZone.OWN, card.slot());
+            double[] pose = rowPose(card.slot());
+            for (int k = 0; k < 2; k++) {
+                double value = k == 0 ? target.x : target.y;
+                pose[k] = Math.abs(value - pose[k]) < .3 ? value : pose[k] + (value - pose[k]) * step;
+                moving |= pose[k] != value;
             }
         }
         dragLean *= Math.exp(-ms / 110);
@@ -542,6 +564,8 @@ final class CardTableView extends Pane {
         leanWithPointer(point);
         pointer = point;
         hover = hitAt(pointer);
+        rowPreview = dragging && pressedSlot != null && hover != null && hover.zone() == TableZone.OWN
+                ? hover.index() : null;
         wake();
     }
 
@@ -560,7 +584,7 @@ final class CardTableView extends Pane {
     void releaseAt(Point2D point) {
         Hit hit = hitAt(point);
         lastPointer = null;
-        if (pressedSlot != null) { dropRowCard(hit); return; }
+        if (pressedSlot != null) { dropRowCard(hit, point); return; }
         if (!dragging && hit != null && button(hit, point)) { pressed = null; return; }
         Long card = dragging ? pressed : selected;
         boolean wasDrag = dragging;
@@ -627,10 +651,16 @@ final class CardTableView extends Pane {
     }
 
     /** Moves a picked-up row card to the place it was dropped on, swapping with any card there; display only. */
-    private void dropRowCard(Hit hit) {
+    private void dropRowCard(Hit hit, Point2D point) {
         int from = pressedSlot;
         boolean moved = dragging && hit != null && hit.zone() == TableZone.OWN && hit.index() != from;
+        if (dragging && !state.reducedMotion()) {
+            // Continue from the pointer on release, including a cancelled drag back to its old space.
+            RowCard card = shown.view().you().row().at(from);
+            if (card != null) rowPose.put(card.card().id(), new double[]{point.getX() - cardW / 2.0, point.getY() - cardH / 2.0});
+        }
         pressedSlot = null;
+        rowPreview = null;
         dragging = false;
         if (moved) {
             int a = place(from), b = place(hit.index());
@@ -642,6 +672,14 @@ final class CardTableView extends Pane {
 
     /** Which of the seven places on the player's row shows real space {@code slot}. */
     private int place(int slot) {
+        if (dragging && pressedSlot != null && rowPreview != null) {
+            if (slot == pressedSlot) return committedPlace(rowPreview);
+            if (slot == rowPreview) return committedPlace(pressedSlot);
+        }
+        return committedPlace(slot);
+    }
+
+    private int committedPlace(int slot) {
         for (int i = 0; i < Row.SIZE; i++) if (rowOrder[i] == slot) return i;
         return slot;
     }
@@ -892,6 +930,21 @@ final class CardTableView extends Pane {
         return new Rectangle(rowLeft + shownAt * (cardW + GAP), zone == TableZone.OWN ? ownTop : opponentTop, cardW, cardH);
     }
 
+    /** The visible card position, separate from its destination and authoritative row space. */
+    Rectangle rowCardBounds(TableZone zone, int slot) {
+        Rectangle bounds = slotBounds(zone, slot);
+        if (zone == TableZone.OWN && !state.reducedMotion() && shown.view().you().row().at(slot) != null) {
+            double[] pose = rowPose(slot);
+            bounds.setLocation((int) Math.round(pose[0]), (int) Math.round(pose[1]));
+        }
+        return bounds;
+    }
+
+    private double[] rowPose(int slot) {
+        Rectangle target = slotBounds(TableZone.OWN, slot);
+        return rowPose.computeIfAbsent(shown.view().you().row().at(slot).card().id(), id -> new double[]{target.x, target.y});
+    }
+
     /** A Landmark tile on one of the two shelves beneath the score panel. */
     Rectangle landmarkBounds(TableZone zone, int index) {
         boolean own = zone == TableZone.OWN || zone == TableZone.OWN_LANDMARK;
@@ -972,10 +1025,19 @@ final class CardTableView extends Pane {
                 if (lookBounds(i, view.looking().size()).contains(x, y)) return new Hit(TableZone.LOOK, i);
             return null;
         }
+        // Keep drop targets fixed while the preview slides cards aside, avoiding a swap-back loop.
+        if (dragging && pressedSlot != null) {
+            for (int place = 0; place < Row.SIZE; place++)
+                if (new Rectangle(rowLeft + place * (cardW + GAP), ownTop, cardW, cardH).contains(x, y))
+                    return new Hit(TableZone.OWN, rowOrder[place]);
+            return null;
+        }
         for (int i = view.revealed().size() - 1; i >= 0; i--)
             if (revealedBounds(i).contains(x, y)) return new Hit(TableZone.REVEALED, i);
         for (int i = hand().size() - 1; i >= 0; i--)
             if (handBounds(i).contains(x, y)) return new Hit(TableZone.HAND, i);
+        for (RowCard card : view.you().row().cards())
+            if (rowCardBounds(TableZone.OWN, card.slot()).contains(x, y)) return new Hit(TableZone.OWN, card.slot());
         for (TableZone zone : List.of(TableZone.OWN, TableZone.OPPONENT))
             for (int slot = 0; slot < Row.SIZE; slot++)
                 if (slotBounds(zone, slot).contains(x, y)) return new Hit(zone, slot);
@@ -1075,19 +1137,25 @@ final class CardTableView extends Pane {
         if (trace != null) drawGain(g, zone == TableZone.OWN ? trace.ownGain : trace.opponentGain, top);
         Long active = dragging ? pressed : selected;
         boolean rearranging = dragging && pressedSlot != null && zone == TableZone.OWN;
+        // Paint the vacant spaces first so a sliding card can cross them without being painted over.
         for (int slot = 0; slot < Row.SIZE; slot++) {
-            Rectangle r = slotBounds(zone, slot);
             RowCard card = side.row().at(slot);
-            // A card still travelling here is drawn by its animation instead; one being moved, at the pointer.
-            if (card != null && staged && effects.hiddenOnRow(card.card().id())) card = null;
-            if (rearranging && slot == pressedSlot) card = null;
             boolean destination = rearranging ? slot != pressedSlot : playAt(active, new Hit(zone, slot)) != null;
             boolean hovered = hover != null && hover.zone() == zone && hover.index() == slot;
-            if (card == null) emptySlot(g, r, destination, hovered);
-            else g.drawImage(FxKit.face(card.def(), card.suppressed(), r.width, r.height, destination && hovered, pixelScale()),
+            if (card == null || staged && effects.hiddenOnRow(card.card().id()) || rearranging && slot == pressedSlot)
+                emptySlot(g, slotBounds(zone, slot), destination, hovered);
+        }
+        for (int slot = 0; slot < Row.SIZE; slot++) {
+            RowCard card = side.row().at(slot);
+            // A card still travelling here is drawn by its animation instead; one being moved, at the pointer.
+            if (card == null || staged && effects.hiddenOnRow(card.card().id()) || rearranging && slot == pressedSlot) continue;
+            Rectangle r = rowCardBounds(zone, slot);
+            boolean destination = rearranging ? slot != pressedSlot : playAt(active, new Hit(zone, slot)) != null;
+            boolean hovered = hover != null && hover.zone() == zone && hover.index() == slot;
+            g.drawImage(FxKit.face(card.def(), card.suppressed(), r.width, r.height, destination && hovered, pixelScale()),
                     r.x, r.y, r.width + CardFace.SHADOW_X, r.height + CardFace.SHADOW_Y);
-            if (card != null && destination) outline(g, r, hovered ? FxKit.AMBER : FxKit.AMBER.deriveColor(0, 1, 1, .6));
-            if (card != null) drawTriggers(g, zone, slot, r);
+            if (destination) outline(g, r, hovered ? FxKit.AMBER : FxKit.AMBER.deriveColor(0, 1, 1, .6));
+            drawTriggers(g, zone, slot, r);
         }
         drawLinks(g, zone, side.score().pairs(), top + cardH);
     }
@@ -1198,7 +1266,7 @@ final class CardTableView extends Pane {
             // A new pair stays dark until its turn in the trace; while effects run, the drawing link belongs to them.
             if (traced != null && (since < 0 || staged && since < ScoringTrace.LINK_MS)) continue;
             boolean lit = pair.slotA() == focus || pair.slotB() == focus || since >= 0 && since < ScoringTrace.LINK_MS;
-            Rectangle a = slotBounds(zone, pair.slotA()), b = slotBounds(zone, pair.slotB());
+            Rectangle a = rowCardBounds(zone, pair.slotA()), b = rowCardBounds(zone, pair.slotB());
             double ax = a.getCenterX(), bx = b.getCenterX(), dip = Math.min(9, 3 + Math.abs(bx - ax) * .02);
             g.setStroke(LINK.deriveColor(0, 1, 1, lit ? .9 : .27));
             g.setLineWidth(lit ? 2 : 1);
