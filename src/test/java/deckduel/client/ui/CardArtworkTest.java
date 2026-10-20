@@ -6,65 +6,56 @@ import deckduel.cards.CatalogLoader;
 import deckduel.core.card.CardDef;
 import deckduel.core.card.CardKind;
 import java.awt.Rectangle;
-import java.awt.geom.RoundRectangle2D;
 import java.awt.image.BufferedImage;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
 class CardArtworkTest {
-    @Test void everyCatalogCardAndTheSharedBackHaveRuntimeArtwork() throws Exception {
+    @Test void everyUnitHasRuntimeArtAndNeutralCardsAndTheBackUseTheDrawnFace() throws Exception {
         for (CardDef card : CatalogLoader.loadBundled().cards()) {
             BufferedImage art = CardImages.shared().decode(card.id());
-            assertNotNull(art, "missing art for " + card.id());
-            assertEquals(320, art.getWidth(), card.id());
-            assertEquals(480, art.getHeight(), card.id());
+            if (card.kind() == CardKind.UNIT) {
+                assertNotNull(art, card.id() + " has art");
+                assertEquals(320, art.getWidth(), card.id());
+                assertEquals(480, art.getHeight(), card.id());
+            } else {
+                assertNull(art, card.id() + " keeps the drawn face until its art exists");
+            }
         }
-        assertNotNull(CardImages.shared().decode(CardImages.BACK));
+        assertNull(CardImages.shared().decode(CardImages.BACK));
     }
 
     @Test void retiredArtworkIsNoLongerShipped() throws Exception {
         for (String retired : List.of("hu-envoy", "pl-chaplain", "pl-siege", "st-sabotage", "hu-banner-hall", "au-chancery"))
             assertNull(CardImages.shared().decode(retired), retired + " was replaced");
-        assertNull(CardImages.class.getResource("/assets/cards/manuscript-v1/hu-footmen.png"), "full-size sources stay out of the build");
+        assertNull(CardImages.class.getResource("/assets/cards/manuscript-v1/hu-footmen.png"), "old sources stay out of the build");
+        assertNull(CardImages.shared().decode("hu-footmen"), "Battering Ram replaced Footmen");
     }
 
-    @Test void printedNeutralCardsShowTheirArtWithoutDuplicatedTitlesOrText() throws Exception {
+    @Test void everyCatalogCardRendersAnOpaqueFace() throws Exception {
         var catalog = CatalogLoader.loadBundled();
-        for (String id : List.of("spy", "embassy")) {
-            CardDef card = catalog.card(id);
-            BufferedImage art = CardImages.shared().decode(id);
+        for (CardDef card : catalog.cards()) {
             Rectangle r = new Rectangle(0, 0, 104, 156);
             var face = new BufferedImage(r.width, r.height, BufferedImage.TYPE_INT_ARGB);
             var g = face.createGraphics();
             CardFace.paint(g, card, r, false, List.of());
             g.dispose();
-            var bare = new BufferedImage(r.width, r.height, BufferedImage.TYPE_INT_ARGB);
-            var b = UiKit.nice(bare.createGraphics());
-            b.setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION, java.awt.RenderingHints.VALUE_INTERPOLATION_BICUBIC);
-            b.clip(new RoundRectangle2D.Float(r.x, r.y, r.width, r.height, 9, 9));
-            b.drawImage(art, r.x, r.y, r.width, r.height, null);
-            b.dispose();
-            int differing = 0;
-            // Inside the card's edge stroke, the face must be the art alone: no chip, band or summary on top.
-            for (int y = 4; y < r.height - 4; y++)
-                for (int x = 4; x < r.width - 4; x++) if (face.getRGB(x, y) != bare.getRGB(x, y)) differing++;
-            assertEquals(0, differing, id + " has no overlay over its printed text");
+            assertEquals(255, face.getRGB(52, 78) >>> 24, card.id() + " has an opaque fallback face");
+            assertNotEquals(face.getRGB(52, 78), face.getRGB(0, 0), card.id() + " has a visible card body");
         }
     }
 
-    @Test void cardsWithAndWithoutArtworkBothRender() throws Exception {
+    @Test void fallbackShowsSelectionAndSuppressionAndConcealsCardBacks() throws Exception {
         var catalog = CatalogLoader.loadBundled();
-        CardDef illustrated = catalog.card("hu-knight");
-        CardImages.shared().decode(illustrated.id());
-        CardDef withoutArt = new CardDef("future-card", "Future Card", CardKind.UNIT, 3,
-                List.of("Hungary"), List.of("Bowmen"), null);
-        assertNull(CardImages.shared().decode(withoutArt.id()));
+        CardDef card = catalog.card("hu-knight");
         var image = new BufferedImage(240, 180, BufferedImage.TYPE_INT_RGB);
         var g = image.createGraphics();
-        CardFace.paint(g, illustrated, new Rectangle(4, 4, 104, 156), true, List.of(deckduel.core.card.Suppression.TAGS));
-        CardFace.paint(g, withoutArt, new Rectangle(120, 4, 104, 156), false, List.of());
-        CardFace.paintBack(g, new Rectangle(4, 4, 22, 33));
+        CardFace.paint(g, card, new Rectangle(4, 4, 104, 156), true, List.of(deckduel.core.card.Suppression.TAGS));
+        CardFace.paint(g, card, new Rectangle(120, 4, 104, 156), false, List.of());
         g.dispose();
-        assertNotEquals(image.getRGB(56, 80), image.getRGB(172, 80), "art and the procedural face differ");
+        assertNotEquals(image.getRGB(56, 80), image.getRGB(172, 80), "suppression shades the fallback face");
+        BufferedImage back = CardFace.backSprite(104, 156, 1);
+        assertEquals(255, back.getRGB(52, 78) >>> 24, "the shared fallback back remains visible");
+        assertNotEquals(image.getRGB(172, 80), back.getRGB(52, 78), "the back conceals the face");
     }
 }

@@ -20,8 +20,8 @@ class CardDetailsTest {
         FxTesting.run(() -> {
             var details = new CardDetails(() -> { });
             new Scene(details, 1280, 720);
-            Row row = Row.EMPTY.place(0, card(1, "hu-footmen")).place(1, card(2, "hu-pikemen"));
-            for (Object[] example : new Object[][]{{"embassy", 3}, {"armory", 2}, {"ruined-keep", 10}}) {
+            Row row = Row.EMPTY.place(0, card(1, "hu-battering-ram")).place(1, card(2, "hu-pikemen"));
+            for (Object[] example : new Object[][]{{"embassy", 3}, {"armory", 1}, {"ruined-keep", 10}}) {
                 var landmark = new LandmarkCard(card(10, (String) example[0]), false);
                 var side = new SideView(row, List.of(landmark), Scoring.score(row, List.of(landmark)), 0, 0, 10, 36, 0, 0, true);
                 details.show(landmark, side, true);

@@ -2,7 +2,6 @@ package deckduel.db;
 
 import deckduel.net.UserProfile;
 
-import java.util.List;
 
 /**
  * Account storage abstraction (Dependency Inversion): the server depends on

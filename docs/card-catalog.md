@@ -1,7 +1,7 @@
-# Card catalog — `cards-neutral-1`
+# Card catalog — `cards-neutral-2`
 
 The game reads one file, `src/main/resources/cards/catalog.txt`; no code names a card. Its
-version, `cards-neutral-1`, is recorded with every match result. `CatalogLoader` validates it
+version, `cards-neutral-2`, is recorded with every match result. `CatalogLoader` validates it
 at startup: every nation has exactly one Unit of each class, a class prints the same points in
 every nation, Spells and Landmarks are neutral, and there are at least five Landmarks to offer.
 
@@ -12,11 +12,15 @@ classes = 35 Units. Each Unit has exactly one nation, one class and no ability.
 
 | Class | Printed points |
 | --- | --- |
-| Footmen | 1 |
 | Pikemen | 2 |
 | Bowmen | 3 |
 | Riders | 4 |
 | Knights | 5 |
+| Battering Ram | 6 |
+
+Battering Ram replaced Footmen (1 point) on 2026-10-20; matches recorded under
+`cards-neutral-1` used Footmen. Unit art is in `art/cards/units/` (1024×1536 sources, outside
+the jar); `tools/ResizeArt.java` writes the 320×480 copies in `assets/cards/runtime/`.
 
 Chaplain and Envoy, and the earlier Infantry/Cavalry/Archer/Clergy/Noble tags, are retired.
 
@@ -51,7 +55,7 @@ Spells never leaves a player without a play. Destroy Landmark does not exist.
 | --- | --- | --- |
 | Embassy | `SHARED_TAG_BONUS REGION 3` | +3 to each scoring pair sharing a nationality |
 | Guild Hall | `SHARED_TAG_BONUS CLASS 3` | +3 to each scoring pair sharing a class |
-| Armory | `WEAK_UNIT_BONUS 2 1` | Units printing 1–2 get +1 printed point |
+| Armory | `WEAK_UNIT_BONUS 3 1` | Units printing 3 or fewer (Pikemen, Bowmen) get +1 printed point |
 | Ruined Keep | `EMPTY_SPACE_BONUS 2` | +2 per empty Unit space |
 | Archive | `FIRST_SPELL_DRAW 1` | your first Spell each round also draws 1 |
 | Watchtower | `DECK_TOP_VIEW` | you privately see your own deck's top card |
@@ -70,16 +74,9 @@ nations; disabled points remove its printed points including Armory's.
 
 ## Artwork
 
-Unit art: `docs/design/card-art/` manuscript set (sources in
-`src/main/resources/assets/cards/manuscript-v1/`, excluded from the jar). Spell and Landmark
-art: `docs/design/card-art/drafts/neutral-v4/`. Runtime copies (320×480) live in
-`src/main/resources/assets/cards/runtime/`:
-
-```sh
-java tools/ResizeArt.java src/main/resources/assets/cards/manuscript-v1 src/main/resources/assets/cards/runtime 320 480 jpg
-java tools/ResizeArt.java docs/design/card-art/drafts/neutral-v4/spell-set src/main/resources/assets/cards/runtime 320 480 jpg
-java tools/ResizeArt.java docs/design/card-art/drafts/neutral-v4/landmark-set src/main/resources/assets/cards/runtime 320 480 jpg
-```
-
-The neutral art prints its own kind, title and description, so the table adds no text over
-it. Retired art is archived in `docs/design/card-art/retired/`.
+The old card images were removed at the user's request on 2026-10-20. All 35 Units now use
+the new art from `art/cards/units/`, which prints each card's points, nation and class, so the
+game adds only the selection outline and disable markers. Spells, Landmarks and the card back
+have no art yet and use the procedural faces; `CardImages` loads replacements from
+`src/main/resources/assets/cards/runtime/<card-id>.jpg` and `card-back.jpg`.
+The menu and match-room background artwork are retained. The Atlas section is removed.

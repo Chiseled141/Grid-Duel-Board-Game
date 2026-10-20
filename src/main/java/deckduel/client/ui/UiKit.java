@@ -79,10 +79,10 @@ public final class UiKit {
     /**
      * A pill button: fully rounded, uppercase display font, and a hard
      * charcoal shadow that the button "sinks" into when pressed and lifts
-     * slightly on hover. The variant can be changed after construction.
+     * slightly on hover.
      */
     public static class PillButton extends JButton {
-        private Pill variant;
+        private final Pill variant;
 
         public PillButton(String text, Pill variant) {
             super(text.toUpperCase());
@@ -112,11 +112,6 @@ public final class UiKit {
         public void setFont(Font font) {
             super.setFont(font);
             refit();
-        }
-
-        public void setVariant(Pill variant) {
-            this.variant = variant;
-            repaint();
         }
 
         @Override
@@ -165,20 +160,6 @@ public final class UiKit {
         String label = text.toUpperCase();
         button.setPreferredSize(new java.awt.Dimension(
                 metrics.stringWidth(label) + 62, metrics.getHeight() + 24 + SHADOW));
-        return button;
-    }
-
-    /** A smaller pill for compact cards like the lobby settings. */
-    public static PillButton miniPill(String text, Pill variant) {
-        PillButton button = pill(text, variant);
-        button.setFont(Theme.display(9f));
-        FontMetrics metrics = button.getFontMetrics(button.getFont());
-        // +36 (not the minimum +30): macOS antialiases slightly wider than
-        // the raw metrics, and a clipped tab label reads as a bug.
-        button.setPreferredSize(new java.awt.Dimension(
-                metrics.stringWidth(text.toUpperCase()) + 36,
-                metrics.getHeight() + 16 + SHADOW));
-        button.setBorder(BorderFactory.createEmptyBorder(4, 10, 4 + SHADOW, 10 + SHADOW));
         return button;
     }
 
@@ -243,11 +224,6 @@ public final class UiKit {
     /** Plain label in cream body text. */
     public static JLabel label(String text, float size) {
         return styled(text, Theme.normal(size), Theme.CREAM);
-    }
-
-    /** Bold cream label. */
-    public static JLabel boldLabel(String text, float size) {
-        return styled(text, Theme.bold(size), Theme.CREAM);
     }
 
     private static JLabel styled(String text, Font font, Color color) {
@@ -452,39 +428,6 @@ public final class UiKit {
             }
         });
         tween.start();
-    }
-
-    /** A small drawn close (✕) button for overlay dialogs; runs {@code onClose}. */
-    public static JButton closeButton(Runnable onClose) {        JButton close = new JButton(new javax.swing.Icon() {
-            @Override
-            public void paintIcon(Component c, Graphics g, int x, int y) {
-                Graphics2D g2 = nice(g);
-                g2.setColor(Theme.MUTED_INK);
-                g2.setStroke(new java.awt.BasicStroke(2f));
-                g2.drawLine(x + 4, y + 4, x + 14, y + 14);
-                g2.drawLine(x + 14, y + 4, x + 4, y + 14);
-                g2.dispose();
-            }
-
-            @Override
-            public int getIconWidth() {
-                return 18;
-            }
-
-            @Override
-            public int getIconHeight() {
-                return 18;
-            }
-        });
-        close.setToolTipText("Close");
-        close.setOpaque(false);
-        close.setContentAreaFilled(false);
-        close.setFocusPainted(false);
-        close.setBorderPainted(false);
-        close.setCursor(new java.awt.Cursor(java.awt.Cursor.HAND_CURSOR));
-        close.setPreferredSize(new java.awt.Dimension(24, 24));
-        close.addActionListener(event -> onClose.run());
-        return close;
     }
 
     /**

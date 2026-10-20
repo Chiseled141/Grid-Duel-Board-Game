@@ -4,16 +4,16 @@
 
 ## Current state — read this first
 
-The old chess/piece-and-skill game was removed at the user's request; do not restore it. The card game is implemented on the rules below with the catalog `src/main/resources/cards/catalog.txt` (`cards-neutral-1`, see `docs/card-catalog.md`): the approved 35-Unit library, the 11 neutral Spells and 6 neutral Landmarks. Some numbers and edge cases are **provisional implementation values** (see "Provisional implementation values" below), so balance is not final.
+The old chess/piece-and-skill game was removed at the user's request; do not restore it. The card game is implemented on the rules below with the catalog `src/main/resources/cards/catalog.txt` (`cards-neutral-2`, see `docs/card-catalog.md`): the approved 35-Unit library, the 11 neutral Spells and 6 neutral Landmarks. Some numbers and edge cases are **provisional implementation values** (see "Provisional implementation values" below), so balance is not final.
 
-What works: the medieval menu and music, login/registration, automatic server-built 46-card decks (no deck builder), choosing two of five Landmarks at match start, hosted rooms, the matchmaking queue, practice against an easy (greedy) or hard (planning) server-side bot, a Match history page, reconnect within a grace period, rematch, step-by-step scoring traces with synthesized sounds (Settings → Game sounds), the card artwork (Units from `docs/design/card-art/` manuscript set; neutral Spells and Landmarks from `docs/design/card-art/drafts/neutral-v4/`; runtime copies made by `tools/ResizeArt.java`, full-size sources kept out of the jar; retired art archived in `docs/design/card-art/retired/`), and the `demo`/`bots` commands, which play real matches through the protocol. The leaderboard/rankings page was removed at the user's request; Elo ratings have also been removed entirely; retain match history and win/loss records.
+What works: the medieval menu and music, login/registration, automatic server-built 46-card decks (no deck builder), choosing two of five Landmarks at match start, hosted rooms, the matchmaking queue, practice against an easy (greedy) or hard (planning) server-side bot, a Match history page, reconnect within a grace period, rematch, step-by-step scoring traces with synthesized sounds (Settings → Game sounds), Unit card art for all 35 Units from `art/cards/units/` (runtime copies in `assets/cards/runtime/`; Spells, Landmarks and the card back still use procedural faces until their art exists), and the `demo`/`bots` commands, which play real matches through the protocol. The leaderboard/rankings page was removed at the user's request; Elo ratings have also been removed entirely; retain match history and win/loss records.
 
 See `docs/claude-handoff.md` for boundaries and what remains open.
 
 **Implemented rules (2026-10-20):** at match start each player chooses two of five offered
 Landmarks, kept in a separate area for all three rounds; then each player is dealt ten cards,
 and every later round deals ten fresh cards. Every player's draw deck is all 35 Units
-(seven nations × Footmen 1, Pikemen 2, Bowmen 3, Riders 4, Knights 5) plus one copy of each of
+(seven nations × Pikemen 2, Bowmen 3, Riders 4, Knights 5, Battering Ram 6) plus one copy of each of
 the 11 neutral Spells: 46 cards, independently shuffled by the server. Unit rows have seven
 spaces; ten plays per player per round (a voluntary skip uses one); no automatic replacement draw; three manual draws per
 round; full rows do not end the round. Chaplain, Envoy, the national Landmarks and Spells, the
@@ -31,9 +31,9 @@ eight-space row and the 37-card deck are retired. The protocol is version 11.
 
 - JavaFX is allowed without requiring migration of existing Swing screens.
 - Java 17 target, one Maven module. Runtime dependencies may include sqlite-jdbc and JavaFX (OpenJFX); use JUnit Jupiter for tests.
-- Desktop UI: the menu and history are Swing; the match table and the Atlas are JavaFX, shown by `FxScreens` in their own window at the Swing frame's bounds. JavaFX is explicitly allowed for UI work, including Swing interoperability. Keep raw localhost TCP sockets and Java object serialization. No other new frameworks or cloud services.
+- Desktop UI: the menu and history are Swing; the match table is JavaFX, shown by `FxScreens` in its own window at the Swing frame's bounds. JavaFX is explicitly allowed for UI work, including Swing interoperability. Keep raw localhost TCP sockets and Java object serialization. No other new frameworks or cloud services.
 - `mvn package` produces `target/deck-duel.jar`, dispatched by `deckduel.Main`.
-- Preserve the existing menu artwork, layout, typography, animation, music, and navigation. **Atlas** opens the interactive faction map (JavaFX `AtlasView`: researched circa-1444 geometry and generated terrain loaded by `AtlasMapData`, the generated arms and banners from `docs/design/heraldry/`; full-screen map background, floating country details, no bottom nation picker); The Deck menu and deck builder were removed at the user’s request. Map browsing does not select a deck.
+- Preserve the existing menu artwork, layout, typography, animation, music, and navigation. The Atlas section, map assets and related tools were removed at the user’s request. The Deck menu and deck builder are also removed; do not restore these sections.
 - Explainable code, short methods, concise Javadoc on public types/methods, comments that explain why. No dead code or unrelated refactors. Use java.util.logging.
 
 ## Commands and checks
@@ -81,7 +81,7 @@ unchanged but never used.
 - The Unit library covers all seven nations with the same five Unit types/classes in every nation: seven nations × five types = 35 unique nation/type combinations. Each player's automatic draw deck contains one copy of each of these 35 Units plus one copy of each of the 11 neutral Spells, for 46 cards total. Landmarks are outside this deck.
 - Both players receive the same 46-card composition, shuffled independently by the server. Do not add deck-building, region-selection, card-selection or saved-deck setup screens. Choosing two Landmarks is the only player selection before the opening hand.
 - Each Unit has exactly one region/nationality tag and one class tag. Do not add multi-nation or multi-class Units to this initial design.
-- Initial playtest classes and printed points: **Footmen 1, Pikemen 2, Bowmen 3, Riders 4, Knights 5**. These values are identical across all seven nations. Units have no individual abilities; their differences come from points, tags, combos and Landmark interactions.
+- Initial playtest classes and printed points: **Pikemen 2, Bowmen 3, Riders 4, Knights 5, Battering Ram 6**. Battering Ram replaced Footmen (1) at the user's request (2026-10-20). These values are identical across all seven nations. Units have no individual abilities; their differences come from points, tags, combos and Landmark interactions.
 - Retire Chaplain and Envoy from the target catalog and artwork set; reuse the retained classes' existing art where possible. Do not keep the 49 legacy Units or restore a three-nation restriction.
 - Use distinct nation crests and class icons so matching nations and types are easy to recognize. Keep each type's basic card design consistent across nations.
 - Spells and Landmarks are neutral: they have no nationality and are not restricted by Unit regions. The approved automatic deck has 35 Units and 11 Spells, one copy of each; the legacy 37-card and proposed 21-Unit builds do not apply to the target game.
@@ -106,7 +106,7 @@ unchanged but never used.
 
 - Score is derived from the cards and effects currently active on each player’s row. The displayed score updates live as cards are played, replaced, disabled, or otherwise affected. No points are permanently banked merely because a card was played.
 - At the end of a round, bank each player's final score once into their match total. A tied round adds equal points and does not end the match. After round three, the higher cumulative total wins; a tied total is a match draw.
-- Each active Unit contributes its printed 1–5 points.
+- Each active Unit contributes its printed 2–6 points.
 - Evaluate every pair of active Units once. For each pair:
   - Shared region tag(s), but no shared class tag: +3 combo points.
   - Shared class tag(s), but no shared region tag: +3 combo points.
@@ -165,7 +165,7 @@ implemented provisionally; do not treat them as approved.
 
 The following content still needs to be designed before implementation can be considered complete:
 
-- The Unit library and the 11 Spell / 6 Landmark names and effect directions are settled (§5.1, §5.4, §5.5, catalog `cards-neutral-1`). Further cards are deferred; do not invent them as part of unrelated work.
+- The Unit library and the 11 Spell / 6 Landmark names and effect directions are settled (§5.1, §5.4, §5.5, catalog `cards-neutral-2`). Further cards are deferred; do not invent them as part of unrelated work.
 - Any additional card-specific combo effects or interactions. The base pair-scoring rule in §5.3 is already adopted: +3 for a shared region only, +3 for a shared class only, and +9 when both match.
 - Future balance adjustments after playtesting. The initial five classes, points and 46-card composition are defined in §5.1; do not treat them as undecided.
 - How the five Landmark offers are generated and whether players see identical or separate offers; duplicate-selection rules and selection timing. The approved choice is two of five once per match; do not invent additional selection mechanics.
@@ -188,8 +188,8 @@ the numbers in `src/main/resources/cards/catalog.txt` (Landmarks) or `Scoring.AL
 
 - **Embassy / Guild Hall:** +3 to each scoring pair that shares a nationality / a class; a +9
   pair shares both, so it receives either bonus. Copies stack additively.
-- **Armory:** "weaker" means printing 1 or 2 points; each gets +1 printed point (cancelled by
-  Disable Points).
+- **Armory:** "weaker" means printing 3 points or fewer (Pikemen and Bowmen); each gets +1
+  printed point (cancelled by Disable Points). Raised from 2 when Battering Ram replaced Footmen.
 - **Ruined Keep:** +2 live points per empty Unit space (up to +14 on an empty row).
 - **All seven nations:** +15 combo points while all seven nations are active on the row; added
   after pair bonuses, never multiplied.

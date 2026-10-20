@@ -14,7 +14,8 @@ import javax.sound.sampled.SourceDataLine;
  * Short synthesized match cues (no audio assets): a card tap, a bell per scoring pair that
  * rises through a combo, a two-note coin for a gain, a falling tone for a loss, and the motion
  * cues of the table: a whoosh, a spell shimmer, a shattering impact, a chain clink, a dealing
- * tick and a round bell. Playback
+ * tick, a round bell, and the Spells' own cues: a seal's thud, a chime, a crackle of flame, a
+ * vortex's falling warble and a high glint, and a coin chink that rises as score chips land. Playback
  * runs on one daemon thread; a machine without audio simply stays silent.
  */
 public final class ScoringSounds implements AutoCloseable {
@@ -25,7 +26,7 @@ public final class ScoringSounds implements AutoCloseable {
     /** One sound cue; {@code step} raises a pair bell by two semitones per pair in a sequence. */
     public record Cue(Kind kind, int step) {
         /** The cue families. */
-        public enum Kind { CARD, PAIR, GAIN, LOSS, WHOOSH, SPELL, IMPACT, CHAIN, DEAL, ROUND }
+        public enum Kind { CARD, PAIR, GAIN, LOSS, WHOOSH, SPELL, IMPACT, CHAIN, DEAL, ROUND, SEAL, CHIME, FLAME, WARP, GLINT, TALLY, RIP }
     }
 
     private final BooleanSupplier enabled;
@@ -84,6 +85,16 @@ public final class ScoringSounds implements AutoCloseable {
             case CHAIN -> concat(tone(new double[]{1760, 2490}, 0.07, 0.16, false), tone(new double[]{2210, 3120}, 0.12, 0.14, false));
             case DEAL -> tone(new double[]{420}, 0.04, 0.22, true);
             case ROUND -> tone(new double[]{523.25, 659.25, 783.99}, 0.45, 0.14, false);
+            case SEAL -> mix(tone(new double[]{98}, 0.3, 0.5, false), tone(new double[]{392, 587.33}, 0.34, 0.1, false));
+            case CHIME -> concat(tone(new double[]{1046.5}, 0.08, 0.16, false), tone(new double[]{1568, 2093}, 0.4, 0.13, false));
+            case FLAME -> crackle(0.5, 0.3);
+            case RIP -> rip(0.32, 0.35);
+            case WARP -> glissando(880, 196, 0.46, 0.2);
+            case TALLY -> {
+                double pitch = 1046.5 * Math.pow(2, Math.min(cue.step(), 12) * 2 / 12.0);
+                yield mix(tone(new double[]{pitch, pitch * 1.5}, 0.12, 0.13, false), tone(new double[]{pitch * 2}, 0.03, 0.12, true));
+            }
+            case GLINT -> concat(tone(new double[]{2093}, 0.05, 0.1, false), tone(new double[]{3136}, 0.22, 0.09, false));
         };
     }
 
@@ -113,6 +124,54 @@ public final class ScoringSounds implements AutoCloseable {
             double envelope = Math.min(1, progress * 4) * (1 - progress), value = 0;
             for (double note : notes) value += Math.sin(2 * Math.PI * note * (1 + progress * 0.12) * t + Math.sin(t * 38) * 0.6);
             write(pcm, i, value * envelope * 0.12 * 12_000);
+        }
+        return pcm;
+    }
+
+    /** Low rushing noise with random pops, like a card catching fire. */
+    private static byte[] crackle(double seconds, double volume) {
+        int samples = (int) (RATE * seconds);
+        byte[] pcm = new byte[samples * 2];
+        java.util.Random noise = new java.util.Random(23);
+        double low = 0, pop = 0;
+        for (int i = 0; i < samples; i++) {
+            double t = (double) i / samples, envelope = Math.min(1, t * 8) * (1 - t);
+            low += 0.06 * (noise.nextGaussian() - low);
+            // Pops arrive at random and die away within a few milliseconds.
+            if (noise.nextDouble() < 0.0012) pop = noise.nextBoolean() ? 1 : -1;
+            pop *= 0.92;
+            write(pcm, i, (low * 0.8 + pop) * envelope * volume * 30_000);
+        }
+        return pcm;
+    }
+
+    /** Bright noise chopped into fast grains, like paper fibres giving way as a card is torn. */
+    private static byte[] rip(double seconds, double volume) {
+        int samples = (int) (RATE * seconds);
+        byte[] pcm = new byte[samples * 2];
+        java.util.Random noise = new java.util.Random(31);
+        double low = 0, grain = 0;
+        for (int i = 0; i < samples; i++) {
+            double t = (double) i / samples, envelope = Math.min(1, t * 6) * Math.pow(1 - t, 1.5);
+            double white = noise.nextGaussian();
+            // Subtracting a low-passed copy leaves the hiss; each fibre snaps as a short grain.
+            low += 0.1 * (white - low);
+            if (noise.nextDouble() < 0.004) grain = 0.6 + noise.nextDouble() * 0.4;
+            grain *= 0.996;
+            write(pcm, i, (white - low) * (0.25 + grain) * envelope * volume * 30_000);
+        }
+        return pcm;
+    }
+
+    /** A wavering sine sliding from one pitch to another, for a card pulled into a vortex. */
+    private static byte[] glissando(double from, double to, double seconds, double volume) {
+        int samples = (int) (RATE * seconds);
+        byte[] pcm = new byte[samples * 2];
+        double phase = 0;
+        for (int i = 0; i < samples; i++) {
+            double t = (double) i / samples, frequency = from * Math.pow(to / from, t) * (1 + 0.03 * Math.sin(i / RATE * 40));
+            phase += 2 * Math.PI * frequency / RATE;
+            write(pcm, i, Math.sin(phase) * Math.sin(Math.PI * t) * volume * 12_000);
         }
         return pcm;
     }

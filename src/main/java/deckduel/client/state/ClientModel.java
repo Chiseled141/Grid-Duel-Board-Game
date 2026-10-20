@@ -84,8 +84,6 @@ public final class ClientModel {
     public void startPractice(boolean hard) { connection.send(new PracticeRequest(hard)); }
     /** Refreshes the room directory. */
     public void refreshMatches() { connection.send(new ListMatchesRequest()); }
-    /** Opens the offline region atlas. */
-    public void openAtlas() { setScreen(Screen.ATLAS); }
     /** Returns to the main menu. */
     public void leaveToLobby() { setScreen(Screen.LOBBY); }
     /** Opens match history and requests the account's recorded matches. */

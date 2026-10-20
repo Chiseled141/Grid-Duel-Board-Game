@@ -13,13 +13,12 @@ import java.awt.geom.Arc2D;
 import java.awt.geom.Ellipse2D;
 import java.awt.geom.Line2D;
 import java.awt.geom.Path2D;
-import java.awt.geom.Rectangle2D;
 import java.util.List;
 import java.util.Locale;
 
 /**
- * Procedural heraldic art derived from a card's real data: nation banner colours from the Atlas
- * map and one emblem per class, Landmark or Spell effect. It is a stand-in until card artwork
+ * Procedural heraldic art derived from a card's real data: nation banner colours
+ * and one emblem per class, Landmark or Spell effect. It is a stand-in until card artwork
  * exists and carries no meaning beyond the card's tags.
  */
 final class CardArt {
@@ -78,7 +77,7 @@ final class CardArt {
             local.setColor(color);
             local.setStroke(new BasicStroke(.08f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
             switch (name) {
-                case "Footmen" -> local.fill(shield());
+                case "Battering Ram" -> local.fill(shield());
                 case "Riders" -> horseshoe(local);
                 case "Bowmen" -> bow(local);
                 case "Knights" -> local.fill(crown());
@@ -152,9 +151,17 @@ final class CardArt {
         g.drawString(letter, .5f - g.getFontMetrics().stringWidth(letter) / 2f, .68f);
     }
 
-    /** The Deck map colour of a region, or a stable tint for regions the map does not know. */
+    /** The card colour of a region, or a stable tint for other regions. */
     static Color regionColor(String region) {
-        for (AtlasRegion known : AtlasRegion.ALL) if (known.name().equals(region)) return known.color();
-        return Color.getHSBColor((region.hashCode() & 0xFF) / 255f, .35f, .7f);
+        return switch (region) {
+            case "Hungary" -> new Color(0xB8693E);
+            case "Poland" -> new Color(0xC98F8C);
+            case "Bohemia" -> new Color(0x8A5A86);
+            case "Austria" -> new Color(0xB23E3A);
+            case "Styria" -> new Color(0x5B8A4C);
+            case "Croatia" -> new Color(0x5F6B78);
+            case "Transylvania" -> new Color(0x3F6EA8);
+            default -> Color.getHSBColor((region.hashCode() & 0xFF) / 255f, .35f, .7f);
+        };
     }
 }

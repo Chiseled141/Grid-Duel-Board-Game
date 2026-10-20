@@ -17,6 +17,7 @@ import deckduel.core.card.Rules;
 import deckduel.core.card.Suppression;
 import java.awt.Rectangle;
 import java.awt.geom.Point2D;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -35,8 +36,14 @@ final class PlayAnimator {
     static final int DRAW = 720, DEAL_GAP = 150;
     /** A sabotaged Landmark: the hammer's wind-up and swing, then the cracks spreading. */
     static final int SWING = 520, CRACK = 260;
+    /** A Disable Tags seal and the moment it stamps; a Random Steal thread and when it hooks its card. */
+    static final int SEAL = 760, STAMP = 340, TETHER = 620, HOOK = 280;
+    /** How long a discarded card burns, an Exchange vortex turns, Reconnaissance cards hover and a Spy's eye stays open. */
+    static final int BURN = 760, VORTEX = 1000, PEEK = 1000, EYE = 1150;
     /** How long a card's landing ring and dust last. */
     static final int IMPACT = 560;
+    /** A replaced Unit strains, rips in two and its halves fall away; it starts as the new card is thrown. */
+    static final int TEAR = 700, TEAR_AT = 100;
 
     /** Where things are on the table now. */
     interface Layout {
@@ -51,6 +58,8 @@ final class PlayAnimator {
         Rectangle stage();
         Rectangle opponentHand();
         Rectangle table();
+        /** Where a scoring chip for {@code pocket} lands on the score rail, in table pixels. */
+        Point2D pocket(ScoreRail.Pocket pocket);
     }
 
     /** The staged effects, and how long the table needs before the scoring trace should begin. */
@@ -102,7 +111,7 @@ final class PlayAnimator {
         return s.steps().isEmpty() ? null : new Plan(s, 0);
     }
 
-    /** Carried to its space and set down; a replaced Unit is lifted out toward the discard pile. */
+    /** Carried to its space and set down; a replaced Unit is torn apart, since it leaves the game. */
     private static int place(Staging s, PlayerView before, PlayRecord play, TableZone zone, Rectangle from, Layout layout) {
         CardDef card = play.card().def();
         Rectangle to = layout.slot(zone, play.slot());
@@ -115,81 +124,242 @@ final class PlayAnimator {
         if (play.replaced() != null) {
             RowCard old = row(before, zone).find(play.replaced().id());
             List<Suppression> marks = old == null ? List.of() : old.suppressed();
-            s.add(0, FLIGHT - 120, new Staging.Hold(play.replaced().def(), marks, to));
-            s.add(FLIGHT - 120, EJECT, new Staging.Eject(play.replaced().def(), marks, to, layout.pile(zone)));
+            s.add(0, TEAR_AT, new Staging.Hold(play.replaced().def(), marks, to));
+            s.add(TEAR_AT, TEAR, new Staging.Tear(play.replaced().def(), marks, to, play.replaced().id()));
+            s.sound(TEAR_AT + TEAR / 4, Kind.RIP);
         }
         return FLIGHT;
     }
 
     /**
-     * A Spell rises to the middle of the table and charges. A Unit target is struck by a bolt and
-     * shatters (Destroy), is chained (Disable) or is cleared with light (Clear Disable); an enemy
-     * Landmark is struck by a hammer and cracks (Sabotage). Without a table target it dissolves.
+     * A Spell rises to the middle of the table and charges in its own colour, then shows its own
+     * effect, so no two Spells look alike: a bolt shatters a destroyed Unit, a flung chain binds
+     * one (Disable Points), a rune seal stamps one grey (Disable Tags), a beam of light clears one,
+     * a hammer cracks a Landmark (Sabotage), a discarded card burns, a golden thread hooks a stolen
+     * card, Draw dives into its deck and fountains, Exchange opens a vortex, Reconnaissance fans the
+     * deck's top cards up and Spy opens an eye over the enemy hand. Without a target it dissolves.
      */
     private static int cast(Staging s, PlayerView before, PlayRecord play, Rectangle from, Layout layout, boolean flip) {
         CardDef spell = play.card().def();
+        Effect effect = spell.effect();
         Target target = target(before, play, layout);
         Rectangle stage = stageAwayFrom(layout, target == null ? null : target.at());
-        Effect effect = spell.effect();
-        Tone tone = effect instanceof Effect.Destroy ? Tone.EMBER : effect instanceof Effect.ClearDisable ? Tone.CREAM : Tone.ARCANE;
+        Tone tone = tone(effect);
         s.sound(0, Kind.WHOOSH);
         s.add(0, RISE, new Staging.Flight(spell, from, stage, flip));
         s.sound(RISE, Kind.SPELL);
         s.add(RISE, CHARGE, new Staging.Charge(spell, stage, tone));
-        int launch = RISE + CHARGE;
-        if (target == null) {
-            s.add(launch, 460, new Staging.Dissolve(spell, stage, tone, play.card().id()));
-            return launch;
+        Cast cast = new Cast(s, before, play, layout, stage, tone, RISE + CHARGE);
+        if (target != null) {
+            if (effect instanceof Effect.Sabotage) return sabotage(cast, target);
+            if (effect instanceof Effect.Destroy) return destroy(cast, target);
+            if (effect instanceof Effect.ClearDisable) return clear(cast, target);
+            if (effect instanceof Effect.Disable disable)
+                return disable.what() == Suppression.POINTS ? shackle(cast, target) : seal(cast, target);
         }
-        if (effect instanceof Effect.Sabotage) return sabotage(s, play, target, stage, tone, launch);
+        boolean took = play.handCard() != null;
+        if (took && effect instanceof Effect.RandomDiscard) return burn(cast);
+        if (took && effect instanceof Effect.RandomSteal) return tether(cast);
+        if (took && effect instanceof Effect.Exchange) return vortex(cast);
+        if (effect instanceof Effect.Draw) return wellspring(cast);
+        if (effect instanceof Effect.Reconnaissance recon && looked(cast, recon) > 0) return peek(cast, looked(cast, recon));
+        if (effect instanceof Effect.Spy) return eye(cast);
+        cast.spent(cast.launch());
+        return cast.launch();
+    }
+
+    /** Each Spell family's colour, so the charge already tells them apart. */
+    private static Tone tone(Effect effect) {
+        if (effect instanceof Effect.Destroy) return Tone.CRIMSON;
+        if (effect instanceof Effect.Disable disable) return disable.what() == Suppression.POINTS ? Tone.STEEL : Tone.ARCANE;
+        if (effect instanceof Effect.ClearDisable) return Tone.CREAM;
+        if (effect instanceof Effect.RandomDiscard) return Tone.EMBER;
+        if (effect instanceof Effect.RandomSteal) return Tone.GOLD;
+        if (effect instanceof Effect.Draw) return Tone.VERDANT;
+        if (effect instanceof Effect.Exchange) return Tone.AZURE;
+        if (effect instanceof Effect.Sabotage) return Tone.STEEL;
+        // Reconnaissance and Spy, the information Spells.
+        return Tone.TEAL;
+    }
+
+    /** One Spell being staged: where it charged, in which colour, and when its power is released. */
+    private record Cast(Staging s, PlayerView before, PlayRecord play, Layout layout, Rectangle stage, Tone tone, int launch) {
+        boolean mine() { return play.actor() == before.seat(); }
+        /** The caster's side of the table. */
+        TableZone zone() { return mine() ? TableZone.OWN : TableZone.OPPONENT; }
+        /** The spent Spell fades into embers from {@code at}. */
+        void spent(int at) { s.add(at, 460, new Staging.Dissolve(play.card().def(), stage, tone, play.card().id())); }
+        /** The targeted card as it was, held until {@code until}; the effect draws it until {@code hidden}. */
+        void hold(Target target, int until, int hidden) {
+            RowCard unit = target.unit();
+            s.add(0, until, new Staging.Hold(unit.def(), unit.suppressed(), target.at()));
+            s.hideOnRow(play.targetId(), hidden);
+        }
+        /** The targeted Unit's disable marks once the Spell has resolved. */
+        List<Suppression> marksAfter(Target target) {
+            RowCard changed = row(play, target.zone(), before).find(play.targetId());
+            return changed == null ? List.of() : changed.suppressed();
+        }
+    }
+
+    /** A crimson bolt arcs into the Unit, which shatters with a flash, a shake and a brief hit-stop. */
+    private static int destroy(Cast c, Target target) {
+        Staging s = c.s();
         RowCard unit = target.unit();
         Rectangle at = target.at();
-        int hit = launch + BOLT;
-        s.add(launch, BOLT, new Staging.Charge(spell, stage, tone));
-        s.add(launch, BOLT, new Staging.Bolt(new Point2D.Double(stage.getCenterX(), stage.getCenterY()),
-                new Point2D.Double(at.getCenterX(), at.getCenterY()), tone));
-        s.add(hit, 420, new Staging.Dissolve(spell, stage, tone, play.card().id()));
-        s.add(hit, 460, new Staging.Ring(at.getCenterX(), at.getCenterY(), at.width * 1.1, tone));
-        s.add(hit, 520, new Staging.Burst(at.getCenterX(), at.getCenterY(), tone, 22, at.width, play.targetId()));
-        if (effect instanceof Effect.Destroy) {
-            // The destroyed Unit is already gone from the view; show it until the bolt arrives.
-            s.add(0, hit, new Staging.Hold(unit.def(), unit.suppressed(), at));
-            s.sound(hit, Kind.IMPACT);
-            s.add(hit, 760, new Staging.Shatter(unit.def(), unit.suppressed(), at, play.targetId()));
-            s.shake(hit, 300, 7);
-            // A brief hit-stop: the scoring waits a beat after the blow lands.
-            return hit + 90;
-        }
-        RowCard changed = row(play, target.zone(), before).find(play.targetId());
-        List<Suppression> marks = changed == null ? List.of() : changed.suppressed();
+        int hit = c.launch() + BOLT;
+        s.add(c.launch(), BOLT, new Staging.Charge(c.play().card().def(), c.stage(), c.tone()));
+        s.add(c.launch(), BOLT, new Staging.Bolt(centre(c.stage()), centre(at), c.tone()));
+        c.spent(hit);
+        // The destroyed Unit is already gone from the view; show it until the bolt arrives.
         s.add(0, hit, new Staging.Hold(unit.def(), unit.suppressed(), at));
-        s.hideOnRow(play.targetId(), hit + 520);
-        if (effect instanceof Effect.ClearDisable) {
-            s.add(hit, 520, new Staging.Landing(unit.def(), marks, at));
-            s.add(hit + 60, 560, new Staging.Shine(at));
-            return hit + 40;
-        }
+        s.add(hit, 460, new Staging.Ring(at.getCenterX(), at.getCenterY(), at.width * 1.1, c.tone()));
+        s.add(hit, 520, new Staging.Burst(at.getCenterX(), at.getCenterY(), c.tone(), 22, at.width, c.play().targetId()));
+        s.sound(hit, Kind.IMPACT);
+        s.add(hit, 760, new Staging.Shatter(unit.def(), unit.suppressed(), at, c.play().targetId()));
+        s.shake(hit, 300, 7);
+        return hit + 90;
+    }
+
+    /** A chain is flung from the Spell and binds the Unit, which shudders under a grey veil. */
+    private static int shackle(Cast c, Target target) {
+        Staging s = c.s();
+        int hit = c.launch() + BOLT;
+        s.add(c.launch(), BOLT, new Staging.Lash(centre(c.stage()), centre(target.at())));
+        c.spent(hit);
+        c.hold(target, hit, hit + 520);
         s.sound(hit, Kind.CHAIN);
-        s.add(hit, 520, new Staging.Chains(unit.def(), marks, at));
+        s.add(hit, 520, new Staging.Chains(target.unit().def(), c.marksAfter(target), target.at()));
         s.shake(hit, 200, 3);
         return hit + 40;
     }
 
+    /** A rune seal descends on the Unit and stamps it; its colour drains as its tags fall silent. */
+    private static int seal(Cast c, Target target) {
+        Staging s = c.s();
+        RowCard unit = target.unit();
+        int stamp = c.launch() + STAMP;
+        c.spent(c.launch());
+        c.hold(target, c.launch(), c.launch() + SEAL);
+        s.add(c.launch(), SEAL, new Staging.Sigil(unit.def(), unit.suppressed(), c.marksAfter(target), target.at(), STAMP));
+        s.sound(stamp, Kind.SEAL);
+        s.shake(stamp, 180, 3);
+        return stamp + 60;
+    }
+
+    /** A column of light falls on the Unit and lifts its disables; a light sweep follows. */
+    private static int clear(Cast c, Target target) {
+        Staging s = c.s();
+        Rectangle at = target.at();
+        int hit = c.launch() + 260;
+        c.spent(c.launch());
+        c.hold(target, hit, hit + 520);
+        s.add(hit, 520, new Staging.Landing(target.unit().def(), c.marksAfter(target), at));
+        s.add(c.launch(), 780, new Staging.Beam(at, c.play().targetId()));
+        s.add(hit + 60, 560, new Staging.Shine(at));
+        s.sound(hit, Kind.CHIME);
+        return hit + 40;
+    }
+
     /** The Spell's power becomes a war hammer that strikes the enemy Landmark, which cracks; it stays shaded until the round ends. */
-    private static int sabotage(Staging s, PlayRecord play, Target target, Rectangle stage, Tone tone, int launch) {
-        int strike = launch + SWING;
+    private static int sabotage(Cast c, Target target) {
+        Staging s = c.s();
+        int strike = c.launch() + SWING;
         Rectangle at = target.at();
         CardDef landmark = target.landmark().def();
-        s.add(launch, 420, new Staging.Dissolve(play.card().def(), stage, tone, play.card().id()));
-        s.add(launch, SWING + 300, new Staging.Hammer(at, SWING));
+        long id = c.play().targetId();
+        c.spent(c.launch());
+        s.add(c.launch(), SWING + 300, new Staging.Hammer(at, SWING));
         s.add(0, strike, new Staging.Hold(landmark, List.of(), at));
-        s.hideOnRow(play.targetId(), strike + CRACK);
+        s.hideOnRow(id, strike + CRACK);
         s.sound(strike, Kind.IMPACT);
         s.shake(strike, 320, 9);
-        s.add(strike, CRACK, new Staging.Cracks(landmark, List.of(), at, play.targetId()));
+        s.add(strike, CRACK, new Staging.Cracks(landmark, List.of(), at, id));
         s.add(strike, 480, new Staging.Ring(at.getCenterX(), at.getCenterY(), at.width * 1.2, Tone.CREAM));
-        s.add(strike, 560, new Staging.Burst(at.getCenterX(), at.getCenterY(), Tone.CREAM, 26, at.width * .9, play.targetId()));
+        s.add(strike, 560, new Staging.Burst(at.getCenterX(), at.getCenterY(), Tone.CREAM, 26, at.width * .9, id));
         return strike + CRACK + 60;
+    }
+
+    /** The discarded card is torn from the enemy hand, shown to both players, and burns away beside the Spell. */
+    private static int burn(Cast c) {
+        Staging s = c.s();
+        CardInstance card = c.play().handCard();
+        Rectangle from = c.mine() ? c.layout().opponentHand() : c.layout().hand(c.before().hand(), card.id());
+        Rectangle stage = c.stage();
+        Rectangle pyre = new Rectangle(stage.x + stage.width * 13 / 10, stage.y + stage.height / 10, stage.width * 4 / 5, stage.height * 4 / 5);
+        c.spent(c.launch());
+        s.add(c.launch(), FLIGHT, new Staging.Flight(card.def(), from, pyre, c.mine()));
+        int lit = c.launch() + FLIGHT;
+        s.sound(lit, Kind.FLAME);
+        s.add(lit, BURN, new Staging.Burn(card.def(), pyre, card.id()));
+        return lit + 200;
+    }
+
+    /** A golden thread is cast into the enemy hand and hooks a card, which then crosses to the thief. */
+    private static int tether(Cast c) {
+        Staging s = c.s();
+        Rectangle hand = c.mine() ? c.layout().opponentHand() : c.layout().hand(c.before().hand(), c.play().handCard().id());
+        int hook = c.launch() + HOOK;
+        s.add(c.launch(), TETHER, new Staging.Tether(centre(c.stage()), centre(hand)));
+        c.spent(hook);
+        s.sound(hook, Kind.GLINT);
+        return hook;
+    }
+
+    /** The Spell dives into its caster's deck, which fountains as it gives up the drawn cards. */
+    private static int wellspring(Cast c) {
+        Staging s = c.s();
+        Rectangle pile = c.layout().pile(c.zone());
+        s.add(c.launch(), 420, new Staging.Eject(c.play().card().def(), List.of(), c.stage(), pile));
+        s.sound(c.launch() + 380, Kind.CHIME);
+        s.add(c.launch() + 360, 760, new Staging.Wellspring(pile, c.tone(), c.play().card().id()));
+        return c.launch() + 420;
+    }
+
+    /** A vortex swallows the Spell and the card given up; the new cards come out of it (staged with the hands). */
+    private static int vortex(Cast c) {
+        Staging s = c.s();
+        CardInstance card = c.play().handCard();
+        Rectangle from = c.mine() ? c.layout().hand(c.before().hand(), card.id()) : c.layout().opponentHand();
+        s.sound(c.launch(), Kind.WARP);
+        s.add(c.launch(), VORTEX, new Staging.Vortex(c.stage(), c.tone()));
+        s.add(c.launch(), 520, new Staging.Spiral(c.play().card().def(), c.stage(), c.stage()));
+        s.add(c.launch() + 120, 640, new Staging.Spiral(card.def(), from, c.stage()));
+        return c.launch() + 520;
+    }
+
+    /** How many cards a Reconnaissance could look at: the caster's deck may hold fewer. */
+    private static int looked(Cast c, Effect.Reconnaissance recon) {
+        return Math.min(recon.look(), c.mine() ? c.before().you().deckCount() : c.before().opponent().deckCount());
+    }
+
+    /** The top cards of the caster's deck fan up face down, are looked over and sink back. */
+    private static int peek(Cast c, int count) {
+        c.spent(c.launch());
+        c.s().sound(c.launch() + 120, Kind.GLINT);
+        c.s().add(c.launch(), PEEK, new Staging.Peek(c.layout().pile(c.zone()), count));
+        return c.launch() + 300;
+    }
+
+    /** An eye opens over the enemy hand and looks it over; only the caster's view lists what it saw. */
+    private static int eye(Cast c) {
+        Rectangle hand = c.mine() ? c.layout().opponentHand() : handArea(c.before(), c.layout());
+        double width = c.layout().stage().width * 1.1;
+        double y = c.mine() ? hand.getMaxY() + width * .32 : hand.y - width * .3;
+        c.spent(c.launch());
+        c.s().sound(c.launch() + 200, Kind.GLINT);
+        c.s().add(c.launch(), EYE, new Staging.Eye(hand.getCenterX(), y, width));
+        return c.launch() + 300;
+    }
+
+    /** The space the viewer's whole hand covers, or the stage when it is empty. */
+    private static Rectangle handArea(PlayerView view, Layout layout) {
+        Rectangle area = null;
+        for (CardInstance card : view.hand()) {
+            Rectangle at = layout.hand(view.hand(), card.id());
+            area = area == null ? at : area.union(at);
+        }
+        return area == null ? layout.stage() : area;
     }
 
     /** What a Spell targeted on the table: a Unit on a row or a Landmark in its area. */
@@ -211,18 +381,23 @@ final class PlayAnimator {
 
     /**
      * Cards that changed hands outside the played card: cards arriving in the viewer's hand glide
-     * from their deck (or from the opponent's hand when stolen), cards leaving it go to its discard
-     * pile (or to the opponent when stolen), and the opponent's concealed gains arrive face down.
+     * from their deck (out of the vortex for an Exchange, or from the opponent's hand when stolen),
+     * cards leaving it go to its discard pile (or to the opponent when stolen), and the opponent's
+     * concealed gains arrive face down. A burnt or exchanged card is staged by its Spell instead.
      */
     private static void handMoves(Staging s, PlayerView before, PlayerView after, PlayRecord play, Layout layout, int at) {
         boolean mine = play != null && play.actor() == after.seat();
-        boolean stealing = play != null && play.card().def().effect() instanceof Effect.RandomSteal && play.handCard() != null;
+        Effect effect = play == null ? null : play.card().def().effect();
+        CardInstance taken = play == null ? null : play.handCard();
+        boolean stealing = taken != null && effect instanceof Effect.RandomSteal;
+        boolean spellStaged = taken != null && (effect instanceof Effect.Exchange || effect instanceof Effect.RandomDiscard);
+        Rectangle deck = taken != null && effect instanceof Effect.Exchange ? layout.stage() : null;
         Set<Long> held = before.hand().stream().map(CardInstance::id).collect(Collectors.toSet());
         Set<Long> kept = after.hand().stream().map(CardInstance::id).collect(Collectors.toSet());
         for (CardInstance card : after.hand()) {
             if (held.contains(card.id())) continue;
-            boolean stolen = stealing && mine && card.id() == play.handCard().id();
-            Rectangle from = stolen ? layout.opponentHand() : layout.pile(TableZone.OWN);
+            boolean stolen = stealing && mine && card.id() == taken.id();
+            Rectangle from = stolen ? layout.opponentHand() : deck != null ? deck : layout.pile(TableZone.OWN);
             s.sound(at, Kind.DEAL);
             s.add(at, DRAW, new Staging.Flight(card.def(), from, layout.hand(after.hand(), card.id()), true, true,
                     layout.handAngle(after.hand(), card.id())));
@@ -230,15 +405,17 @@ final class PlayAnimator {
         }
         for (CardInstance card : before.hand()) {
             if (kept.contains(card.id()) || play != null && card.id() == play.card().id()) continue;
-            boolean taken = stealing && !mine && card.id() == play.handCard().id();
+            if (spellStaged && card.id() == taken.id()) continue;
+            boolean lost = stealing && !mine && card.id() == taken.id();
             Rectangle from = layout.hand(before.hand(), card.id());
-            s.add(at, EJECT, new Staging.Eject(card.def(), List.of(), from, taken ? layout.opponentHand() : layout.pile(TableZone.OWN)));
+            s.add(at, EJECT, new Staging.Eject(card.def(), List.of(), from, lost ? layout.opponentHand() : layout.pile(TableZone.OWN)));
         }
-        int played = play != null && !mine ? 1 : 0, takenFromMe = stealing && !mine ? 1 : 0;
-        int gained = after.opponent().handCount() - before.opponent().handCount() + played - takenFromMe;
+        // The opponent's own play reports what it drew; otherwise only their hand count says.
+        int gained = play != null && !mine ? play.drawn() : play != null ? 0 : after.opponent().handCount() - before.opponent().handCount();
         for (int i = 0; i < gained; i++) {
             s.sound(at + i * DEAL_GAP, Kind.DEAL);
-            s.add(at + i * DEAL_GAP, DRAW, new Staging.Flight(null, layout.pile(TableZone.OPPONENT), layout.opponentHand(), false, true, 0));
+            s.add(at + i * DEAL_GAP, DRAW, new Staging.Flight(null, deck != null ? deck : layout.pile(TableZone.OPPONENT),
+                    layout.opponentHand(), false, true, 0));
         }
     }
 
@@ -279,37 +456,68 @@ final class PlayAnimator {
     }
 
     /**
-     * Combos, after the card has landed: each new pair link draws itself with its bonus popping,
-     * a call-out for several pairs at once (bigger combos shake harder), and a light sweep across
-     * Landmarks whose effect on the score changed.
+     * Combos, after the card has landed: the Units' change pops up as a chip over the card, each
+     * new pair link draws itself and its bonus pops as a chip (gold for a +9 pair), and every chip
+     * is flung onto its place on the score rail in turn, chinking a little higher each time. A
+     * call-out marks several pairs at once (bigger combos shake harder) and a light sweep crosses
+     * Landmarks whose effect on the score changed. Returns when each chip lands, for the rail.
      */
-    static void combos(Staging s, ScoringTrace trace, int delay, Layout layout) {
+    static List<ScoreRail.Tally> combos(Staging s, ScoringTrace trace, int delay, Layout layout) {
+        List<ScoreRail.Tally> tallies = new ArrayList<>();
         for (TableZone zone : List.of(TableZone.OWN, TableZone.OPPONENT)) {
+            boolean own = zone == TableZone.OWN;
+            int[] step = {0};
+            long units = trace.unitGain.get(zone);
+            if (units != 0) {
+                int slot = trace.unitSlot.get(zone);
+                Rectangle from = slot >= 0 ? layout.slot(zone, slot) : rowSpan(zone, layout);
+                chip(s, tallies, layout, delay, own ? ScoreRail.Pocket.UNITS : ScoreRail.Pocket.OPPONENT, units,
+                        new Point2D.Double(from.getCenterX(), from.y + 14), units > 0 ? Tone.AZURE : Tone.ASH, false, step);
+            }
             List<ScoringTrace.Link> links = trace.links.stream().filter(link -> link.zone() == zone).toList();
             for (ScoringTrace.Link link : links) {
                 PairBonus pair = link.pair();
                 Rectangle a = layout.slot(zone, pair.slotA()), b = layout.slot(zone, pair.slotB());
                 double dip = Math.min(9, 3 + Math.abs(b.getCenterX() - a.getCenterX()) * .02);
-                s.add(delay + link.at(), ScoringTrace.LINK_MS, new Staging.Link(new Point2D.Double(a.getCenterX(), a.getMaxY() - 3),
-                        new Point2D.Double(b.getCenterX(), b.getMaxY() - 3), dip * 2, pair.points() >= 9 ? Tone.GOLD : Tone.CREAM,
-                        "+" + pair.points()));
+                boolean big = pair.points() >= 9;
+                Point2D left = new Point2D.Double(a.getCenterX(), a.getMaxY() - 3), right = new Point2D.Double(b.getCenterX(), b.getMaxY() - 3);
+                s.add(delay + link.at(), ScoringTrace.LINK_MS, new Staging.Link(left, right, dip * 2, big ? Tone.GOLD : Tone.CREAM, null));
+                chip(s, tallies, layout, delay + link.at() + ScoringTrace.CHIP_POP_MS, own ? ScoreRail.Pocket.COMBOS : ScoreRail.Pocket.OPPONENT,
+                        pair.points(), new Point2D.Double((left.getX() + right.getX()) / 2, left.getY() + dip * 1.2 + 4),
+                        big ? Tone.GOLD : Tone.CRIMSON, big, step);
             }
             int bonus = links.stream().mapToInt(link -> link.pair().points()).sum();
             if (links.size() >= 2) {
                 int at = delay + links.get(links.size() - 1).at() + 160;
-                Rectangle first = layout.slot(zone, 0), last = layout.slot(zone, Row.SIZE - 1);
-                double x = (first.getX() + last.getMaxX()) / 2, y = first.getCenterY();
-                Tone tone = zone == TableZone.OWN ? Tone.GOLD : Tone.CREAM;
+                Rectangle row = rowSpan(zone, layout);
+                double x = row.getCenterX(), y = row.getCenterY();
+                Tone tone = own ? Tone.GOLD : Tone.CREAM;
                 s.add(at, 1150, new Staging.Banner("Combo ×" + links.size(), "+" + bonus + " combo points", x, y, tone,
                         links.size() >= 4 ? 40 : 32));
                 s.add(at, 700, new Staging.Burst(x, y - 10, tone, 18 + links.size() * 4, 120 + bonus * 2, bonus));
                 if (bonus >= 18) s.shake(at, 280, bonus >= 36 ? 7 : 4);
             }
             if (trace.landmarksChanged.contains(zone)) {
-                TableZone area = zone == TableZone.OWN ? TableZone.OWN_LANDMARK : TableZone.OPPONENT_LANDMARK;
+                TableZone area = own ? TableZone.OWN_LANDMARK : TableZone.OPPONENT_LANDMARK;
                 for (int i = 0; i < Rules.LANDMARK_PICKS; i++) s.add(delay + trace.landmarkAt, 560, new Staging.Shine(layout.landmark(area, i)));
             }
         }
+        return tallies;
+    }
+
+    /** One chip worth {@code points}, flung from {@code from} to {@code pocket}; it lands with a chink pitched by its {@code step}. */
+    private static void chip(Staging s, List<ScoreRail.Tally> tallies, Layout layout, int at, ScoreRail.Pocket pocket, long points,
+                             Point2D from, Tone tone, boolean big, int[] step) {
+        String text = (points > 0 ? "+" : "−") + Math.abs(points);
+        s.add(at, ScoringTrace.CHIP_MS, new Staging.Chip(text, from, layout.pocket(pocket), tone, big));
+        int landed = at + ScoringTrace.CHIP_MS;
+        s.sound(landed, Kind.TALLY, step[0]++);
+        tallies.add(new ScoreRail.Tally(landed, pocket, points));
+    }
+
+    /** The whole of a Unit row, from its first space to its last. */
+    private static Rectangle rowSpan(TableZone zone, Layout layout) {
+        return layout.slot(zone, 0).union(layout.slot(zone, Row.SIZE - 1));
     }
 
     // ------------------------------------------------------------------ helpers
@@ -322,6 +530,8 @@ final class PlayAnimator {
         stage.translate(shift, 0);
         return stage;
     }
+
+    private static Point2D centre(Rectangle r) { return new Point2D.Double(r.getCenterX(), r.getCenterY()); }
 
     private static Row row(PlayerView view, TableZone zone) {
         return zone == TableZone.OWN ? view.you().row() : view.opponent().row();

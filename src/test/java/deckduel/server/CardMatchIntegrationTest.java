@@ -15,7 +15,6 @@ import deckduel.net.*;
 import java.io.*;
 import java.net.Socket;
 import java.nio.file.Path;
-import java.util.List;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Predicate;
@@ -142,7 +141,7 @@ class CardMatchIntegrationTest {
             assertEquals(aliceAfter.wins(), bobAfter.losses());
             assertEquals(aliceAfter.losses(), bobAfter.wins());
             var history = matchDao.recentMatches(1).get(0);
-            assertEquals("cards-neutral-1", history.rulesVersion());
+            assertEquals("cards-neutral-2", history.rulesVersion());
             assertEquals(3, matchDao.roundsOf(history.id()).size());
             assertEquals(end[0].view().rounds().get(2).firstScore(), matchDao.roundsOf(history.id()).get(2).firstScore());
             bob.send(new HistoryRequest());

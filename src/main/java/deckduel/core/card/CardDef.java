@@ -6,7 +6,7 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * One printed card. A Unit has 1–5 printed points, exactly one nation and exactly one class, and
+ * One printed card. A Unit has 1–6 printed points, exactly one nation and exactly one class, and
  * no ability. Landmarks and Spells are neutral: no nation, class or printed points, and exactly
  * one effect of the matching family.
  */
@@ -22,7 +22,7 @@ public record CardDef(String id, String name, CardKind kind, int points,
         regions = List.copyOf(regions);
         classes = List.copyOf(classes);
         if (kind == CardKind.UNIT) {
-            if (points < 1 || points > 5) throw new IllegalArgumentException(id + ": Unit points must be 1–5");
+            if (points < 1 || points > 6) throw new IllegalArgumentException(id + ": Unit points must be 1–6");
             if (regions.size() != 1 || classes.size() != 1)
                 throw new IllegalArgumentException(id + ": a Unit has exactly one nation and one class");
             if (effect != null) throw new IllegalArgumentException(id + ": Units have no ability");

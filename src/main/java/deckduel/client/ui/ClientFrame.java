@@ -12,7 +12,7 @@ import javax.swing.*;
 
 /**
  * Owns the server connection and switches between the Swing menu and match history;
- * the match table and the Atlas are JavaFX screens shown in their own window by {@link FxScreens}.
+ * the match table is a JavaFX screen shown in its own window by {@link FxScreens}.
  */
 public final class ClientFrame extends JFrame {
     private final DeckDuelClient client;
@@ -47,8 +47,8 @@ public final class ClientFrame extends JFrame {
                 settings::soundEnabled, bounds -> { setBounds(bounds); closeAndSave(); });
         model.addListener(new ClientModelListener() {
             @Override public void onScreenChanged(Screen screen) {
-                // The JavaFX screens have no card here; the menu stays behind them, hidden.
-                if (screen != Screen.TABLE && screen != Screen.ATLAS) screens.show(content, screen.name());
+                // The JavaFX table has no card here; the menu stays behind it, hidden.
+                if (screen != Screen.TABLE) screens.show(content, screen.name());
                 updateMenuMusic();
             }
             @Override public void onError(String text) {

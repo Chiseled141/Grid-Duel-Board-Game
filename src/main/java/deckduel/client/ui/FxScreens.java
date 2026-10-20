@@ -7,12 +7,10 @@ import deckduel.client.state.ClientModelListener;
 import deckduel.client.state.Screen;
 import deckduel.core.card.Move;
 import java.awt.Rectangle;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import javafx.application.Platform;
 import javafx.geometry.Pos;
-import javafx.scene.Parent;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
 import javafx.scene.layout.StackPane;
@@ -23,8 +21,8 @@ import javax.swing.JFrame;
 import javax.swing.SwingUtilities;
 
 /**
- * Shows the JavaFX screens, the match table and the Atlas, in their own window at the Swing
- * frame's place and size, and hands back to the Swing menus when they close. The model stays
+ * Shows the JavaFX match table in its own window at the Swing frame's place and size,
+ * and hands back to the Swing menus when it closes. The model stays
  * owned by the EDT: its events arrive here on the EDT and reach the JavaFX views as immutable
  * snapshots through {@link Platform#runLater}; actions from the views go back through
  * {@link SwingUtilities#invokeLater}.
@@ -35,17 +33,15 @@ final class FxScreens {
     private final Runnable toggleMusic;
     private final BooleanSupplier musicOn;
     private final Consumer<Rectangle> close;
-    private final AtomicBoolean reducedMotion = new AtomicBoolean();
     private Stage stage;
     private StackPane root;
     private Button music;
     private CardTableView table;
-    private AtlasView atlas;
     // Set on the EDT; read by the JavaFX thread to drop a hand-over that a newer screen change replaced.
     private volatile Screen showing;
 
     /**
-     * Starts JavaFX and builds both screens. Called on the EDT. {@code close} receives the window
+     * Starts JavaFX and builds the match table. Called on the EDT. {@code close} receives the window
      * bounds when the player closes the JavaFX window, on the EDT.
      */
     FxScreens(ClientModel model, ClientSettings settings, ScoringSounds sounds, JFrame frame, Runnable toggleMusic,
@@ -55,13 +51,11 @@ final class FxScreens {
         this.toggleMusic = toggleMusic;
         this.musicOn = musicOn;
         this.close = close;
-        reducedMotion.set(model.reducedMotion());
         FxKit.start();
         boolean music = musicOn.getAsBoolean();
         Platform.runLater(() -> build(settings, sounds, music));
         model.addListener(new ClientModelListener() {
             @Override public void onScreenChanged(Screen screen) { switchTo(screen); }
-            @Override public void onLobbyChanged() { reducedMotion.set(model.reducedMotion()); }
             @Override public void onMatchChanged() { sendMatch(); }
             @Override public void onActionRejected(String reason) { Platform.runLater(() -> table.notice(reason)); }
         });
@@ -73,7 +67,6 @@ final class FxScreens {
             @Override public void rematch() { SwingUtilities.invokeLater(model::requestRematch); }
             @Override public void leave() { SwingUtilities.invokeLater(model::leaveMatch); }
         }, settings, sounds);
-        atlas = new AtlasView(() -> SwingUtilities.invokeLater(model::leaveToLobby), reducedMotion::get);
         music = musicToggle(musicOn);
         root = new StackPane();
         root.setStyle("-fx-background-color: #2C2925;");
@@ -134,9 +127,9 @@ final class FxScreens {
         Platform.runLater(() -> table.show(state));
     }
 
-    /** Brings the JavaFX window forward for the table and Atlas, and the Swing frame back for anything else. */
+    /** Brings the JavaFX window forward for the table, and the Swing frame back for anything else. */
     private void switchTo(Screen screen) {
-        boolean fx = screen == Screen.TABLE || screen == Screen.ATLAS;
+        boolean fx = screen == Screen.TABLE;
         if (screen == Screen.TABLE) sendMatch();
         if (fx) {
             Rectangle bounds = frame.getBounds();
@@ -144,22 +137,20 @@ final class FxScreens {
             Screen previous = showing;
             showing = screen;
             Platform.runLater(() -> {
-                Parent view = screen == Screen.TABLE ? table : atlas;
-                if (previous != null) leave(previous);
-                root.getChildren().setAll(view, music);
+                if (previous != null) table.hidden();
+                root.getChildren().setAll(table, music);
                 showMusic(musicNow);
                 if (!stage.isShowing()) place(bounds);
                 stage.show();
                 stage.toFront();
-                if (view == table) table.shown(); else atlas.shown();
+                table.shown();
                 // The menu window goes only once the JavaFX one covers it, so nothing flashes between them.
                 SwingUtilities.invokeLater(() -> { if (showing != null) frame.setVisible(false); });
             });
         } else if (showing != null) {
-            Screen previous = showing;
             showing = null;
             Platform.runLater(() -> {
-                leave(previous);
+                table.hidden();
                 Rectangle bounds = bounds();
                 SwingUtilities.invokeLater(() -> {
                     frame.setBounds(bounds);
@@ -169,10 +160,6 @@ final class FxScreens {
                 });
             });
         }
-    }
-
-    private void leave(Screen screen) {
-        if (screen == Screen.TABLE) table.hidden(); else atlas.hidden();
     }
 
     private void place(Rectangle bounds) {

@@ -83,13 +83,6 @@ final class CardMotion {
         return amount * Math.exp(-t / decay) * Math.sin(t / period);
     }
 
-    /** Spring-in scale with a small overshoot, for hover and selection. */
-    static double springIn(double t, double from, double to, double duration) {
-        double p = Math.min(1, t / duration), c = 1.6;
-        double back = 1 + (c + 1) * Math.pow(p - 1, 3) + c * Math.pow(p - 1, 2);
-        return from + (to - from) * back;
-    }
-
     /**
      * The fraction of the distance still to go after {@code t} of a {@code span}-second trip: a
      * critically damped spring's (1 + ωt)e^(−ωt), less its small final remainder spread evenly
