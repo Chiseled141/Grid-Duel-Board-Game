@@ -1,0 +1,78 @@
+package deckduel.client.ui;
+
+import deckduel.cards.CatalogLoader;
+import deckduel.client.ClientSettings;
+import deckduel.client.ScoringSounds;
+import deckduel.core.card.*;
+import deckduel.net.MatchUpdate;
+import java.awt.Rectangle;
+import java.io.File;
+import javafx.application.Platform;
+import javafx.embed.swing.SwingFXUtils;
+import javafx.geometry.Point2D;
+import javafx.scene.Scene;
+import javafx.scene.image.Image;
+import javafx.scene.image.ImageView;
+import javax.imageio.ImageIO;
+
+/** Captures the actual table before, during and after a local row swap; no account or database. */
+public class RenderRowRearrange {
+    public static void main(String[] args) throws Exception {
+        var catalog = CatalogLoader.loadBundled();
+        var deck = DeckRules.deck(catalog);
+        MatchState state = MatchState.start(deck, deck, catalog.landmarks(), 3);
+        for (Seat seat : Seat.values()) state = state.apply(seat, GreedyBot.choose(state.view(seat)));
+        while (state.view(Seat.FIRST).you().row().cards().size() < 3 || state.turn() != Seat.FIRST)
+            state = state.apply(state.turn(), GreedyBot.choose(state.view(state.turn())));
+        PlayerView player = state.view(Seat.FIRST);
+        MatchUpdate update = new MatchUpdate("Preview", 1, "You", "Practice bot", true, true, false, false, false, player);
+        int from = player.you().row().cards().get(0).slot(), to = player.you().row().cards().get(2).slot();
+        FxKit.start();
+        CardImages.shared().preload(catalog.cards().stream().map(CardDef::id).toList());
+        Thread.sleep(1000);
+        try {
+            for (int[] size : new int[][]{{1280, 720}, {1470, 920}}) {
+                CardTableView table = FxTesting.call(() -> {
+                    var result = new CardTableView(new CardTableView.Actions() {
+                        public void move(Move move) { throw new AssertionError("Rearranging must send no move"); }
+                        public void rematch() { }
+                        public void leave() { }
+                    }, new ClientSettings(), new ScoringSounds(() -> false));
+                    new Scene(result, size[0], size[1]).getStylesheets().add(FxKit.STYLESHEET);
+                    ((ImageView) result.getChildren().get(0)).setImage(new Image(
+                            RenderRowRearrange.class.getResource("/assets/match-room.png").toExternalForm(), false));
+                    result.resize(size[0], size[1]); result.applyCss(); result.layout();
+                    result.show(new CardTableView.State(update, false, true));
+                    result.show(new CardTableView.State(update, false, false));
+                    result.shown(0);
+                    capture(result, args[0], size[0], "before");
+                    result.pressAt(centre(result.slotBounds(TableZone.OWN, from)));
+                    result.dragTo(centre(result.slotBounds(TableZone.OWN, to)));
+                    return result;
+                });
+                Thread.sleep(100);
+                FxTesting.run(() -> {
+                    capture(table, args[0], size[0], "dragging");
+                    System.out.println(size[0] + " preview displaced card: " + table.rowCardBounds(TableZone.OWN, to)
+                            + "; target " + table.slotBounds(TableZone.OWN, to));
+                    table.releaseAt(centre(table.slotBounds(TableZone.OWN, from)).add(0, 20));
+                });
+                Thread.sleep(1500);
+                FxTesting.run(() -> {
+                    capture(table, args[0], size[0], "settled");
+                    if (!table.rowCardBounds(TableZone.OWN, from).equals(table.slotBounds(TableZone.OWN, from)))
+                        throw new AssertionError("Card did not settle");
+                    table.hidden();
+                });
+            }
+        } finally { Platform.exit(); }
+        System.exit(0);
+    }
+
+    private static Point2D centre(Rectangle bounds) { return new Point2D(bounds.getCenterX(), bounds.getCenterY()); }
+
+    private static void capture(CardTableView table, String directory, int width, String phase) throws Exception {
+        ImageIO.write(SwingFXUtils.fromFXImage(table.snapshot(null, null), null), "png",
+                new File(directory, "table-" + width + "-" + phase + ".png"));
+    }
+}

@@ -188,6 +188,75 @@ class CardTableViewTest {
         });
     }
 
+    @Test void rowRearrangementPreviewsASwapThenSettlesWithoutSendingAMove() throws Exception {
+        PlayerView view = rowView();
+        int from = view.you().row().cards().get(0).slot(), to = view.you().row().cards().get(1).slot();
+        Table[] holder = new Table[1];
+        Rectangle[] places = new Rectangle[2];
+        FxTesting.run(() -> {
+            var t = holder[0] = table(new ClientSettings(), true);
+            t.view.show(shown(view, true));
+            t.view.show(shown(view, false)); // Enable motion after setup, without an opening deal.
+            Rectangle origin = places[0] = t.view.slotBounds(TableZone.OWN, from);
+            Rectangle target = places[1] = t.view.slotBounds(TableZone.OWN, to);
+            t.view.pressAt(centre(origin));
+            t.view.dragTo(centre(target));
+            assertEquals(origin, t.view.slotBounds(TableZone.OWN, to), "the displaced card heads to the source space");
+            assertEquals(target, t.view.rowCardBounds(TableZone.OWN, to), "it starts sliding from its visible position");
+            t.view.dragTo(centre(target));
+            assertEquals(origin, t.view.slotBounds(TableZone.OWN, to), "a stationary pointer keeps the same preview");
+            t.view.releaseAt(centre(target).add(0, 20));
+            assertEquals(target, t.view.slotBounds(TableZone.OWN, from));
+            assertEquals(target.y + 20, t.view.rowCardBounds(TableZone.OWN, from).y,
+                    "the dropped card starts settling from the pointer");
+            assertTrue(t.actions.calls.isEmpty(), "no gameplay action for the swap");
+        });
+        Thread.sleep(1500);
+        FxTesting.run(() -> {
+            var t = holder[0];
+            assertEquals(places[1], t.view.rowCardBounds(TableZone.OWN, from));
+            assertEquals(places[0], t.view.rowCardBounds(TableZone.OWN, to));
+            assertEquals(new CardTableView.Hit(TableZone.OWN, from), t.view.hitAt(centre(places[1])),
+                    "targeting still uses the server's original slot");
+            t.view.show(shown(view, false));
+            assertEquals(places[1], t.view.slotBounds(TableZone.OWN, from), "the swap survives server updates");
+            assertTrue(t.actions.calls.isEmpty());
+        });
+    }
+
+    @Test void cancelledRowDragReturnsToItsOriginalSpaceAndReducedMotionSnaps() throws Exception {
+        PlayerView view = rowView();
+        int from = view.you().row().cards().get(0).slot(), to = view.you().row().cards().get(1).slot();
+        FxTesting.run(() -> {
+            var t = table(new ClientSettings(), true);
+            t.view.show(shown(view, true));
+            t.view.show(shown(view, false));
+            Rectangle origin = t.view.slotBounds(TableZone.OWN, from), target = t.view.slotBounds(TableZone.OWN, to);
+            t.view.pressAt(centre(origin));
+            t.view.dragTo(centre(target));
+            Point2D outside = new Point2D(target.getCenterX(), origin.y - 35);
+            t.view.dragTo(outside);
+            assertEquals(origin, t.view.slotBounds(TableZone.OWN, from), "leaving the row cancels its preview");
+            t.view.releaseAt(outside);
+            assertNotEquals(origin, t.view.rowCardBounds(TableZone.OWN, from), "a cancelled card glides back");
+            t.view.show(shown(view, true));
+            assertEquals(origin, t.view.rowCardBounds(TableZone.OWN, from), "reduced motion immediately settles it");
+            t.view.pressAt(centre(origin));
+            t.view.dragTo(centre(target));
+            assertEquals(origin, t.view.rowCardBounds(TableZone.OWN, to), "reduced motion previews without easing");
+            t.view.releaseAt(centre(target));
+            assertEquals(target, t.view.rowCardBounds(TableZone.OWN, from));
+            assertTrue(t.actions.calls.isEmpty());
+        });
+    }
+
+    private static PlayerView rowView() {
+        MatchState state = state();
+        while (state.view(Seat.FIRST).you().row().cards().size() < 2 || state.turn() != Seat.FIRST)
+            state = state.apply(state.turn(), GreedyBot.choose(state.view(state.turn())));
+        return state.view(Seat.FIRST);
+    }
+
     @Test void twoLandmarkOffersAreTickedThenKeptAndNothingElseIsClickable() throws Exception {
         FxTesting.run(() -> {
             var t = table(new ClientSettings(), true);
