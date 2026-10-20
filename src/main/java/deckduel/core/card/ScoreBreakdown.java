@@ -5,10 +5,11 @@ import java.io.Serializable;
 import java.util.List;
 
 /**
- * A row's live score: printed Unit points (after Unit multipliers), combo points (after combo
- * multipliers) and flat Landmark bonuses. The pairs and effect lines explain the result.
+ * A row's live score: printed Unit points, pair combo points, the row's best {@link Formation}
+ * (null when it has none) and a flat {@code bonus} added after the formation's multiplier. The
+ * pairs and effect lines explain the result.
  */
-public record ScoreBreakdown(long units, long combos, long bonus, List<PairBonus> pairs,
+public record ScoreBreakdown(long units, long combos, Formation formation, long bonus, List<PairBonus> pairs,
                              List<String> effects) implements Serializable {
     @Serial private static final long serialVersionUID = 1L;
 
@@ -18,6 +19,12 @@ public record ScoreBreakdown(long units, long combos, long bonus, List<PairBonus
         effects = List.copyOf(effects);
     }
 
-    /** The row's total score. */
-    public long total() { return units + combos + bonus; }
+    /** The formation's bonus points, or 0 without one. */
+    public long formationBonus() { return formation == null ? 0 : formation.bonus(); }
+
+    /** The formation's multiplier, or 1 without one. */
+    public long multiplier() { return formation == null ? 1 : formation.multiplier(); }
+
+    /** The row's total score: (units + combos + formation bonus) × multiplier + flat bonus. */
+    public long total() { return (units + combos + formationBonus()) * multiplier() + bonus; }
 }

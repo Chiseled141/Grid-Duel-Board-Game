@@ -1,10 +1,6 @@
 package deckduel.client.ui;
 
-import deckduel.core.card.Effect;
 import deckduel.core.card.CardInstance;
-import deckduel.core.card.LandmarkCard;
-import deckduel.core.card.Scoring;
-import deckduel.core.card.SideView;
 import java.util.List;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
@@ -18,11 +14,11 @@ import javafx.scene.layout.HBox;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 
-/** Read-only inspector for public Landmarks and the recipient's Spy-revealed cards. */
+/** Read-only inspector for the recipient's Spy-revealed cards. */
 final class CardDetails extends StackPane {
     private final ImageView art = new ImageView();
     private final Label owner = label(11), name = label(25), status = label(12);
-    private final Label buff = label(17), contribution = label(14), duration = label(12), balance = label(11);
+    private final Label buff = label(17), contribution = label(14), duration = label(12);
     private final Runnable closed;
 
     /** Builds a modal inspector; closing returns focus to the table. */
@@ -39,12 +35,11 @@ final class CardDetails extends StackPane {
         owner.setTextFill(FxKit.AMBER);
         name.setFont(FxKit.bold(25));
         duration.setTextFill(FxKit.MUTED);
-        balance.setTextFill(FxKit.MUTED);
         Button close = FxKit.pill("Close", "gold-outline");
         close.setId("closeCardDetails");
         close.setFocusTraversable(true);
         close.setOnAction(event -> close());
-        VBox text = new VBox(12, owner, name, status, buff, contribution, duration, balance, close);
+        VBox text = new VBox(12, owner, name, status, buff, contribution, duration, close);
         text.setPrefWidth(290);
         text.setMaxWidth(290);
         art.setPreserveRatio(true);
@@ -66,37 +61,6 @@ final class CardDetails extends StackPane {
         });
     }
 
-    /** Opens or refreshes the card, exact buff text, current public contribution and suppression. */
-    void show(LandmarkCard landmark, SideView side, boolean own) {
-        owner.setText(own ? "YOUR LANDMARK" : "OPPONENT'S LANDMARK");
-        name.setText(landmark.def().name());
-        status.setText(landmark.active() ? "ACTIVE" : "SABOTAGED · DISABLED THIS ROUND");
-        status.setTextFill(landmark.active() ? FxKit.AMBER : FxKit.CORAL);
-        buff.setText(landmark.def().text());
-        Effect effect = landmark.def().effect();
-        boolean scoring = effect instanceof Effect.SharedTagBonus || effect instanceof Effect.WeakUnitBonus
-                || effect instanceof Effect.EmptySpaceBonus;
-        if (scoring) {
-            List<LandmarkCard> without = side.landmarks().stream()
-                    .filter(card -> card.card().id() != landmark.card().id()).toList();
-            long points = side.score().total() - Scoring.score(side.row(), without).total();
-            contribution.setText("Current row bonus: +" + points + " points");
-        } else if (effect instanceof Effect.FirstSpellDraw) {
-            contribution.setText("Triggers on the owner's first Spell each round. Does not use a manual draw.");
-        } else {
-            contribution.setText("Private to the owner. Does not draw or reorder the deck.");
-        }
-        duration.setText(landmark.active() ? "Persists for all three rounds. Sabotage can disable it until round end."
-                : "This buff is disabled until the round ends. The Landmark stays in play.");
-        balance.setText(scoring ? "Scoring values are provisional." : "");
-        balance.setVisible(scoring);
-        balance.setManaged(scoring);
-        art.setImage(FxKit.face(landmark.def(), List.of(), 170, 255, false, 2));
-        setAccessibleText(owner.getText() + ". " + name.getText() + ". " + status.getText() + ". "
-                + buff.getText() + " " + contribution.getText() + " " + duration.getText());
-        setVisible(true);
-    }
-
     /** Dismisses the inspector without sending a move. */
     void close() {
         setVisible(false);
@@ -114,8 +78,6 @@ final class CardDetails extends StackPane {
         buff.setText(card.def().text());
         contribution.setText("Your Spy revealed this card. It remains in the opponent's hand.");
         duration.setText("Visible until it leaves that hand or the round ends. Spy does not steal or discard it.");
-        balance.setVisible(false);
-        balance.setManaged(false);
         art.setImage(FxKit.face(card.def(), List.of(), 170, 255, false, 2));
         setAccessibleText(owner.getText() + ". " + name.getText() + ". " + buff.getText() + " " + contribution.getText());
         setVisible(true);

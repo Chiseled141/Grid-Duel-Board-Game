@@ -1,17 +1,14 @@
-# Deck Duel card catalog: 35 Units, 6 neutral Landmarks, 11 neutral Spells (AGENTS.md §5.1, §5.4, §5.5).
+# Deck Duel card catalog: 35 Units and 10 neutral Spells (AGENTS.md §5.1, §5.5).
 # Units, classes and printed points are approved initial playtest values (Pikemen 2, Bowmen 3,
-# Riders 4, Knights 5, Battering Ram 6). Landmark NUMBERS below are PROVISIONAL proposals accepted by the
-# user for implementation; they are not final balance (AGENTS.md §5.6).
+# Riders 4, Knights 5, Battering Ram 6). Landmarks and Sabotage were removed at the user's request
+# (2026-10-21); the eleventh Spell slot is open until a new Spell is designed.
 #
 # unit     | id | name | points 1-6 | nation | class
-# landmark | id | name | effect
 # spell    | id | name | effect
-# Landmark effects: SHARED_TAG_BONUS <REGION|CLASS> <points per pair> · WEAK_UNIT_BONUS <max printed> <points>
-#                   EMPTY_SPACE_BONUS <points per space> · FIRST_SPELL_DRAW <cards> · DECK_TOP_VIEW
 # Spell effects:    DISABLE <OWN|OPPONENT> <POINTS|TAGS> · DESTROY <OWN|OPPONENT> · CLEAR_DISABLE
 #                   RANDOM_DISCARD <cards> · RANDOM_STEAL <cards> · DRAW <cards> · EXCHANGE <discard> <draw>
-#                   RECONNAISSANCE <look> · SABOTAGE · SPY <cards>
-version | cards-neutral-2
+#                   RECONNAISSANCE <look> · SPY <cards>
+version | cards-neutral-3
 regions | Hungary;Poland;Bohemia;Austria;Styria;Croatia;Transylvania
 
 # Hungary
@@ -63,14 +60,6 @@ unit | tr-bowmen | Transylvania Bowmen | 3 | Transylvania | Bowmen
 unit | tr-riders | Transylvania Riders | 4 | Transylvania | Riders
 unit | tr-knight | Transylvania Knights | 5 | Transylvania | Knights
 
-# Landmarks: neutral, chosen two of five at match start, outside the draw deck.
-landmark | embassy | Embassy | SHARED_TAG_BONUS REGION 3
-landmark | guild-hall | Guild Hall | SHARED_TAG_BONUS CLASS 3
-landmark | armory | Armory | WEAK_UNIT_BONUS 3 1
-landmark | ruined-keep | Ruined Keep | EMPTY_SPACE_BONUS 2
-landmark | archive | Archive | FIRST_SPELL_DRAW 1
-landmark | watchtower | Watchtower | DECK_TOP_VIEW
-
 # Spells: neutral, one copy each in every deck.
 spell | disable-tags | Disable Tags | DISABLE OPPONENT TAGS
 spell | disable-points | Disable Points | DISABLE OPPONENT POINTS
@@ -80,6 +69,5 @@ spell | random-steal | Random Steal | RANDOM_STEAL 1
 spell | draw-two | Draw Two | DRAW 2
 spell | exchange | Exchange | EXCHANGE 1 2
 spell | reconnaissance | Reconnaissance | RECONNAISSANCE 3
-spell | sabotage | Sabotage | SABOTAGE
 spell | spy | Spy | SPY 3
 spell | clear-disable | Clear Disable | CLEAR_DISABLE

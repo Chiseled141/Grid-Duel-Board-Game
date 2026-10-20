@@ -5,7 +5,6 @@ import deckduel.core.card.CardKind;
 import deckduel.core.card.Catalog;
 import deckduel.core.card.Effect;
 import deckduel.core.card.Suppression;
-import deckduel.core.card.TagType;
 import deckduel.core.card.TargetSide;
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -16,7 +15,6 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Locale;
 
 /**
  * Parses the pipe-separated card configuration into an immutable {@link Catalog}. It runs once
@@ -56,8 +54,7 @@ public final class CatalogLoader {
                     case "regions" -> regions = list(field(fields, 1));
                     case "unit" -> cards.add(new CardDef(field(fields, 1), field(fields, 2), CardKind.UNIT,
                             Integer.parseInt(field(fields, 3)), list(field(fields, 4)), list(field(fields, 5)), null));
-                    case "landmark", "spell" -> cards.add(new CardDef(field(fields, 1), field(fields, 2),
-                            CardKind.valueOf(fields.get(0).toUpperCase(Locale.ROOT)), 0,
+                    case "spell" -> cards.add(new CardDef(field(fields, 1), field(fields, 2), CardKind.SPELL, 0,
                             List.of(), List.of(), effect(field(fields, 3))));
                     default -> throw new IllegalArgumentException("Unknown entry " + fields.get(0));
                 }
@@ -71,11 +68,6 @@ public final class CatalogLoader {
     private static Effect effect(String text) {
         String[] word = text.split("\\s+");
         return switch (word[0]) {
-            case "SHARED_TAG_BONUS" -> new Effect.SharedTagBonus(TagType.valueOf(word[1]), number(word, 2));
-            case "WEAK_UNIT_BONUS" -> new Effect.WeakUnitBonus(number(word, 1), number(word, 2));
-            case "EMPTY_SPACE_BONUS" -> new Effect.EmptySpaceBonus(number(word, 1));
-            case "FIRST_SPELL_DRAW" -> new Effect.FirstSpellDraw(number(word, 1));
-            case "DECK_TOP_VIEW" -> new Effect.DeckTopView();
             case "DISABLE" -> new Effect.Disable(TargetSide.valueOf(word[1]), Suppression.valueOf(word[2]));
             case "DESTROY" -> new Effect.Destroy(TargetSide.valueOf(word[1]));
             case "CLEAR_DISABLE" -> new Effect.ClearDisable();
@@ -84,7 +76,6 @@ public final class CatalogLoader {
             case "DRAW" -> new Effect.Draw(number(word, 1));
             case "EXCHANGE" -> new Effect.Exchange(number(word, 1), number(word, 2));
             case "RECONNAISSANCE" -> new Effect.Reconnaissance(number(word, 1));
-            case "SABOTAGE" -> new Effect.Sabotage();
             case "SPY" -> new Effect.Spy(number(word, 1));
             default -> throw new IllegalArgumentException("Unknown effect " + word[0]);
         };

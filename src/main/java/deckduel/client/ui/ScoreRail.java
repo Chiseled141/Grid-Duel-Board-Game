@@ -31,9 +31,12 @@ public final class ScoreRail extends Region {
     private static final long COUNT_NANOS = 800_000_000L, PULSE_NANOS = 1_100_000_000L, HIT_NANOS = 320_000_000L;
     static final String WAITING = "Waiting for match scores";
 
-    /** Presentation-only scores and round counters supplied by the server's view. */
+    /**
+     * Presentation-only scores and round counters supplied by the server's view; {@code formation}
+     * names your row's formation with its bonus and multiplier, or is null without one.
+     */
     public record Display(long score, long opponentScore, long unitPoints, long comboPoints,
-                   long matchTotal, int playsRemaining, int round) {
+                   long matchTotal, int playsRemaining, int round, String formation) {
         /** Rejects invalid counters before replacing the displayed snapshot. */
         public Display {
             if (playsRemaining < 0 || playsRemaining > 10 || round < 1 || round > 3)
@@ -41,8 +44,8 @@ public final class ScoreRail extends Region {
         }
     }
 
-    /** Where a scoring chip from the table lands. */
-    public enum Pocket { UNITS, COMBOS, OPPONENT }
+    /** Where a scoring chip from the table lands; a formation chip lands on the formation line. */
+    public enum Pocket { UNITS, COMBOS, FORMATION, OPPONENT }
 
     /** A chip worth {@code points} landing in {@code pocket} {@code atMillis} after the update. */
     public record Tally(int atMillis, Pocket pocket, long points) { }
@@ -100,6 +103,7 @@ public final class ScoreRail extends Region {
         String description = "Round " + next.round() + " of 3. Your score " + next.score()
                 + ". Opponent " + next.opponentScore() + ". Unit points " + next.unitPoints()
                 + ", combo points " + next.comboPoints()
+                + (next.formation() == null ? "" : ". Formation " + next.formation())
                 + ". Plays remaining " + next.playsRemaining() + ". Match total " + next.matchTotal();
         setAccessibleText(description);
         draw();
@@ -131,6 +135,7 @@ public final class ScoreRail extends Region {
         Point2D at = switch (pocket) {
             case UNITS -> new Point2D(63.5, 350);
             case COMBOS -> new Point2D(188.5, 350);
+            case FORMATION -> new Point2D(126, 276);
             case OPPONENT -> new Point2D(126, 96);
         };
         return new Point2D((getWidth() - 260 * scale) / 2 + at.getX() * scale, at.getY() * scale);
@@ -147,6 +152,7 @@ public final class ScoreRail extends Region {
         return switch (pocket) {
             case UNITS -> display.unitPoints();
             case COMBOS -> display.comboPoints();
+            case FORMATION -> 0;
             case OPPONENT -> display.opponentScore();
         };
     }
@@ -155,6 +161,7 @@ public final class ScoreRail extends Region {
         return switch (pocket) {
             case UNITS -> fromUnits;
             case COMBOS -> fromCombos;
+            case FORMATION -> 0;
             case OPPONENT -> fromOpponent;
         };
     }
@@ -254,7 +261,11 @@ public final class ScoreRail extends Region {
         well(g, 14, 135, 224, 116, WELL, 0);
         label(g, "YOUR ROUND SCORE", 23, 158, 206, 12, BRASS);
         drawScore(g, now, since);
-        label(g, "SCORE BREAKDOWN", 14, 280, 224, 12, FxKit.CREAM);
+        // Balatro-style: the row's formation, with its bonus and multiplier, heads the breakdown.
+        String formation = display == null ? null : display.formation();
+        double formationHit = display == null ? 0 : hit(Pocket.FORMATION, now);
+        if (formation == null) label(g, "SCORE BREAKDOWN", 14, 280, 224, 12, FxKit.CREAM);
+        else label(g, formation, 14, 281, 224, 14 * (1 + .3 * formationHit), FxKit.AMBER);
         double unitsHit = display == null ? 0 : hit(Pocket.UNITS, now), combosHit = display == null ? 0 : hit(Pocket.COMBOS, now);
         well(g, 14, 293, 99, 88, BLUE, unitsHit);
         well(g, 139, 293, 99, 88, RED, combosHit);

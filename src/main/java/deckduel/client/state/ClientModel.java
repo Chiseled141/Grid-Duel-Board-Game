@@ -92,10 +92,10 @@ public final class ClientModel {
         connection.send(new HistoryRequest());
     }
 
-    /** Sends one move (Landmark choice, card play, manual draw, keep or skip) against the revision currently shown. */
+    /** Sends one move (card play, manual draw, keep or skip) against the revision currently shown. */
     public void move(Move move) {
         if (match == null || reconnecting || awaitingAnswer) return;
-        if (!match.view().choosingLandmarks() && !match.view().yourTurn()) return;
+        if (!match.view().yourTurn()) return;
         awaitingAnswer = true;
         connection.send(new MoveRequest(nextRequestId++, match.view().revision(), move));
     }

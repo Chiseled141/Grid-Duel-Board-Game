@@ -21,9 +21,9 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * The real client against a real server with production settings, in the player's 1470×923 window:
- * a practice match's Landmarks are chosen on the JavaFX table and round one is dealt.
+ * a practice match opens already dealt and a Unit placed on the JavaFX table reaches the row.
  */
-class LandmarkChoiceSystemTest {
+class PracticeMatchSystemTest {
     @TempDir Path temporary;
 
     private static void waitFor(BooleanSupplier condition, String what) throws Exception {
@@ -40,7 +40,7 @@ class LandmarkChoiceSystemTest {
         table.releaseAt(point);
     }
 
-    @Test void clickingTwoOffersThenKeepStartsThePracticeMatch() throws Exception {
+    @Test void aPracticeMatchOpensDealtAndAPlacedUnitReachesTheRow() throws Exception {
         try (var database = new Database(temporary.resolve("choice.db"))) {
             var server = new GameServer(ServerConfig.defaults(0), new SqliteUserDao(database));
             int port = server.start();
@@ -62,17 +62,19 @@ class LandmarkChoiceSystemTest {
                 waitFor(() -> model[0].me() != null, "signed in");
                 SwingUtilities.invokeAndWait(() -> model[0].startPractice(false));
                 waitFor(() -> model[0].match() != null, "the practice match arrived");
+                assertEquals(MatchPhase.IN_PROGRESS, model[0].match().view().phase(), "no setup step before round one");
                 waitFor(() -> { try { return FxTesting.call(screens[0]::stageShowing); } catch (Exception e) { return false; } }, "the table shows");
+                waitFor(() -> model[0].match().view().yourTurn(), "the player's turn");
                 Thread.sleep(500);
                 FxTesting.run(() -> {
                     CardTableView table = screens[0].table();
-                    click(table, table.offerBounds(0, 5));
-                    click(table, table.offerBounds(1, 5));
-                    click(table, table.confirmBounds());
+                    var hand = model[0].match().view().hand();
+                    int unit = 0;
+                    while (!hand.get(unit).def().occupiesSpace()) unit++;
+                    click(table, table.handBounds(unit));
+                    click(table, table.slotBounds(TableZone.OWN, 3));
                 });
-                waitFor(() -> model[0].match().view().phase() == MatchPhase.IN_PROGRESS, "both Landmarks were kept and round one dealt");
-                assertEquals(2, model[0].match().view().you().landmarks().size());
-                assertEquals(10, model[0].match().view().hand().size());
+                waitFor(() -> model[0].match().view().you().row().at(3) != null, "the server placed the Unit");
             } finally {
                 SwingUtilities.invokeAndWait(() -> { if (screens[0] != null) screens[0].dispose(); if (frame[0] != null) frame[0].dispose(); });
                 if (client[0] != null) client[0].close();

@@ -79,7 +79,7 @@ public final class Main {
     private static GameServer newServer(Database database, ServerConfig config) {
         var users = new SqliteUserDao(database);
         Catalog catalog = CatalogLoader.loadBundled();
-        LOG.info("Card catalog " + catalog.version() + " (Landmark numbers are provisional)");
+        LOG.info("Card catalog " + catalog.version());
         var persistence = new MatchPersistence(database, new SqliteMatchDao(database, users));
         return new GameServer(config, users, catalog, persistence, persistence);
     }

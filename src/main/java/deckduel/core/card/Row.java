@@ -51,9 +51,6 @@ public record Row(List<RowCard> cards) implements Serializable {
         return new Row(next);
     }
 
-    /** Spaces still empty. */
-    public int emptySpaces() { return SIZE - cards.size(); }
-
     /** Replaces one card with an updated copy of itself. */
     public Row update(RowCard updated) {
         List<RowCard> next = new ArrayList<>(cards);

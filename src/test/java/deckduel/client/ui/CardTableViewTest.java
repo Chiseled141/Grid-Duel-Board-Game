@@ -50,19 +50,11 @@ class CardTableViewTest {
     }
 
     private static MatchState state() {
-        return chosen(MatchState.start(DECK, DECK, CATALOG.landmarks(), 3));
+        return MatchState.start(DECK, DECK, 3);
     }
 
     private static final deckduel.core.card.Catalog CATALOG = CatalogLoader.loadBundled();
     private static final List<deckduel.core.card.CardDef> DECK = DeckRules.deck(CATALOG);
-
-    /** Both players keep their first two Landmark offers, so round one is dealt. */
-    private static MatchState chosen(MatchState state) {
-        for (Seat seat : Seat.values())
-            state = state.apply(seat, new deckduel.core.card.PickLandmarks(
-                    state.view(seat).offers().stream().limit(2).map(deckduel.core.card.CardInstance::id).toList()));
-        return state;
-    }
 
     private static CardTableView.State shown(PlayerView view, boolean reducedMotion) {
         return new CardTableView.State(new MatchUpdate("M1", 1, "alice", "bob", false, true, false, false, false, view),
@@ -102,6 +94,27 @@ class CardTableViewTest {
             assertEquals(List.of(PlayCard.place(view.hand().get(unit).id(), 2)), t.actions.calls);
             assertTrue(view.you().row().cards().isEmpty(), "nothing is applied locally");
             assertTrue(t.view.rail().description().contains("Round 1 of 3"));
+        });
+    }
+
+    @Test void restingOnARowCardQueuesALargePreviewThatAClickDismisses() throws Exception {
+        PlayerView view = rowView();
+        int slot = 0;
+        while (view.you().row().at(slot) == null) slot++;
+        int unit = slot, empty = view.you().row().at(deckduel.core.card.Row.SIZE - 1) == null ? deckduel.core.card.Row.SIZE - 1 : 0;
+        FxTesting.run(() -> {
+            var t = table(new ClientSettings(), true);
+            t.view.show(shown(view, true));
+            Rectangle card = t.view.rowCardBounds(TableZone.OWN, unit);
+            t.view.moveTo(centre(card));
+            assertEquals(new CardTableView.Hit(TableZone.OWN, unit), t.view.previewTarget());
+            t.view.moveTo(centre(t.view.handBounds(0)));
+            assertNull(t.view.previewTarget(), "hand cards are already large");
+            t.view.moveTo(centre(t.view.slotBounds(TableZone.OWN, empty)));
+            assertNull(t.view.previewTarget(), "an empty space has nothing to preview");
+            t.view.moveTo(centre(card));
+            t.view.pressAt(centre(card));
+            assertNull(t.view.previewTarget(), "picking the card up dismisses its preview");
         });
     }
 
@@ -257,38 +270,6 @@ class CardTableViewTest {
         return state.view(Seat.FIRST);
     }
 
-    @Test void twoLandmarkOffersAreTickedThenKeptAndNothingElseIsClickable() throws Exception {
-        FxTesting.run(() -> {
-            var t = table(new ClientSettings(), true);
-            PlayerView view = MatchState.start(DECK, DECK, CATALOG.landmarks(), 3).view(Seat.FIRST);
-            t.view.show(shown(view, true));
-            t.view.releaseAt(centre(t.view.confirmBounds()));
-            assertTrue(t.actions.calls.isEmpty(), "nothing is sent before two are ticked");
-            // A third tick is refused while two are ticked; unticking one frees a place.
-            for (int i : new int[]{0, 1, 2, 1, 2}) click(t.view, t.view.offerBounds(i, 5));
-            t.view.releaseAt(centre(t.view.confirmBounds()));
-            var expected = new deckduel.core.card.PickLandmarks(List.of(view.offers().get(0).id(), view.offers().get(2).id()));
-            assertEquals(List.of(expected), t.actions.calls, "the first and third offers are kept");
-            var drawButton = t.view.drawBounds();
-            assertNull(t.view.hitAt(centre(drawButton)), "the table underneath ignores clicks");
-        });
-    }
-
-    @Test void aLandmarkChoiceArrivingBeforeLayoutDrawsNothingThenWorksByKeyboard() throws Exception {
-        FxTesting.run(() -> {
-            var t = table(new ClientSettings(), false);
-            PlayerView view = MatchState.start(DECK, DECK, CATALOG.landmarks(), 3).view(Seat.FIRST);
-            t.view.show(shown(view, true));
-            size(t.view);
-            t.view.shown(0);
-            t.view.keyPressed(key(javafx.scene.input.KeyCode.DIGIT2));
-            t.view.keyPressed(key(javafx.scene.input.KeyCode.DIGIT4));
-            t.view.keyPressed(key(javafx.scene.input.KeyCode.ENTER));
-            assertEquals(List.of(new deckduel.core.card.PickLandmarks(List.of(view.offers().get(1).id(), view.offers().get(3).id()))),
-                    t.actions.calls);
-        });
-    }
-
     @Test void skipButtonAndShortcutSendOnlyLegalServerMoves() throws Exception {
         FxTesting.run(() -> {
             var t = table(new ClientSettings(), true);
@@ -306,15 +287,13 @@ class CardTableViewTest {
             t.view.show(new CardTableView.State(shown(before, true).match(), true, true));
             click(t.view, t.view.skipBounds());
             t.view.keyPressed(key(javafx.scene.input.KeyCode.S));
-            t.view.show(shown(MatchState.start(DECK, DECK, CATALOG.landmarks(), 3).view(Seat.FIRST), true));
-            t.view.keyPressed(key(javafx.scene.input.KeyCode.S));
             t.view.show(shown(state.forfeit(state.turn()).view(state.turn()), true));
             t.view.keyPressed(key(javafx.scene.input.KeyCode.S));
-            assertEquals(2, t.actions.calls.size(), "no skips when waiting, reconnecting, choosing or finished");
+            assertEquals(2, t.actions.calls.size(), "no skips when waiting, reconnecting or finished");
         });
     }
 
-    @Test void landmarkShelvesStaySeparateFromTheLargerRowsAndHandAtBothWindowSizes() throws Exception {
+    @Test void bothRowsAndTheLargerHandFitTheWindowAtBothSizes() throws Exception {
         FxTesting.run(() -> {
             var t = table(new ClientSettings(), true);
             MatchState state = state();
@@ -324,22 +303,10 @@ class CardTableViewTest {
                 t.view.resize(size[0], size[1]);
                 t.view.layout();
                 Rectangle viewport = new Rectangle(0, 0, size[0], size[1]);
-                List<Rectangle> tiles = new ArrayList<>();
-                for (TableZone zone : List.of(TableZone.OWN_LANDMARK, TableZone.OPPONENT_LANDMARK)) {
-                    for (int i = 0; i < 2; i++) {
-                        Rectangle tile = t.view.landmarkBounds(zone, i);
-                        assertTrue(viewport.contains(tile), "Landmarks fit inside the window");
-                        assertEquals(new CardTableView.Hit(zone, i), t.view.hitAt(centre(tile)),
-                                "each relocated Landmark keeps its own target");
-                        for (Rectangle earlier : tiles) assertFalse(tile.intersects(earlier));
-                        tiles.add(tile);
-                    }
-                }
                 for (TableZone zone : List.of(TableZone.OWN, TableZone.OPPONENT)) {
                     for (int slot = 0; slot < 7; slot++) {
                         Rectangle card = t.view.slotBounds(zone, slot);
                         assertTrue(viewport.contains(card));
-                        for (Rectangle tile : tiles) assertFalse(tile.intersects(card), "Landmarks use no Unit space");
                         for (int hand = 0; hand < view.hand().size(); hand++)
                             assertFalse(card.intersects(t.view.handSlot(hand, view.hand().size())),
                                     "larger rows leave room for the enlarged hand");
@@ -362,18 +329,25 @@ class CardTableViewTest {
         });
     }
 
-    @Test void reconnaissanceCardsAreKeptByClickingOne() throws Exception {
-        MatchState state = state();
-        Seat seat = state.turn();
-        while (state.view(seat).looking().isEmpty()) {
-            PlayerView view = state.view(state.turn());
-            var recon = view.hand().stream().filter(c -> c.def().effect() instanceof deckduel.core.card.Effect.Reconnaissance).findFirst();
-            if (view.seat() == seat && recon.isPresent() && view.yourTurn()) state = state.apply(seat, PlayCard.cast(recon.get().id(), null));
-            else if (view.seat() == seat && view.canDraw()) state = state.apply(seat, new deckduel.core.card.DrawCard());
-            else state = state.apply(state.turn(), GreedyBot.choose(view));
-            if (state.round() > 1) fail("no Reconnaissance reached the hand in round one");
+    /** A round-one view in which the starting player is choosing which Reconnaissance card to keep. */
+    private static PlayerView reconnoitring() {
+        for (long seed = 1; seed < 100; seed++) {
+            MatchState state = MatchState.start(DECK, DECK, seed);
+            Seat seat = state.turn();
+            while (state.round() == 1 && state.view(seat).looking().isEmpty()) {
+                PlayerView view = state.view(state.turn());
+                var recon = view.hand().stream().filter(c -> c.def().effect() instanceof deckduel.core.card.Effect.Reconnaissance).findFirst();
+                if (view.seat() == seat && recon.isPresent() && view.yourTurn()) state = state.apply(seat, PlayCard.cast(recon.get().id(), null));
+                else if (view.seat() == seat && view.canDraw()) state = state.apply(seat, new deckduel.core.card.DrawCard());
+                else state = state.apply(state.turn(), GreedyBot.choose(view));
+            }
+            if (state.round() == 1) return state.view(seat);
         }
-        PlayerView looking = state.view(seat);
+        throw new AssertionError("no Reconnaissance reached the hand in round one");
+    }
+
+    @Test void reconnaissanceCardsAreKeptByClickingOne() throws Exception {
+        PlayerView looking = reconnoitring();
         FxTesting.run(() -> {
             var t = table(new ClientSettings(), true);
             t.view.show(shown(looking, true));
@@ -387,7 +361,7 @@ class CardTableViewTest {
     @Test void spiedCardsCanBeEnlargedAndDisappearFromTheInspectorWhenTheyLeaveTheEnemyHand() throws Exception {
         MatchState spied = null;
         for (long seed = 1; seed <= 100 && spied == null; seed++) {
-            MatchState candidate = chosen(MatchState.start(DECK, DECK, CATALOG.landmarks(), seed));
+            MatchState candidate = MatchState.start(DECK, DECK, seed);
             var spy = candidate.view(Seat.FIRST).hand().stream()
                     .filter(c -> c.def().effect() instanceof deckduel.core.card.Effect.Spy).findFirst();
             if (spy.isEmpty()) continue;
@@ -414,92 +388,6 @@ class CardTableViewTest {
             assertEquals("", details.getAccessibleText(), "closed inspector clears the old private description");
             click(t.view, new Rectangle(1030, 22, 20, 30));
             assertFalse(details.isVisible(), "unrevealed card backs do not open details");
-        });
-    }
-
-    @Test void clickingALandmarkOpensReadOnlyBuffDetailsAndClosingKeepsThemClosed() throws Exception {
-        FxTesting.run(() -> {
-            var t = table(new ClientSettings(), true);
-            MatchState state = state();
-            PlayerView view = state.view(state.turn().other());
-            t.view.show(shown(view, true));
-            click(t.view, t.view.landmarkBounds(TableZone.OWN_LANDMARK, 0));
-            var details = (CardDetails) t.view.lookup("#cardDetails");
-            assertTrue(details.isVisible(), "inspect even on the opponent's turn");
-            assertEquals(view.you().landmarks().get(0).def().name(),
-                    ((javafx.scene.control.Label) details.lookup("#cardDetailName")).getText());
-            assertEquals(view.you().landmarks().get(0).def().text(),
-                    ((javafx.scene.control.Label) details.lookup("#cardDetailBuff")).getText());
-            t.view.keyPressed(key(javafx.scene.input.KeyCode.S));
-            t.view.keyPressed(key(javafx.scene.input.KeyCode.D));
-            click(t.view, t.view.handBounds(0));
-            assertTrue(t.actions.calls.isEmpty(), "viewing a buff never sends a move");
-            ((javafx.scene.control.Button) details.lookup("#closeCardDetails")).fire();
-            assertFalse(details.isVisible());
-            t.view.show(shown(view, true));
-            assertFalse(details.isVisible(), "an update must not reopen a closed inspector");
-            t.view.keyPressed(key(javafx.scene.input.KeyCode.L));
-            assertTrue(details.isVisible(), "L opens Landmark details by keyboard");
-            t.view.keyPressed(key(javafx.scene.input.KeyCode.ESCAPE));
-            assertFalse(details.isVisible());
-            assertFalse(t.view.confirmShowing(), "Escape closes details without opening the leave dialog");
-        });
-    }
-
-    @Test void anOpenInspectorRefreshesWhenTheServerSabotagesTheLandmark() throws Exception {
-        MatchState found = null;
-        for (long seed = 1; seed <= 100 && found == null; seed++) {
-            MatchState candidate = chosen(MatchState.start(DECK, DECK, CATALOG.landmarks(), seed));
-            if (candidate.view(Seat.SECOND).hand().stream().anyMatch(c -> c.def().effect() instanceof deckduel.core.card.Effect.Sabotage))
-                found = candidate;
-        }
-        assertNotNull(found);
-        MatchState before = found;
-        if (found.turn() == Seat.FIRST) found = found.apply(Seat.FIRST, new deckduel.core.card.SkipTurn());
-        long spell = found.view(Seat.SECOND).hand().stream()
-                .filter(c -> c.def().effect() instanceof deckduel.core.card.Effect.Sabotage).findFirst().orElseThrow().id();
-        MatchState after = found.apply(Seat.SECOND, PlayCard.cast(spell, found.view(Seat.FIRST).you().landmarks().get(0).card().id()));
-        FxTesting.run(() -> {
-            var t = table(new ClientSettings(), true);
-            t.view.show(shown(before.view(Seat.FIRST), true));
-            click(t.view, t.view.landmarkBounds(TableZone.OWN_LANDMARK, 0));
-            var details = (CardDetails) t.view.lookup("#cardDetails");
-            t.view.show(shown(after.view(Seat.FIRST), true));
-            assertTrue(details.isVisible());
-            assertTrue(((javafx.scene.control.Label) details.lookup("#cardDetailStatus")).getText().contains("SABOTAGED"));
-            t.view.show(new CardTableView.State(null, false, true));
-            assertFalse(details.isVisible(), "clearing a match also clears its inspector");
-        });
-    }
-
-    @Test void sabotageTargetsAnEnemyLandmarkInItsArea() throws Exception {
-        MatchState state = state();
-        Seat seat = state.turn();
-        for (int guard = 0; guard < 40; guard++) {
-            PlayerView view = state.view(seat);
-            if (view.yourTurn() && view.hand().stream().anyMatch(c -> c.def().effect() instanceof deckduel.core.card.Effect.Sabotage)) break;
-            Seat turn = state.turn();
-            state = view.yourTurn() && view.canDraw() ? state.apply(seat, new deckduel.core.card.DrawCard())
-                    : state.apply(turn, GreedyBot.choose(state.view(turn)));
-        }
-        PlayerView view = state.view(seat);
-        var sabotage = view.hand().stream().filter(c -> c.def().effect() instanceof deckduel.core.card.Effect.Sabotage).findFirst();
-        org.junit.jupiter.api.Assumptions.assumeTrue(sabotage.isPresent() && view.yourTurn(), "seeded game reaches Sabotage");
-        FxTesting.run(() -> {
-            var t = table(new ClientSettings(), true);
-            t.view.show(shown(view, true));
-            int index = 0;
-            while (view.hand().get(index).id() != sabotage.get().id()) index++;
-            click(t.view, t.view.handBounds(index));
-            Rectangle target = t.view.landmarkBounds(TableZone.OPPONENT_LANDMARK, 1);
-            Point2D info = new Point2D(target.getMaxX() - 14, target.getCenterY());
-            t.view.pressAt(info);
-            t.view.releaseAt(info);
-            assertTrue(t.actions.calls.isEmpty(), "the info icon inspects instead of casting");
-            assertTrue(t.view.lookup("#cardDetails").isVisible());
-            t.view.keyPressed(key(javafx.scene.input.KeyCode.ESCAPE));
-            click(t.view, target);
-            assertEquals(List.of(PlayCard.cast(sabotage.get().id(), view.opponent().landmarks().get(1).card().id())), t.actions.calls);
         });
     }
 

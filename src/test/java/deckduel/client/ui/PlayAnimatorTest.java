@@ -25,9 +25,6 @@ class PlayAnimatorTest {
             while (hand.get(index).id() != cardId) index++;
             return new Rectangle(250 + index * 110, 550, 100, 150);
         }
-        public Rectangle landmark(TableZone zone, int index) {
-            return new Rectangle(1030 + index * 110, zone == TableZone.OWN_LANDMARK ? 330 : 90, 100, 150);
-        }
         public Rectangle pile(TableZone zone) { return new Rectangle(1150, zone == TableZone.OWN ? 334 : 94, 54, 81); }
         public Rectangle stage() { return new Rectangle(640, 220, 125, 188); }
         public Rectangle opponentHand() { return new Rectangle(1040, 20, 22, 33); }
@@ -49,7 +46,7 @@ class PlayAnimatorTest {
         var catalog = CatalogLoader.loadBundled();
         var deck = DeckRules.deck(catalog);
         for (long seed = 1; seed < 300; seed++) {
-            MatchState state = MatchState.start(deck, deck, catalog.landmarks(), seed);
+            MatchState state = MatchState.start(deck, deck, seed);
             while (state.phase() != MatchPhase.FINISHED) {
                 MatchState before = state;
                 Seat seat = state.awaits(Seat.FIRST) ? Seat.FIRST : Seat.SECOND;
@@ -105,27 +102,28 @@ class PlayAnimatorTest {
         int hit = PlayAnimator.RISE + PlayAnimator.CHARGE + PlayAnimator.BOLT;
         assertTrue(plan.scoringDelay() > hit, "the score changes only after the impact and a short hit-stop");
         assertTrue(plan.staging().steps().stream().anyMatch(s -> s.effect() instanceof Staging.Shatter && s.at() == hit));
-        assertTrue(plan.staging().shakeAmplitude(hit + 1) > 0, "the blow shakes the table");
         assertTrue(performThrough(plan.staging()).stream().anyMatch(cue -> cue.kind() == ScoringSounds.Cue.Kind.IMPACT));
     }
 
-    @Test void sabotageStrikesTheEnemyLandmarkWithAHammerAndCracksItWithoutDestroyingIt() throws Exception {
+    @Test void aNewFormationIsAnnouncedWithItsBonusAndMultiplierAndFlungOntoTheRail() throws Exception {
         MatchState[] step = find((before, after) -> after.round() == before.round()
-                && after.view(Seat.FIRST).lastPlay().card().def().effect() instanceof deckduel.core.card.Effect.Sabotage
-                && after.view(Seat.FIRST).lastPlay().targetId() != null);
-        var plan = PlayAnimator.play(step[0].view(Seat.FIRST), step[1].view(Seat.FIRST), "bob", LAYOUT);
-        var steps = plan.staging().steps();
-        int strike = PlayAnimator.RISE + PlayAnimator.CHARGE + PlayAnimator.SWING;
-        assertTrue(steps.stream().anyMatch(s -> s.effect() instanceof Staging.Hammer h && s.at() + h.strike() == strike),
-                "a hammer swings in and strikes");
-        assertTrue(steps.stream().anyMatch(s -> s.effect() instanceof Staging.Cracks && s.at() == strike), "it cracks where it was struck");
-        assertTrue(steps.stream().noneMatch(s -> s.effect() instanceof Staging.Shatter), "Landmarks are never destroyed");
-        long target = step[1].view(Seat.FIRST).lastPlay().targetId();
-        assertTrue(plan.staging().hiddenOnRow(target, strike), "the struck Landmark is drawn by the effect until the cracks finish");
-        assertFalse(plan.staging().hiddenOnRow(target, strike + PlayAnimator.CRACK), "then it shows, shaded as sabotaged");
-        assertTrue(plan.scoringDelay() > strike, "the score changes after the blow");
-        long impacts = performThrough(plan.staging()).stream().filter(cue -> cue.kind() == ScoringSounds.Cue.Kind.IMPACT).count();
-        assertEquals(1, impacts);
+                && after.view(Seat.FIRST).lastPlay().actor() == Seat.FIRST
+                && after.view(Seat.FIRST).you().score().formation() != null
+                && after.view(Seat.FIRST).you().score().formation() != before.view(Seat.FIRST).you().score().formation());
+        var before = step[0].view(Seat.FIRST);
+        var after = step[1].view(Seat.FIRST);
+        var formation = after.you().score().formation();
+        ScoringTrace trace = ScoringTrace.between(before, after);
+        assertTrue(trace.formationChanged.contains(TableZone.OWN));
+        Staging staging = new Staging();
+        List<ScoreRail.Tally> tallies = PlayAnimator.combos(staging, trace, 0, LAYOUT);
+        String value = "+" + formation.bonus() + "  ×" + formation.multiplier();
+        assertTrue(staging.steps().stream().anyMatch(s -> s.effect() instanceof Staging.Banner b
+                && b.title().equals(formation.title()) && b.subtitle().equals(value)), "the formation is called out by name");
+        assertTrue(staging.steps().stream().anyMatch(s -> s.effect() instanceof Staging.Chip c && c.text().equals(value)));
+        assertTrue(tallies.stream().anyMatch(t -> t.pocket() == ScoreRail.Pocket.FORMATION), "its chip lands on the rail's formation line");
+        assertTrue(tallies.stream().allMatch(t -> t.atMillis() < trace.finishAt), "the score settles after it lands");
+        assertTrue(performThrough(staging).stream().anyMatch(cue -> cue.kind() == ScoringSounds.Cue.Kind.CHIME));
     }
 
     /** A Spell's own effect, the step no other Spell stages. */
@@ -137,7 +135,6 @@ class PlayAnimatorTest {
                 new Signature("disable-points", play -> play.targetId() != null, Staging.Lash.class),
                 new Signature("disable-tags", play -> play.targetId() != null, Staging.Sigil.class),
                 new Signature("clear-disable", play -> play.targetId() != null, Staging.Beam.class),
-                new Signature("sabotage", play -> play.targetId() != null, Staging.Hammer.class),
                 new Signature("random-discard", play -> play.handCard() != null, Staging.Burn.class),
                 new Signature("random-steal", play -> play.handCard() != null, Staging.Tether.class),
                 new Signature("draw-two", play -> true, Staging.Wellspring.class),

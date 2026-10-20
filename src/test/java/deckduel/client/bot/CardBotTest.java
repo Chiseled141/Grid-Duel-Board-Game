@@ -32,7 +32,6 @@ class CardBotTest {
                     assertEquals(MatchPhase.FINISHED, mine.phase());
                     assertEquals(3, mine.rounds().size());
                     assertEquals(mine.you().matchTotal(), theirs.opponent().matchTotal());
-                    assertEquals(2, mine.you().landmarks().size(), "each bot chose two Landmarks through the protocol");
                 }
             } finally {
                 server.stop();

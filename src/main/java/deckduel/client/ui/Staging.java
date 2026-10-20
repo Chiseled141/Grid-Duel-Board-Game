@@ -14,7 +14,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * One planned table sequence: timed effects, sounds and camera shakes, written at base speed in
+ * One planned table sequence: timed effects and sounds, written at base speed in
  * animation milliseconds. It is plain data, so the plan can be checked without a screen; the
  * JavaFX {@link TableEffects} performs it over the authoritative view, which is already final.
  */
@@ -86,14 +86,6 @@ final class Staging {
     record Tear(CardDef card, List<Suppression> marks, Rectangle at, long seed) implements Effect {
         Tear { marks = List.copyOf(marks); at = new Rectangle(at); }
     }
-    /** A war hammer that winds up over a card and strikes it {@code strike} milliseconds into the step. */
-    record Hammer(Rectangle at, int strike) implements Effect {
-        Hammer { at = new Rectangle(at); }
-    }
-    /** Cracks spreading across a struck card before it breaks. */
-    record Cracks(CardDef card, List<Suppression> marks, Rectangle at, long seed) implements Effect {
-        Cracks { marks = List.copyOf(marks); at = new Rectangle(at); }
-    }
     /** A disable taking hold of a card. */
     record Chains(CardDef card, List<Suppression> marks, Rectangle at) implements Effect {
         Chains { marks = List.copyOf(marks); at = new Rectangle(at); }
@@ -139,7 +131,7 @@ final class Staging {
     }
     /** An eye that opens over a hand, looks it over and closes (Spy). */
     record Eye(double x, double y, double width) implements Effect { }
-    /** Light sweeping across a card, as a Landmark wakes. */
+    /** Light sweeping across a card as its disables are cleared. */
     record Shine(Rectangle at) implements Effect {
         Shine { at = new Rectangle(at); }
     }
@@ -163,11 +155,9 @@ final class Staging {
     }
     /** A sound due {@code at}; {@code step} raises the pitch of rising cues such as a chip tally. */
     record Beat(int at, Kind kind, int step) { }
-    record Shake(int at, int duration, double amplitude) { }
 
     private final List<Step> steps = new ArrayList<>();
     private final List<Beat> beats = new ArrayList<>();
-    private final List<Shake> shakes = new ArrayList<>();
     private final Map<Long, Integer> hiddenOnRow = new HashMap<>(), hiddenInHand = new HashMap<>();
     private final Set<CardDef> cards = new LinkedHashSet<>();
 
@@ -176,7 +166,6 @@ final class Staging {
     void uses(CardDef card) { if (card != null) cards.add(card); }
     void sound(int at, Kind kind) { sound(at, kind, 0); }
     void sound(int at, Kind kind, int step) { beats.add(new Beat(at, kind, step)); }
-    void shake(int at, int duration, double amplitude) { shakes.add(new Shake(at, duration, amplitude)); }
     /** Keeps a row card out of the normal drawing until its animation has put it there. */
     void hideOnRow(long cardId, int until) { hiddenOnRow.merge(cardId, until, Math::max); }
     /** Keeps a hand card out of the normal drawing until it has been dealt in. */
@@ -194,21 +183,11 @@ final class Staging {
     boolean hiddenOnRow(long cardId, double elapsed) { return elapsed < hiddenOnRow.getOrDefault(cardId, -1); }
     boolean hiddenInHand(long cardId, double elapsed) { return elapsed < hiddenInHand.getOrDefault(cardId, -1); }
 
-    /** When the last effect, sound or shake has finished, in animation milliseconds. */
+    /** When the last effect or sound has finished, in animation milliseconds. */
     int length() {
         int end = 0;
         for (Step step : steps) end = Math.max(end, step.end());
         for (Beat beat : beats) end = Math.max(end, beat.at());
-        for (Shake shake : shakes) end = Math.max(end, shake.at() + shake.duration());
         return end;
-    }
-
-    /** The strongest shake still decaying at {@code elapsed}, in pixels. */
-    double shakeAmplitude(double elapsed) {
-        double amplitude = 0;
-        for (Shake s : shakes)
-            if (elapsed >= s.at() && elapsed < s.at() + s.duration())
-                amplitude = Math.max(amplitude, s.amplitude() * (1 - (elapsed - s.at()) / s.duration()));
-        return amplitude;
     }
 }

@@ -3,10 +3,9 @@ package deckduel.core.card;
 import static deckduel.core.card.Cards.*;
 import static org.junit.jupiter.api.Assertions.*;
 
-import java.util.List;
 import org.junit.jupiter.api.Test;
 
-/** §5.3–5.4 scoring. Landmark numbers here are the catalog's provisional values (+3, ≤2/+1, +2, all nations +15). */
+/** §5.3 scoring and the Balatro-style formations; all nations +15 is the provisional value. */
 class ScoringTest {
     private final CardDef bowA = unit("bowA", 3, "N1", "Bowmen");
     private final CardDef bowB = unit("bowB", 3, "N1", "Bowmen");
@@ -19,11 +18,14 @@ class ScoringTest {
         assertEquals(0, Scoring.pairBonus(unit("a", 1, "N1", "Knights"), unit("b", 1, "N2", "Bowmen")));
     }
 
-    @Test void designExampleScoresFifteenThenThirtySix() {
+    @Test void designExampleScoresFifteenThenThirtySixPlusItsRetinue() {
         ScoreBreakdown two = Scoring.score(row(bowA, bowB));
         assertEquals(6, two.units()); assertEquals(9, two.combos()); assertEquals(15, two.total());
+        assertNull(two.formation());
         ScoreBreakdown three = Scoring.score(row(bowA, bowB, bowC));
-        assertEquals(9, three.units()); assertEquals(27, three.combos()); assertEquals(36, three.total());
+        assertEquals(9, three.units()); assertEquals(27, three.combos());
+        assertEquals(Formation.RETINUE, three.formation(), "three of one nation");
+        assertEquals(36 + 10, three.total());
         assertEquals(3, three.pairs().size());
     }
 
@@ -51,51 +53,49 @@ class ScoringTest {
         Row row = row(seven);
         ScoreBreakdown score = Scoring.score(row);
         assertTrue(Scoring.allNations(row));
-        assertEquals(Scoring.ALL_NATIONS_BONUS, score.combos(), "no pairs share anything; only the seven-nation combo");
+        assertEquals(0, score.combos(), "no pairs share anything");
+        assertEquals(Scoring.ALL_NATIONS_BONUS, score.bonus(), "only the seven-nation combo");
         assertTrue(score.effects().contains("All seven nations: +" + Scoring.ALL_NATIONS_BONUS));
         Row broken = row.update(row.at(3).with(Suppression.TAGS));
         assertFalse(Scoring.allNations(broken));
-        assertEquals(0, Scoring.score(broken).combos());
-        assertEquals(0, Scoring.score(row.remove(row.at(0).card().id())).combos(), "removing a required Unit breaks it");
+        assertEquals(0, Scoring.score(broken).bonus());
+        assertEquals(0, Scoring.score(row.remove(row.at(0).card().id())).bonus(), "removing a required Unit breaks it");
     }
 
-    @Test void embassyAndGuildHallRaiseMatchingPairsAndStack() {
-        var nationPair = row(unit("a", 1, "N1", "Knights"), unit("b", 1, "N1", "Bowmen"));
-        var classPair = row(unit("a", 1, "N1", "Knights"), unit("b", 1, "N2", "Knights"));
-        var bothPair = row(bowA, bowB);
-        var embassy = landmarks(new Effect.SharedTagBonus(TagType.REGION, 3));
-        var guild = landmarks(new Effect.SharedTagBonus(TagType.CLASS, 3));
-        assertEquals(6, Scoring.score(nationPair, embassy).combos());
-        assertEquals(3, Scoring.score(classPair, embassy).combos(), "Embassy ignores class-only pairs");
-        assertEquals(6, Scoring.score(classPair, guild).combos());
-        assertEquals(12, Scoring.score(bothPair, embassy).combos(), "a +9 pair shares a nation too");
-        var both = new java.util.ArrayList<>(embassy);
-        both.addAll(guild);
-        assertEquals(15, Scoring.score(bothPair, both).combos());
-        var twoEmbassies = landmarks(new Effect.SharedTagBonus(TagType.REGION, 3), new Effect.SharedTagBonus(TagType.REGION, 3));
-        assertEquals(15, Scoring.score(bothPair, twoEmbassies).combos(), "identical copies each contribute");
-        assertEquals(15, Scoring.score(bothPair, twoEmbassies).pairs().get(0).points(), "the pair shows its raised bonus");
+    @Test void eachFormationIsRecognisedAndTheStrongestWins() {
+        assertNull(Formation.best(row(unit("a", 1, "N1", "Knights"), unit("b", 1, "N2", "Bowmen"))));
+        assertEquals(Formation.COMPANY, Formation.best(row(unit("a", 1, "N1", "K"), unit("b", 1, "N2", "K"), unit("c", 1, "N3", "K"))));
+        assertEquals(Formation.RETINUE, Formation.best(row(unit("a", 1, "N1", "A"), unit("b", 1, "N1", "B"), unit("c", 1, "N1", "C"))));
+        assertEquals(Formation.TWO_BANNERS, Formation.best(row(unit("a", 1, "N1", "A"), unit("b", 1, "N1", "B"),
+                unit("c", 1, "N2", "C"), unit("d", 1, "N2", "D"))));
+        assertEquals(Formation.FULL_MUSTER, Formation.best(row(unit("a", 1, "N1", "A"), unit("b", 1, "N1", "B"), unit("c", 1, "N1", "C"),
+                unit("d", 1, "N2", "A"), unit("e", 1, "N2", "B"))));
+        assertEquals(Formation.REGIMENT, Formation.best(row(unit("a", 1, "N1", "K"), unit("b", 1, "N2", "K"),
+                unit("c", 1, "N3", "K"), unit("d", 1, "N4", "K"))));
+        assertEquals(Formation.ROYAL_LINE, Formation.best(row(unit("a", 1, "N1", CLASSES.get(0)), unit("b", 1, "N2", CLASSES.get(1)),
+                unit("c", 1, "N3", CLASSES.get(2)), unit("d", 1, "N4", CLASSES.get(3)), unit("e", 1, "N5", CLASSES.get(4)))));
+        CardDef[] host = new CardDef[5];
+        for (int i = 0; i < 5; i++) host[i] = unit("h" + i, 1, "N1", CLASSES.get(i));
+        assertEquals(Formation.BANNER_HOST, Formation.best(row(host)), "all five of a nation outranks the Royal Line it also makes");
     }
 
-    @Test void armoryRaisesOnlyWeakerUnitsAndDisabledPointsCancelIt() {
-        Row row = row(unit("foot", 1, "N1", "Footmen"), unit("pike", 2, "N2", "Pikemen"), unit("bow", 3, "N3", "Bowmen"));
-        var armory = landmarks(new Effect.WeakUnitBonus(2, 1));
-        assertEquals(2 + 3 + 3, Scoring.score(row, armory).units(), "1→2 and 2→3; the 3-point Unit is not weaker");
-        assertEquals(3 + 3, Scoring.score(row.update(row.at(0).with(Suppression.POINTS)), armory).units());
+    @Test void theFormationBonusJoinsBeforeItsMultiplierAndTheSevenNationBonusIsNeverMultiplied() {
+        Row muster = row(unit("a", 2, "N1", "A"), unit("b", 3, "N1", "B"), unit("c", 4, "N1", "C"),
+                unit("d", 5, "N2", "A"), unit("e", 6, "N2", "B"));
+        ScoreBreakdown score = Scoring.score(muster);
+        assertEquals(Formation.FULL_MUSTER, score.formation());
+        assertEquals((score.units() + score.combos() + 20) * 2, score.total());
+        assertTrue(score.effects().contains("Full Muster: +20 ×2"));
+        CardDef[] seven = new CardDef[7];
+        for (int i = 0; i < 7; i++) seven[i] = unit("s" + i, 2, NATIONS.get(i), CLASSES.get(i % 5));
+        ScoreBreakdown royal = Scoring.score(row(seven));
+        assertEquals(Formation.ROYAL_LINE, royal.formation());
+        assertEquals((royal.units() + royal.combos() + 30) * 2 + Scoring.ALL_NATIONS_BONUS, royal.total());
     }
 
-    @Test void ruinedKeepScoresEachEmptySpaceLive() {
-        var keep = landmarks(new Effect.EmptySpaceBonus(2));
-        assertEquals(2 * Row.SIZE, Scoring.score(Row.EMPTY, keep).bonus());
-        assertEquals(2 * (Row.SIZE - 2), Scoring.score(row(bowA, bowB), keep).bonus());
-    }
-
-    @Test void aSabotagedLandmarkContributesNothingAndSaysSo() {
-        var embassy = landmarks(new Effect.SharedTagBonus(TagType.REGION, 3));
-        var sabotaged = List.of(new LandmarkCard(embassy.get(0).card(), true));
-        Row row = row(bowA, bowB);
-        assertEquals(12, Scoring.score(row, embassy).combos());
-        assertEquals(9, Scoring.score(row, sabotaged).combos());
-        assertTrue(Scoring.score(row, sabotaged).effects().get(0).endsWith("sabotaged this round"));
+    @Test void disabledTagsLeaveAFormationButDisabledPointsDoNot() {
+        Row row = row(bowA, bowB, bowC);
+        assertEquals(Formation.RETINUE, Scoring.score(row.update(row.at(0).with(Suppression.POINTS))).formation());
+        assertNull(Scoring.score(row.update(row.at(0).with(Suppression.TAGS))).formation());
     }
 }

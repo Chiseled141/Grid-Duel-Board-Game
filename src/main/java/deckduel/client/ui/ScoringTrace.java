@@ -1,6 +1,7 @@
 package deckduel.client.ui;
 
 import deckduel.client.ScoringSounds;
+import deckduel.core.card.Formation;
 import deckduel.core.card.PairBonus;
 import deckduel.core.card.PlayerView;
 import deckduel.core.card.Row;
@@ -16,11 +17,11 @@ import java.util.Set;
 
 /**
  * The card-by-card explanation of one accepted change between two public views: which cards
- * changed, which pairs are new, which Landmarks now score differently, and when each lights up.
+ * changed, which pairs are new, which rows' formations changed, and when each lights up.
  * It is presentation only; the totals always come from the server's view.
  */
 final class ScoringTrace {
-    static final int GLOW_MS = 650, FIRST_PAIR_MS = 260, PAIR_GAP_MS = 150, LINK_MS = 1100, LANDMARK_MS = 600;
+    static final int GLOW_MS = 650, FIRST_PAIR_MS = 260, PAIR_GAP_MS = 150, LINK_MS = 1100, FORMATION_MS = 900;
     /** A pair's chip pops this long after its link starts drawing, then takes {@code CHIP_MS} to reach the score rail. */
     static final int CHIP_POP_MS = 420, CHIP_MS = 600;
     /** Pairs beyond this light together, so a huge combo never makes the trace drag. */
@@ -30,21 +31,22 @@ final class ScoringTrace {
     record Beat(int at, ScoringSounds.Cue cue) { }
 
     final Map<TableZone, Set<Integer>> changed = new EnumMap<>(TableZone.class);
-    /** Rows (OWN, OPPONENT) whose Landmark effects now read differently, so their Landmarks flash. */
-    final Set<TableZone> landmarksChanged = java.util.EnumSet.noneOf(TableZone.class);
+    /** Rows (OWN, OPPONENT) whose best formation changed, so it is called out after the pairs. */
+    final Set<TableZone> formationChanged = java.util.EnumSet.noneOf(TableZone.class);
+    /** The formation each changed row now makes; null when it lost its formation. */
+    final Map<TableZone, Formation> formations = new EnumMap<>(TableZone.class);
     final List<Link> links = new ArrayList<>();
     final List<Beat> beats = new ArrayList<>();
     /** Each row's change in Unit points, and the changed space its chip rises from (-1: the row as a whole). */
     final Map<TableZone, Long> unitGain = new EnumMap<>(TableZone.class);
     final Map<TableZone, Integer> unitSlot = new EnumMap<>(TableZone.class);
-    final int landmarkAt, finishAt;
+    final int formationAt, finishAt;
     final long ownGain, opponentGain;
 
     private ScoringTrace(PlayerView before, PlayerView after) {
         ownGain = after.you().score().total() - before.you().score().total();
         opponentGain = after.opponent().score().total() - before.opponent().score().total();
         int at = FIRST_PAIR_MS, step = 0;
-        boolean anyLandmark = false;
         for (TableZone zone : List.of(TableZone.OWN, TableZone.OPPONENT)) {
             SideView was = zone == TableZone.OWN ? before.you() : before.opponent();
             SideView now = zone == TableZone.OWN ? after.you() : after.opponent();
@@ -59,16 +61,16 @@ final class ScoringTrace {
                 if (step < PAIR_STEPS) { beats.add(new Beat(at, new ScoringSounds.Cue(ScoringSounds.Cue.Kind.PAIR, step))); at += PAIR_GAP_MS; }
                 step++;
             }
-            if (!now.landmarks().isEmpty() && !was.score().effects().equals(now.score().effects())) {
-                landmarksChanged.add(zone);
-                anyLandmark = true;
+            if (was.score().formation() != now.score().formation()) {
+                formationChanged.add(zone);
+                formations.put(zone, now.score().formation());
             }
         }
-        landmarkAt = links.isEmpty() ? FIRST_PAIR_MS : at;
+        formationAt = links.isEmpty() ? FIRST_PAIR_MS : at;
         // The score counts once the last chip has reached the rail.
         int landed = unitGain.values().stream().anyMatch(gain -> gain != 0) ? CHIP_MS : 0;
         for (Link link : links) landed = Math.max(landed, link.at() + CHIP_POP_MS + CHIP_MS);
-        finishAt = Math.max(landmarkAt + (anyLandmark ? 220 : 0) + 80, landed + 60);
+        finishAt = Math.max(formationAt + (formationChanged.isEmpty() ? 0 : FORMATION_MS) + 80, landed + 60);
         beats.add(0, new Beat(0, new ScoringSounds.Cue(ScoringSounds.Cue.Kind.CARD, 0)));
         if (ownGain != 0) beats.add(new Beat(finishAt, new ScoringSounds.Cue(
                 ownGain > 0 ? ScoringSounds.Cue.Kind.GAIN : ScoringSounds.Cue.Kind.LOSS, 0)));
@@ -77,10 +79,8 @@ final class ScoringTrace {
 
     /** The trace of a change within one round, or null when neither table changed. */
     static ScoringTrace between(PlayerView before, PlayerView after) {
-        if (before.round() != after.round() || after.phase() == deckduel.core.card.MatchPhase.CHOOSING_LANDMARKS) return null;
-        boolean same = before.you().row().equals(after.you().row()) && before.opponent().row().equals(after.opponent().row())
-                && before.you().landmarks().equals(after.you().landmarks())
-                && before.opponent().landmarks().equals(after.opponent().landmarks());
+        if (before.round() != after.round()) return null;
+        boolean same = before.you().row().equals(after.you().row()) && before.opponent().row().equals(after.opponent().row());
         return same ? null : new ScoringTrace(before, after);
     }
 

@@ -7,12 +7,10 @@ import deckduel.core.card.CardInstance;
 import deckduel.core.card.DrawCard;
 import deckduel.core.card.Effect;
 import deckduel.core.card.KeepCard;
-import deckduel.core.card.LandmarkCard;
 import deckduel.core.card.MatchEvent;
 import deckduel.core.card.MatchPhase;
 import deckduel.core.card.Move;
 import deckduel.core.card.PairBonus;
-import deckduel.core.card.PickLandmarks;
 import deckduel.core.card.PlayCard;
 import deckduel.core.card.PlayerView;
 import deckduel.core.card.RoundResult;
@@ -26,7 +24,6 @@ import deckduel.net.MatchUpdate;
 import java.awt.Rectangle;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -63,13 +60,17 @@ import javafx.scene.text.TextAlignment;
 
 /**
  * The live card match in JavaFX, over the room background. It renders only the latest
- * authoritative {@link MatchUpdate}; choosing a Landmark, a destination, a draw or a card to keep
+ * authoritative {@link MatchUpdate}; choosing a destination, a draw or a card to keep
  * sends a move through {@link Actions}, and nothing changes on screen until the server's next view
  * arrives. Previews are labeled and computed from public information only. Every play is staged by {@link PlayAnimator} and performed by
  * {@link TableEffects} under a perspective camera. Used on the JavaFX Application Thread only.
  */
 final class CardTableView extends Pane {
     private static final int GAP = 10;
+    /** How long the pointer rests on a row card before its large preview appears, and the preview's height. */
+    private static final int PREVIEW_DELAY_MS = 350, PREVIEW_H = 420;
+    /** A light veil over row cards the player is not pointing at, so busy art does not all compete at once. */
+    private static final Color QUIET = Color.rgb(0, 0, 0, .16);
     private static final long GAIN_MILLIS = 1200, NOTICE_MILLIS = 4500;
     private static final Color LINK = Color.rgb(244, 191, 96), DIM = Color.rgb(0, 0, 0, .22);
 
@@ -100,10 +101,8 @@ final class CardTableView extends Pane {
     private final Label resultTitle = new Label(), resultDetail = new Label();
     private final Button rematch = FxKit.pill("Rematch", "gold"), backToMenu = FxKit.pill("Back to menu", "cream-outline");
     private final StackPane confirm = new StackPane();
-    private Hit inspectedLandmark;
     private Long inspectedSpyCard;
     private final CardDetails cardDetails = new CardDetails(() -> {
-        inspectedLandmark = null;
         inspectedSpyCard = null;
         requestFocus();
     });
@@ -116,7 +115,7 @@ final class CardTableView extends Pane {
     private final Map<Long, double[]> handPose = new HashMap<>();
     // Row motion is keyed by card identity so replacements never inherit another card's position.
     private final Map<Long, double[]> rowPose = new HashMap<>();
-    private long lastTick = System.nanoTime(), hoverCard = -1, hoverSince;
+    private long lastTick = System.nanoTime();
     private double dragLean;
     private Point2D lastPointer;
     private long lastPointerAt;
@@ -134,7 +133,6 @@ final class CardTableView extends Pane {
         @Override public double handAngle(List<CardInstance> cards, long cardId) {
             return fanAngle(Math.max(0, indexOf(arranged(cards), cardId)), cards.size());
         }
-        @Override public Rectangle landmark(TableZone zone, int index) { return landmarkBounds(zone, index); }
         @Override public Rectangle pile(TableZone zone) { return new Rectangle(pilesX, (zone == TableZone.OWN ? ownTop : opponentTop) + 4, 54, 81); }
         @Override public Rectangle stage() {
             int w = cardW * 5 / 4, h = cardH * 5 / 4;
@@ -155,20 +153,20 @@ final class CardTableView extends Pane {
     // real row space each of the seven places on their row shows. Nothing of it reaches the server.
     private List<Long> handOrder = new ArrayList<>();
     private final int[] rowOrder = {0, 1, 2, 3, 4, 5, 6};
-    // Landmark offers ticked so far while choosing two.
-    private final java.util.Set<Long> picking = new LinkedHashSet<>();
     private Integer pressedSlot;
     private Integer rowPreview;
     private boolean dragging;
     private Point2D pointer;
     private Hit hover;
+    // The card the pointer is resting on, and the one whose large preview is showing once the delay has passed.
+    private Hit previewTarget, preview;
+    private final javafx.animation.PauseTransition previewDelay = new javafx.animation.PauseTransition(javafx.util.Duration.millis(PREVIEW_DELAY_MS));
     private String notice;
     private long noticeUntil, traceStart;
     private ScoringTrace trace;
     private int beatsPlayed, roundsSeen;
     private int rowLeft, cardW, cardH, opponentTop, ownTop, handTop, midY, tableLeft, tableWidth, pilesX;
     private int handW, handH;
-    private int landmarkLeft, landmarkTop, landmarkW, landmarkH, landmarkShelfHeight;
 
     /** Builds the table; it shows a match once {@link #show} receives one. */
     CardTableView(Actions actions, ClientSettings settings, ScoringSounds sounds) {
@@ -212,7 +210,7 @@ final class CardTableView extends Pane {
         state = next;
         MatchUpdate update = next.match();
         if (update == null) {
-            cardDetails.close(); inspectedLandmark = null;
+            cardDetails.close();
             shown = null; selected = null; rail.reset(); result.setVisible(false);
             effects.clear(); staged = false; trace = null;
             rowPose.clear(); handPose.clear();
@@ -231,10 +229,9 @@ final class CardTableView extends Pane {
         ScoringTrace change = newGame ? null : ScoringTrace.between(shown.view(), update.view());
         PlayAnimator.Plan plan = plan(newGame, update);
         if (newGame) {
-            cardDetails.close(); inspectedLandmark = null;
+            cardDetails.close();
             rail.reset(); roundsSeen = 0; selected = null; trace = null;
             handOrder = new ArrayList<>();
-            picking.clear();
             for (int i = 0; i < Row.SIZE; i++) rowOrder[i] = i;
         }
         if (newGame || next.reducedMotion()) { effects.clear(); staged = false; }
@@ -290,10 +287,9 @@ final class CardTableView extends Pane {
         wake();
     }
 
-    /** Whether {@code next} starts dealing: a new game already under way, or round one after both chose Landmarks. */
+    /** Whether {@code next} starts dealing: a new game under way. */
     private boolean deals(boolean newGame, MatchUpdate next) {
-        if (next.view().phase() != MatchPhase.IN_PROGRESS) return false;
-        return newGame || shown.view().phase() == MatchPhase.CHOOSING_LANDMARKS;
+        return newGame && next.view().phase() == MatchPhase.IN_PROGRESS;
     }
 
     /** Called when another screen replaces the table. */
@@ -301,7 +297,7 @@ final class CardTableView extends Pane {
         onScreen = false;
         settle.stop();
         confirm.setVisible(false);
-        cardDetails.close(); inspectedLandmark = null;
+        cardDetails.close();
     }
 
     /** Starts performing {@code next} alongside anything still playing. */
@@ -358,8 +354,10 @@ final class CardTableView extends Pane {
 
     private static ScoreRail.Display display(PlayerView view) {
         SideView you = view.you();
+        var formation = you.score().formation();
         return new ScoreRail.Display(you.score().total(), view.opponent().score().total(), you.score().units(),
-                you.score().combos(), you.matchTotal(), you.playsRemaining(), view.round());
+                you.score().combos(), you.matchTotal(), you.playsRemaining(), view.round(), formation == null ? null
+                : formation.title().toUpperCase(Locale.ROOT) + "  +" + formation.bonus() + "  ×" + formation.multiplier());
     }
 
     // ---------------------------------------------------------------- frames
@@ -375,9 +373,6 @@ final class CardTableView extends Pane {
             sounds.play(trace.beats.get(beatsPlayed++).cue());
         if (trace != null && elapsed > trace.finishAt + GAIN_MILLIS) trace = null;
         if (staged && !effects.tick(now)) staged = false;
-        Point2D jolt = staged ? effects.shake(now) : Point2D.ZERO;
-        board.setTranslateX(jolt.getX()); board.setTranslateY(jolt.getY());
-        effectsScene.setTranslateX(jolt.getX()); effectsScene.setTranslateY(jolt.getY());
         boolean lifting = stepCards(now);
         redraw();
         if (System.currentTimeMillis() > noticeUntil && trace == null && !staged && !lifting) { frames.stop(); running = false; }
@@ -412,7 +407,7 @@ final class CardTableView extends Pane {
         }
         dragLean *= Math.exp(-ms / 110);
         if (Math.abs(dragLean) < .002) dragLean = 0;
-        return moving || dragLean != 0 || dragging || hoverWobbling();
+        return moving || dragLean != 0 || dragging;
     }
 
     /** {lift, scale, x} a hand card is heading for. */
@@ -426,14 +421,6 @@ final class CardTableView extends Pane {
     /** The eased pose of hand card {@code index}; a card new to the hand starts in its own space. */
     private double[] handPose(int index) {
         return handPose.computeIfAbsent(hand().get(index).id(), id -> new double[]{0, 1, handSlot(index, hand().size()).x});
-    }
-
-    private boolean hoverWobbling() { return hoverCard >= 0 && (System.nanoTime() - hoverSince) / 1e6 < 520; }
-
-    /** A brief rotation wobble when the pointer arrives on a card. */
-    private double hoverWobble(long cardId) {
-        if (cardId != hoverCard || state.reducedMotion()) return 0;
-        return CardMotion.punch((System.nanoTime() - hoverSince) / 1e6, .055, 95, 26);
     }
 
     /** The fan: cards rotate a little away from the middle of the hand and dip along an arc. */
@@ -468,20 +455,6 @@ final class CardTableView extends Pane {
         wake();
     }
 
-    /** Ticks or unticks a Landmark offer; at most two can be ticked. */
-    private void toggleOffer(int index) {
-        long id = shown.view().offers().get(index).id();
-        if (!picking.remove(id) && picking.size() < Rules.LANDMARK_PICKS) picking.add(id);
-        wake();
-    }
-
-    /** Sends the two ticked Landmarks. */
-    void confirmLandmarks() {
-        if (picking.size() != Rules.LANDMARK_PICKS || !shown.view().choosingLandmarks()) return;
-        actions.move(new PickLandmarks(List.copyOf(picking)));
-        wake();
-    }
-
     private void confirmLeave() {
         if (shown != null && shown.view().phase() != MatchPhase.FINISHED) { confirm.setVisible(true); return; }
         actions.leave();
@@ -493,7 +466,7 @@ final class CardTableView extends Pane {
         return shown.view().legalPlays().stream().filter(play -> play.cardId() == cardId).toList();
     }
 
-    /** The legal play that sends a card to a hit area (a space, a Unit, an enemy Landmark or, for Exchange, a hand card), or null. */
+    /** The legal play that sends a card to a hit area (a space, a Unit or, for Exchange, a hand card), or null. */
     PlayCard playAt(Long cardId, Hit hit) {
         if (hit == null) return null;
         Long target = targetAt(hit);
@@ -509,20 +482,12 @@ final class CardTableView extends Pane {
     private Long targetAt(Hit hit) {
         switch (hit.zone()) {
             case OWN, OPPONENT -> { RowCard card = row(hit.zone()).at(hit.index()); return card == null ? null : card.card().id(); }
-            case OWN_LANDMARK, OPPONENT_LANDMARK -> {
-                List<LandmarkCard> landmarks = landmarks(hit.zone());
-                return hit.index() < landmarks.size() ? landmarks.get(hit.index()).card().id() : null;
-            }
             case HAND -> { return hand().get(hit.index()).id(); }
             default -> { return null; }
         }
     }
 
     private Row row(TableZone zone) { return zone == TableZone.OWN ? shown.view().you().row() : shown.view().opponent().row(); }
-
-    private List<LandmarkCard> landmarks(TableZone zone) {
-        return zone == TableZone.OWN_LANDMARK ? shown.view().you().landmarks() : shown.view().opponent().landmarks();
-    }
 
     private CardInstance handCard(Long id) {
         if (shown == null || id == null) return null;
@@ -533,27 +498,51 @@ final class CardTableView extends Pane {
 
     private void installMouse() {
         board.setOnMouseMoved(event -> moveTo(local(event)));
-        board.setOnMouseExited(event -> { hover = null; board.setCursor(javafx.scene.Cursor.DEFAULT); redraw(); });
+        board.setOnMouseExited(event -> { hover = null; clearPreview(); board.setCursor(javafx.scene.Cursor.DEFAULT); redraw(); });
+        previewDelay.setOnFinished(event -> { preview = previewTarget; redraw(); });
         board.setOnMousePressed(event -> { if (event.getButton() == MouseButton.PRIMARY) pressAt(local(event)); });
         board.setOnMouseDragged(event -> dragTo(local(event)));
         board.setOnMouseReleased(event -> { if (event.getButton() == MouseButton.PRIMARY) releaseAt(local(event)); });
     }
 
-    /** Pointer position on the table, unaffected by the shake applied to the board. */
+    /** Pointer position on the table. */
     private Point2D local(MouseEvent event) { return sceneToLocal(event.getSceneX(), event.getSceneY()); }
 
     void moveTo(Point2D point) {
         hover = hitAt(point);
-        boolean inspectable = hover != null && (hover.zone() == TableZone.REVEALED
-                || hover.zone() == TableZone.OWN_LANDMARK || hover.zone() == TableZone.OPPONENT_LANDMARK);
+        boolean inspectable = hover != null && hover.zone() == TableZone.REVEALED;
         board.setCursor(inspectable ? javafx.scene.Cursor.HAND : javafx.scene.Cursor.DEFAULT);
-        long card = hover != null && hover.zone() == TableZone.HAND ? hand().get(hover.index()).id() : -1;
-        if (card != hoverCard) { hoverCard = card; hoverSince = System.nanoTime(); }
+        Hit target = previewable(hover);
+        if (!java.util.Objects.equals(target, previewTarget)) {
+            clearPreview();
+            previewTarget = target;
+            if (target != null) previewDelay.playFromStart();
+        }
         wake();
+    }
+
+    /** {@code hit} when it is a row card worth previewing now, otherwise null; hand cards are already large. */
+    private Hit previewable(Hit hit) {
+        if (hit == null || shown == null || dragging || selected != null) return null;
+        PlayerView view = shown.view();
+        if (view.keeping()) return null;
+        if (hit.zone() == TableZone.OWN) return view.you().row().at(hit.index()) != null ? hit : null;
+        if (hit.zone() == TableZone.OPPONENT) return view.opponent().row().at(hit.index()) != null ? hit : null;
+        return null;
+    }
+
+    /** The card a large preview is pending or showing for; for tests. */
+    Hit previewTarget() { return previewTarget; }
+
+    private void clearPreview() {
+        previewDelay.stop();
+        previewTarget = null;
+        preview = null;
     }
 
     void pressAt(Point2D point) {
         requestFocus();
+        clearPreview();
         Hit hit = hitAt(point);
         pressed = hit != null && hit.zone() == TableZone.HAND ? hand().get(hit.index()).id() : null;
         // A card already on the player's own row can be picked up to rearrange it, unless a hand
@@ -591,7 +580,7 @@ final class CardTableView extends Pane {
         Hit hit = hitAt(point);
         lastPointer = null;
         if (pressedSlot != null) { dropRowCard(hit, point); return; }
-        if (!dragging && hit != null && button(hit, point)) { pressed = null; return; }
+        if (!dragging && hit != null && button(hit)) { pressed = null; return; }
         Long card = dragging ? pressed : selected;
         boolean wasDrag = dragging;
         // Dropped within the hand rather than on a destination: it keeps the place it was shown at.
@@ -607,53 +596,27 @@ final class CardTableView extends Pane {
         wake();
     }
 
-    /** Handles a click on an offer, the confirm button, a revealed card or the draw button; false for anything else. */
-    private boolean button(Hit hit, Point2D point) {
+    /** Handles a click on a revealed card to keep, a Spy-revealed card, or the draw or skip button; false for anything else. */
+    private boolean button(Hit hit) {
         switch (hit.zone()) {
-            case OFFER -> toggleOffer(hit.index());
-            case CONFIRM -> confirmLandmarks();
             case LOOK -> { actions.move(new KeepCard(shown.view().looking().get(hit.index()).id())); wake(); }
             case DRAW -> draw();
             case SKIP -> skipTurn();
             case REVEALED -> {
-                inspectedLandmark = null;
                 inspectedSpyCard = shown.view().revealed().get(hit.index()).id();
                 refreshCardDetails();
-            }
-            case OWN_LANDMARK, OPPONENT_LANDMARK -> {
-                Rectangle tile = landmarkBounds(hit.zone(), hit.index());
-                // The info end of a row stays inspectable even while Sabotage is selected.
-                if (playAt(selected, hit) != null && point.getX() < tile.getMaxX() - 24) return false;
-                inspectLandmark(hit);
             }
             default -> { return false; }
         }
         return true;
     }
 
-    private void inspectLandmark(Hit hit) {
-        inspectedSpyCard = null;
-        inspectedLandmark = hit;
-        refreshCardDetails();
-    }
-
-    /** Refreshes against public data, including a Sabotage or round change arriving while open. */
+    /** Refreshes the Spy inspector, closing it once the card has left the opponent's hand or the round ends. */
     private void refreshCardDetails() {
-        if (inspectedSpyCard != null && shown != null) {
-            CardInstance card = shown.view().revealed().stream().filter(c -> c.id() == inspectedSpyCard).findFirst().orElse(null);
-            if (card == null || shown.view().phase() != MatchPhase.IN_PROGRESS) cardDetails.close();
-            else cardDetails.showRevealed(card);
-            return;
-        }
-        if (inspectedLandmark == null || shown == null) return;
-        List<LandmarkCard> cards = landmarks(inspectedLandmark.zone());
-        if (inspectedLandmark.index() >= cards.size() || shown.view().phase() != MatchPhase.IN_PROGRESS) {
-            inspectedLandmark = null;
-            cardDetails.close();
-            return;
-        }
-        boolean own = inspectedLandmark.zone() == TableZone.OWN_LANDMARK;
-        cardDetails.show(cards.get(inspectedLandmark.index()), own ? shown.view().you() : shown.view().opponent(), own);
+        if (inspectedSpyCard == null || shown == null) return;
+        CardInstance card = shown.view().revealed().stream().filter(c -> c.id() == inspectedSpyCard).findFirst().orElse(null);
+        if (card == null || shown.view().phase() != MatchPhase.IN_PROGRESS) cardDetails.close();
+        else cardDetails.showRevealed(card);
     }
 
     /** Moves a picked-up row card to the place it was dropped on, swapping with any card there; display only. */
@@ -726,19 +689,12 @@ final class CardTableView extends Pane {
     void keyPressed(KeyEvent event) {
         KeyCode code = event.getCode();
         if (cardDetails.isVisible()) {
-            if (code == KeyCode.ESCAPE) { inspectedLandmark = null; cardDetails.close(); }
+            if (code == KeyCode.ESCAPE) cardDetails.close();
             if (code != KeyCode.TAB) event.consume();
             return;
         }
         if (confirm.isVisible()) {
             if (code == KeyCode.ESCAPE) confirm.setVisible(false);
-            event.consume();
-            return;
-        }
-        if (shown != null && shown.view().choosingLandmarks()) {
-            int offer = code.isDigitKey() ? code.getCode() - (code.isKeypadKey() ? KeyCode.NUMPAD1.getCode() : KeyCode.DIGIT1.getCode()) : -1;
-            if (code == KeyCode.ENTER) confirmLandmarks();
-            else if (offer >= 0 && offer < shown.view().offers().size()) toggleOffer(offer);
             event.consume();
             return;
         }
@@ -748,11 +704,6 @@ final class CardTableView extends Pane {
             case ENTER -> confirmKey();
             case D -> draw();
             case S -> skipTurn();
-            case L -> {
-                if (shown != null && shown.view().phase() == MatchPhase.IN_PROGRESS)
-                    inspectLandmark(hover != null && (hover.zone() == TableZone.OWN_LANDMARK
-                            || hover.zone() == TableZone.OPPONENT_LANDMARK) ? hover : new Hit(TableZone.OWN_LANDMARK, 0));
-            }
             case ESCAPE -> { if (selected != null) { selected = null; wake(); } else confirmLeave(); }
             default -> {
                 int slot = code.isDigitKey() ? code.getCode() - (code.isKeypadKey() ? KeyCode.NUMPAD1.getCode() : KeyCode.DIGIT1.getCode()) : -1;
@@ -777,7 +728,6 @@ final class CardTableView extends Pane {
         if (card == null) return;
         TableZone zone = targetZone(card.def());
         // Number keys count the places as the player sees them.
-        if (zone == TableZone.OPPONENT_LANDMARK && slot >= Rules.LANDMARK_PICKS) return;
         PlayCard play = playAt(selected, new Hit(zone, zone == TableZone.OWN ? rowOrder[slot] : slot));
         if (play != null) play(play);
     }
@@ -788,9 +738,8 @@ final class CardTableView extends Pane {
         else if (playAt(selected, hover) != null) play(playAt(selected, hover));
     }
 
-    /** The area a card's keyboard numbers refer to: a Unit row, or the enemy Landmarks for Sabotage. */
+    /** The Unit row a card's keyboard numbers refer to. */
     private static TableZone targetZone(CardDef card) {
-        if (card.effect() instanceof Effect.Sabotage) return TableZone.OPPONENT_LANDMARK;
         TargetSide side = card.effect() instanceof Effect.Destroy destroy ? destroy.side()
                 : card.effect() instanceof Effect.Disable disable ? disable.side() : TargetSide.OWN;
         return side == TargetSide.OWN ? TableZone.OWN : TableZone.OPPONENT;
@@ -886,13 +835,8 @@ final class CardTableView extends Pane {
         int railWidth = Math.max(196, Math.min(252, w / 6));
         int railHeight = (int) Math.ceil(railWidth * 550.0 / 260);
         rail.resizeRelocate(20, 76, railWidth, railHeight);
-        // Landmarks share the left column with scores, freeing the table for seven larger Units.
-        landmarkTop = 76 + railHeight + 10;
-        landmarkShelfHeight = Math.max(66, (h - landmarkTop - 12) / 2);
-        landmarkW = railWidth;
-        landmarkH = Math.max(28, Math.min(54, (landmarkShelfHeight - 24) / Rules.LANDMARK_PICKS));
-        landmarkLeft = 20;
-        leave.resizeRelocate(20, 18, 120, 40);
+        // The pill's padding, border and offset shadow need its own preferred height, or the label clips.
+        leave.resizeRelocate(20, 14, Math.max(120, leave.prefWidth(-1)), leave.prefHeight(-1));
         // The window's floating music toggle occupies the top-right corner.
         tableLeft = 20 + railWidth + 28;
         pilesX = w - 110;
@@ -951,29 +895,10 @@ final class CardTableView extends Pane {
         return rowPose.computeIfAbsent(shown.view().you().row().at(slot).card().id(), id -> new double[]{target.x, target.y});
     }
 
-    /** A Landmark tile on one of the two shelves beneath the score panel. */
-    Rectangle landmarkBounds(TableZone zone, int index) {
-        boolean own = zone == TableZone.OWN || zone == TableZone.OWN_LANDMARK;
-        return new Rectangle(landmarkLeft,
-                landmarkTop + (own ? landmarkShelfHeight : 0) + 18 + index * (landmarkH + 6), landmarkW, landmarkH);
-    }
-
     /** The manual-draw button under the player's own deck. */
     Rectangle drawBounds() { return new Rectangle(pilesX - 10, ownTop + 128, 76, 26); }
 
     Rectangle skipBounds() { return new Rectangle(pilesX - 18, ownTop + 162, 92, 26); }
-
-    /** The five Landmark offers, large across the middle of the table while choosing. */
-    Rectangle offerBounds(int index, int count) {
-        int w = Math.min((tableWidth - (count - 1) * 18) / count, 170), h = w * 3 / 2;
-        int left = tableLeft + (tableWidth - (count * w + (count - 1) * 18)) / 2;
-        return new Rectangle(left + index * (w + 18), (int) Math.max(150, getHeight() / 2 - h / 2.0 - 10), w, h);
-    }
-
-    Rectangle confirmBounds() {
-        Rectangle first = offerBounds(0, Rules.LANDMARK_OFFERS);
-        return new Rectangle(tableLeft + tableWidth / 2 - 110, first.y + first.height + 28, 220, 34);
-    }
 
     /** The cards a Reconnaissance revealed, while the player chooses one to keep. */
     Rectangle lookBounds(int index, int count) {
@@ -1020,12 +945,7 @@ final class CardTableView extends Pane {
         if (shown == null || result.isVisible() || cardDetails.isVisible()) return null;
         int x = (int) point.getX(), y = (int) point.getY();
         PlayerView view = shown.view();
-        // While choosing Landmarks or keeping a revealed card, only that choice is on offer.
-        if (view.choosingLandmarks()) {
-            for (int i = 0; i < view.offers().size(); i++)
-                if (offerBounds(i, view.offers().size()).contains(x, y)) return new Hit(TableZone.OFFER, i);
-            return confirmBounds().contains(x, y) ? new Hit(TableZone.CONFIRM, 0) : null;
-        }
+        // While keeping a revealed card, only that choice is on offer.
         if (view.keeping()) {
             for (int i = 0; i < view.looking().size(); i++)
                 if (lookBounds(i, view.looking().size()).contains(x, y)) return new Hit(TableZone.LOOK, i);
@@ -1047,9 +967,6 @@ final class CardTableView extends Pane {
         for (TableZone zone : List.of(TableZone.OWN, TableZone.OPPONENT))
             for (int slot = 0; slot < Row.SIZE; slot++)
                 if (slotBounds(zone, slot).contains(x, y)) return new Hit(zone, slot);
-        for (TableZone zone : List.of(TableZone.OWN_LANDMARK, TableZone.OPPONENT_LANDMARK))
-            for (int i = 0; i < landmarks(zone).size(); i++)
-                if (landmarkBounds(zone, i).contains(x, y)) return new Hit(zone, i);
         if (view.canDraw() && (drawBounds().contains(x, y) || pileBounds().contains(x, y))) return new Hit(TableZone.DRAW, 0);
         if (view.canSkip() && !state.reconnecting() && skipBounds().contains(x, y)) return new Hit(TableZone.SKIP, 0);
         if (playAt(selected, new Hit(TableZone.CAST, 0)) != null && castBounds().contains(x, y)) return new Hit(TableZone.CAST, 0);
@@ -1064,8 +981,6 @@ final class CardTableView extends Pane {
         return switch (hit.zone()) {
             case HAND -> hand().get(hit.index()).def();
             case OWN, OPPONENT -> { RowCard card = row(hit.zone()).at(hit.index()); yield card == null ? null : card.def(); }
-            case OWN_LANDMARK, OPPONENT_LANDMARK -> landmarks(hit.zone()).get(hit.index()).def();
-            case OFFER -> view.offers().get(hit.index()).def();
             case LOOK -> view.looking().get(hit.index()).def();
             case REVEALED -> view.revealed().get(hit.index()).def();
             default -> null;
@@ -1083,17 +998,28 @@ final class CardTableView extends Pane {
         drawHeader(g);
         drawRow(g, TableZone.OPPONENT, shown.view().opponent(), shown.opponentName().toUpperCase(Locale.ROOT) + "'S ROW");
         drawRow(g, TableZone.OWN, shown.view().you(), "YOUR ROW");
-        drawLandmarks(g, TableZone.OPPONENT_LANDMARK, shown.view().opponent());
-        drawLandmarks(g, TableZone.OWN_LANDMARK, shown.view().you());
-        drawPiles(g, shown.view().opponent(), opponentTop, null);
-        drawPiles(g, shown.view().you(), ownTop, shown.view().deckTop());
+        drawPiles(g, shown.view().opponent(), opponentTop);
+        drawPiles(g, shown.view().you(), ownTop);
         drawDrawButton(g);
         drawSkipButton(g);
-        // The choice overlays carry their own heading; the status line would show through under them.
-        if (!shown.view().choosingLandmarks() && !shown.view().keeping()) drawStatus(g);
+        // The keep overlay carries its own heading; the status line would show through under it.
+        if (!shown.view().keeping()) drawStatus(g);
         drawHand(g);
-        if (shown.view().choosingLandmarks()) drawOffers(g);
-        else if (shown.view().keeping()) drawLooking(g);
+        if (shown.view().keeping()) drawLooking(g);
+        else drawPreview(g);
+    }
+
+    /** A large copy of the row card the pointer rests on, beside it, so small printed text never needs squinting at. */
+    private void drawPreview(GraphicsContext g) {
+        if (preview == null || previewable(preview) == null) return;
+        RowCard unit = (preview.zone() == TableZone.OWN ? shown.view().you() : shown.view().opponent()).row().at(preview.index());
+        Rectangle at = rowCardBounds(preview.zone(), preview.index());
+        int h = (int) Math.min(PREVIEW_H, board.getHeight() * .55), w = h * 2 / 3;
+        double x = at.getMaxX() + 14 + w <= board.getWidth() - 8 ? at.getMaxX() + 14 : at.x - 14 - w;
+        x = Math.max(8, Math.min(x, board.getWidth() - w - 8));
+        double y = Math.max(8, Math.min(at.getCenterY() - h / 2.0, board.getHeight() - h - 8));
+        g.drawImage(FxKit.face(unit.def(), unit.suppressed(), w, h, false, pixelScale()), x, y,
+                w + CardFace.SHADOW_X, h + CardFace.SHADOW_Y);
     }
 
     private void drawHeader(GraphicsContext g) {
@@ -1161,71 +1087,10 @@ final class CardTableView extends Pane {
             g.drawImage(FxKit.face(card.def(), card.suppressed(), r.width, r.height, destination && hovered, pixelScale()),
                     r.x, r.y, r.width + CardFace.SHADOW_X, r.height + CardFace.SHADOW_Y);
             if (destination) outline(g, r, hovered ? FxKit.AMBER : FxKit.AMBER.deriveColor(0, 1, 1, .6));
+            else if (!hovered) { g.setFill(QUIET); g.fillRoundRect(r.x, r.y, r.width, r.height, 9, 9); }
             drawTriggers(g, zone, slot, r);
         }
         drawLinks(g, zone, side.score().pairs(), top + cardH);
-    }
-
-    /**
-     * A player's two Landmarks in their own area; a sabotaged one is shaded until the round ends.
-     * While Landmarks are being chosen the opponent's stay face down.
-     */
-    private void drawLandmarks(GraphicsContext g, TableZone zone, SideView side) {
-        Rectangle first = landmarkBounds(zone, 0);
-        text(g, zone == TableZone.OWN_LANDMARK ? "YOUR LANDMARKS" : "OPPONENT LANDMARKS",
-                first.x, first.y - 7, FxKit.bold(10), FxKit.CREAM, true);
-        Long active = dragging ? pressed : selected;
-        for (int i = 0; i < Rules.LANDMARK_PICKS; i++) {
-            Rectangle r = landmarkBounds(zone, i);
-            if (i >= side.landmarks().size()) {
-                landmarkTile(g, r, null, side.ready(), false);
-                continue;
-            }
-            LandmarkCard landmark = side.landmarks().get(i);
-            if (staged && effects.hiddenOnRow(landmark.card().id())) continue;
-            boolean destination = playAt(active, new Hit(zone, i)) != null;
-            boolean hovered = hover != null && hover.zone() == zone && hover.index() == i;
-            landmarkTile(g, r, landmark, false, hovered);
-            if (destination) outline(g, r, hovered ? FxKit.AMBER : FxKit.AMBER.deriveColor(0, 1, 1, .6));
-            if (trace != null) drawLandmarkFlash(g, zone, r);
-        }
-    }
-
-    /** A compact named thumbnail; the original card proportions and hover details stay intact. */
-    private void landmarkTile(GraphicsContext g, Rectangle r, LandmarkCard landmark, boolean concealed, boolean highlighted) {
-        CardDef card = landmark == null ? null : landmark.def();
-        Color stateColor = landmark == null ? FxKit.MUTED : landmark.active() ? FxKit.AMBER : FxKit.CORAL;
-        g.setFill(highlighted ? Color.web("#3C3024") : Color.web("#211D18"));
-        g.fillRoundRect(r.x, r.y, r.width, r.height, 6, 6);
-        g.setStroke(highlighted ? FxKit.AMBER : Color.rgb(173, 137, 84, .3));
-        g.setLineWidth(1);
-        g.strokeRoundRect(r.x, r.y, r.width, r.height, 6, 6);
-        int artW = Math.min(28, (r.height - 8) * 2 / 3), artH = artW * 3 / 2;
-        Image art = card != null ? FxKit.face(card, List.of(), artW, artH, highlighted, pixelScale())
-                : concealed ? FxKit.back(artW, artH, pixelScale()) : null;
-        if (art != null) g.drawImage(art, r.x + 5, r.y + (r.height - artH) / 2.0,
-                artW + CardFace.SHADOW_X, artH + CardFace.SHADOW_Y);
-        String name = card != null ? card.name() : concealed ? "Chosen" : "Not chosen";
-        double x = r.x + artW + 13, width = r.width - artW - 57;
-        Font font = FxKit.bold(12);
-        text(g, FxKit.fit(name, font, width), x, r.getCenterY() + (r.height >= 46 ? -3 : 4), font,
-                card == null ? FxKit.MUTED : FxKit.CREAM, true);
-        if (r.height >= 46 && landmark != null)
-            text(g, landmark.active() ? "Active" : "Disabled this round", x, r.getCenterY() + 12,
-                    FxKit.normal(10), stateColor, false);
-        g.setFill(stateColor);
-        g.fillOval(r.getMaxX() - 34, r.getCenterY() - 2, 4, 4);
-        g.setStroke(FxKit.MUTED);
-        g.strokeOval(r.getMaxX() - 22, r.getCenterY() - 7, 14, 14);
-        text(g, "i", r.getMaxX() - 17, r.getCenterY() + 4, FxKit.bold(11), FxKit.CREAM, false);
-    }
-
-    /** A flash on a Landmark whose effect on its owner's score just changed. */
-    private void drawLandmarkFlash(GraphicsContext g, TableZone zone, Rectangle r) {
-        long flash = traceElapsed() - trace.landmarkAt;
-        TableZone row = zone == TableZone.OWN_LANDMARK ? TableZone.OWN : TableZone.OPPONENT;
-        if (trace.landmarksChanged.contains(row) && flash >= 0 && flash < ScoringTrace.LANDMARK_MS)
-            glow(g, r, 1 - flash / (double) ScoringTrace.LANDMARK_MS);
     }
 
     /** The trace's warm glow on cards that just changed on a row. */
@@ -1295,13 +1160,11 @@ final class CardTableView extends Pane {
                 (gain > 0 ? FxKit.CREAM : FxKit.CORAL).deriveColor(0, 1, 1, fade), false);
     }
 
-    /** A deck and its counts; {@code top}, when a Watchtower shows it, is the player's own top card, face up. */
-    private void drawPiles(GraphicsContext g, SideView side, int top, CardInstance deckTop) {
-        if (side.deckCount() > 0) {
-            Image image = deckTop == null ? FxKit.back(54, 81, pixelScale()) : FxKit.face(deckTop.def(), List.of(), 54, 81, false, pixelScale());
-            g.drawImage(image, pilesX, top + 4, 54 + CardFace.SHADOW_X, 81 + CardFace.SHADOW_Y);
-        } else emptySlot(g, new Rectangle(pilesX, top + 4, 54, 81), false, false);
-        if (deckTop != null) text(g, "TOP CARD", pilesX, top, FxKit.bold(9), FxKit.AMBER, true);
+    /** A deck, face down, and its counts. */
+    private void drawPiles(GraphicsContext g, SideView side, int top) {
+        if (side.deckCount() > 0)
+            g.drawImage(FxKit.back(54, 81, pixelScale()), pilesX, top + 4, 54 + CardFace.SHADOW_X, 81 + CardFace.SHADOW_Y);
+        else emptySlot(g, new Rectangle(pilesX, top + 4, 54, 81), false, false);
         text(g, "Deck " + side.deckCount(), pilesX, top + 103, FxKit.normal(11), FxKit.CREAM, true);
         text(g, "Discard " + side.discardCount(), pilesX, top + 119, FxKit.normal(11), FxKit.CREAM, true);
     }
@@ -1335,42 +1198,6 @@ final class CardTableView extends Pane {
         g.setFill(lit ? FxKit.INK : can ? FxKit.CREAM : FxKit.MUTED);
         g.fillText(label, r.getCenterX() - FxKit.width(label, font) / 2, r.y + 17);
         text(g, "S · uses 1 play", r.x + 6, r.y + 40, FxKit.normal(11), FxKit.MUTED, true);
-    }
-
-    /** The five Landmark offers over a dimmed table; two are ticked, then confirmed. */
-    private void drawOffers(GraphicsContext g) {
-        dimTable(g);
-        List<CardInstance> offers = shown.view().offers();
-        Rectangle first = offerBounds(0, offers.size());
-        centered(g, "Choose two Landmarks", FxKit.decorative(28), FxKit.AMBER, first.y - 44);
-        centered(g, "Click two cards (or press 1–5) — " + picking.size() + " of " + Rules.LANDMARK_PICKS
-                + " chosen. They stay in your Landmark area for all three rounds.", FxKit.normal(14), FxKit.CREAM, first.y - 18);
-        for (int i = 0; i < offers.size(); i++) {
-            Rectangle r = offerBounds(i, offers.size());
-            boolean ticked = picking.contains(offers.get(i).id());
-            boolean hovered = hover != null && hover.zone() == TableZone.OFFER && hover.index() == i;
-            double lift = ticked ? 14 : hovered ? 6 : 0;
-            handCard(g, offers.get(i).def(), List.of(), r.getCenterX(), r.getCenterY() - lift, 1, 0, ticked, lift, null, r.width, r.height);
-            if (ticked) tick(g, r.getMaxX() - 16, r.y - lift + 16);
-        }
-        Rectangle confirm = confirmBounds();
-        boolean ready = picking.size() == Rules.LANDMARK_PICKS;
-        g.setFill(ready ? FxKit.AMBER : Color.rgb(90, 80, 66, .8));
-        g.fillRoundRect(confirm.x, confirm.y, confirm.width, confirm.height, confirm.height, confirm.height);
-        String label = ready ? "KEEP THESE TWO" : "CHOOSE " + (Rules.LANDMARK_PICKS - picking.size()) + " MORE";
-        g.setFont(FxKit.bold(14));
-        g.setFill(ready ? FxKit.INK : FxKit.MUTED);
-        g.fillText(label, confirm.getCenterX() - FxKit.width(label, FxKit.bold(14)) / 2, confirm.y + 22);
-        overlayNotice(g, confirm.y + confirm.height + 26);
-    }
-
-    /** A gold check badge on a ticked Landmark offer. */
-    private static void tick(GraphicsContext g, double cx, double cy) {
-        g.setFill(FxKit.AMBER);
-        g.fillOval(cx - 13, cy - 13, 26, 26);
-        g.setStroke(FxKit.INK);
-        g.setLineWidth(3);
-        g.strokePolyline(new double[]{cx - 6, cx - 1, cx + 7}, new double[]{cy, cy + 5, cy - 5}, 3);
     }
 
     /** The latest notice (such as a rejected move) under a choice overlay, which hides the status line. */
@@ -1424,8 +1251,6 @@ final class CardTableView extends Pane {
         PlayerView view = shown.view();
         if (view.phase() == MatchPhase.FINISHED) return "Match over";
         if (!shown.opponentConnected()) return shown.opponentName() + " disconnected — their seat is held for now";
-        if (view.choosingLandmarks()) return "Choose two Landmarks to keep for the whole match";
-        if (view.phase() == MatchPhase.CHOOSING_LANDMARKS) return "Waiting for " + shown.opponentName() + " to choose their Landmarks…";
         if (view.keeping()) return "Keep one of the cards your Reconnaissance revealed";
         if (!view.yourTurn()) return shown.opponentName() + " is choosing a card…";
         String draws = view.canDraw() ? " or draw (" + view.you().drawsRemaining() + " left)" : "";
@@ -1438,7 +1263,6 @@ final class CardTableView extends Pane {
         if (!Rules.takesTarget(effect)) return "Cast " + card.def().name() + " with the button below";
         if (Rules.spellTargets(card, view.hand(), view.board()).isEmpty()) return "No legal target — this Spell would resolve with no effect";
         if (effect instanceof Effect.Exchange) return "Choose another card in your hand to discard";
-        if (effect instanceof Effect.Sabotage) return "Choose an enemy Landmark to sabotage";
         return "Choose a target for " + card.def().name();
     }
 
@@ -1480,7 +1304,7 @@ final class CardTableView extends Pane {
             Rectangle r = handBounds(i);
             boolean chosen = selected != null && card.id() == selected;
             double[] pose = state.reducedMotion() ? handTarget(i) : handPose(i);
-            handCard(g, card.def(), r.getCenterX(), r.getCenterY(), pose[1], fanAngle(i, hand.size()) + hoverWobble(card.id()),
+            handCard(g, card.def(), r.getCenterX(), r.getCenterY(), pose[1], fanAngle(i, hand.size()),
                     chosen, pose[0], yourTurn ? null : DIM);
         }
         CardInstance held = dragging ? handCard(pressed) : null;

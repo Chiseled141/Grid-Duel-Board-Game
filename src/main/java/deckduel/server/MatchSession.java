@@ -8,7 +8,6 @@ import deckduel.core.card.MatchOutcome;
 import deckduel.core.card.MatchPhase;
 import deckduel.core.card.MatchState;
 import deckduel.core.card.Move;
-import deckduel.core.card.PickLandmarks;
 import deckduel.core.card.PlannerBot;
 import deckduel.core.card.PlayerView;
 import deckduel.core.card.RuleViolation;
@@ -119,9 +118,7 @@ final class MatchSession {
             if (p == null) return;
             if (request.requestId() == p.lastAccepted) { send(p); return; }
             if (state.phase() == MatchPhase.FINISHED) { reject(p, request, "The match is over."); return; }
-            // Both players choose Landmarks at once, so the other's choice must not make this one stale.
-            boolean independent = request.move() instanceof PickLandmarks;
-            if (request.move() == null || !independent && request.revision() != state.revision()) {
+            if (request.move() == null || request.revision() != state.revision()) {
                 reject(p, request, "The table changed before your move arrived. Please choose again.");
                 send(p);
                 return;
@@ -222,7 +219,7 @@ final class MatchSession {
         for (Participant p : List.of(first, second)) { p.rematch = false; p.lastAccepted = Long.MIN_VALUE; }
         // Both players get the same automatic deck; the seed shuffles each one independently.
         var deck = DeckRules.deck(server.catalog());
-        state = MatchState.start(deck, deck, server.catalog().landmarks(), seeds.nextLong());
+        state = MatchState.start(deck, deck, seeds.nextLong());
         LOG.info(() -> "match " + id + " game " + game + ": " + first.username + " vs " + second.username);
         changed();
     }

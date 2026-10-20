@@ -13,7 +13,7 @@ class PlannerBotTest {
         int planner = 0, greedy = 0;
         for (int i = 0; i < 200; i++) {
             Seat plannerSeat = i % 2 == 0 ? Seat.FIRST : Seat.SECOND;
-            MatchState state = MatchState.start(deck, deck, catalog.landmarks(), i);
+            MatchState state = MatchState.start(deck, deck, i);
             while (state.phase() != MatchPhase.FINISHED) {
                 Seat seat = state.awaits(Seat.FIRST) ? Seat.FIRST : Seat.SECOND;
                 PlayerView view = state.view(seat);
@@ -29,7 +29,7 @@ class PlannerBotTest {
     @Test void equivalentEmptySpacesAndDuplicateCardsAreConsideredOnce() {
         var soldier = Cards.unit("soldier", 2, "N1", "Pikemen");
         var hand = java.util.List.of(Cards.copy(soldier), Cards.copy(soldier));
-        var board = new Rules.Board(Row.EMPTY, java.util.List.of(), Row.EMPTY, java.util.List.of());
+        var board = new Rules.Board(Row.EMPTY, Row.EMPTY);
         assertEquals(1, PlannerBot.candidates(hand, board).size());
     }
 }
