@@ -142,6 +142,10 @@ final class CardTableView extends Pane {
         }
         @Override public Rectangle opponentHand() { return new Rectangle(opponentHandAnchorX() - 40, 20, 22, 33); }
         @Override public Rectangle table() { return new Rectangle(tableLeft, 0, tableWidth, (int) getHeight()); }
+        @Override public java.awt.geom.Point2D pocket(ScoreRail.Pocket pocket) {
+            Point2D at = rail.localToParent(rail.pocket(pocket));
+            return new java.awt.geom.Point2D.Double(at.getX(), at.getY());
+        }
     };
 
     private State state = new State(null, false, false);
@@ -188,7 +192,8 @@ final class CardTableView extends Pane {
         backdrop.setPreserveRatio(false);
         headerShade.setMouseTransparent(true);
         leave.setOnAction(event -> confirmLeave());
-        getChildren().addAll(backdrop, headerShade, board, effectsScene, rail, leave);
+        // The rail sits under the effects, so scoring chips are seen landing on it.
+        getChildren().addAll(backdrop, headerShade, board, rail, effectsScene, leave);
         buildResult();
         buildConfirm();
         getChildren().add(cardDetails);
@@ -239,10 +244,11 @@ final class CardTableView extends Pane {
         handOrder = arranged(update.view().hand()).stream().map(CardInstance::id).toList();
         int delay = plan == null ? 0 : plan.scoringDelay();
         startTrace(change, delay);
-        if (plan != null && trace != null) PlayAnimator.combos(plan.staging(), trace, delay, layout);
+        List<ScoreRail.Tally> chips = plan != null && trace != null ? PlayAnimator.combos(plan.staging(), trace, delay, layout) : List.of();
         if (plan != null) stage(plan.staging());
         rail.update(display(update.view()), next.reducedMotion(),
-                (int) Math.round((trace == null ? delay : delay + trace.finishAt) * Staging.TEMPO));
+                (int) Math.round((trace == null ? delay : delay + trace.finishAt) * Staging.TEMPO),
+                chips.stream().map(chip -> new ScoreRail.Tally((int) Math.round(chip.atMillis() * Staging.TEMPO), chip.pocket(), chip.points())).toList());
         refreshResult();
         refreshCardDetails();
         wake();

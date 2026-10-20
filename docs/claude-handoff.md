@@ -1,7 +1,7 @@
 # Claude handoff — card game on the neutral catalog
 
 Read `AGENTS.md` first. The old chess-like game is gone; the card game described there is
-implemented end to end on catalog `cards-neutral-1` (`docs/card-catalog.md`): the approved
+implemented end to end on catalog `cards-neutral-2` (`docs/card-catalog.md`): the approved
 35-Unit library and 46-card automatic deck, 11 neutral Spells and 6 neutral Landmarks. Landmark
 numbers, the seven-nation bonus and some edge cases are provisional (AGENTS.md lists them).
 
@@ -24,30 +24,14 @@ numbers, the seven-nation bonus and some edge cases are provisional (AGENTS.md l
   `CardTableView` (live table, JavaFX: seven-space rows, Landmark areas, Landmark choice and
   Reconnaissance overlays, Draw and Skip turn buttons (D/S), larger hand cards, Spy-revealed cards, Watchtower top card), `ScoreRail` (rail, JavaFX), `CardDetails` (read-only modal for Landmark buffs and current Spy-revealed cards), `TableEffects` (performs a
   `PlayAnimator` plan), `FxScreens` (shows the JavaFX window in place of the Swing frame for the
-  table and Atlas; marshals between the EDT and the JavaFX thread),
+  table; marshals between the EDT and the JavaFX thread),
   `client/bot/CardBot` (headless protocol bot for `demo` and `bots`).
 
-## Atlas
-
-`AtlasView` (JavaFX) layers its header and a floating country chronicle over the full-screen
-`AtlasMapView`, which draws terrain, context mask and borders as one transformed node group. Select a country directly on the map or browse using arrow keys; there is no
-bottom nation button strip. The removed heraldry link, Unit previews and deck controls stay
-removed. Zoom/pan and reduced-motion fly-to remain supported.
-
-`AtlasMapData` parses the exported boundary SVG off the UI threads; the view decodes the terrain. The SVG is
-also the hit-test/selection geometry, so clicks follow the same shapes used to export the
-transparent PNG layers. Runtime copies live in `assets/atlas/researched-map/`. Full-size
-country cutouts, placement offsets, generation prompt, sources and accuracy notes live in
-`docs/design/map-cutouts/researched-v2/`. `tools/ExportAtlasLayers.java` rebuilds them.
-
-This is a source-based circa-1444 reconstruction, not surveyed exact historical borders.
-Poland, Bohemia and Hungary use Cliopatria's 1440–1449 records; Austria/Styria and the
-Croatia/Transylvania game subdivisions are documented regional reconstructions. Do not
-present those internal cuts as independently verified GIS records. The old procedural
-`AtlasGeography` map has been removed. `AtlasViewTest` checks exported boundaries, direct
-selection, offline navigation, the floating layout, keyboard browsing and zoom limits.
-
 ## Routes
+
+The Atlas section was removed at the user’s request (2026-10-20), including its menu entry,
+client route, screens, map/heraldry assets, design sources and dedicated export tools.
+The card factions and their procedural face colours remain unchanged.
 
 Elo ratings are removed from profiles, history, the UI, match recording and the database.
 On database startup, an idempotent transactional migration drops retired rating columns
@@ -73,11 +57,10 @@ removed at the user's request. `demo` runs two bots against a throwaway local se
   skipping with plays kept, own-turn manual draws, private random offers of five, and the
   Spy/Reconnaissance/Exchange/Archive edge cases.
 - Card-specific combo interactions beyond the base pair rule need new `Effect` types.
-- Card artwork: Units use the manuscript set in `docs/design/card-art/`; Spells and Landmarks
-  use `docs/design/card-art/drafts/neutral-v4/` (runtime copies in `assets/cards/runtime`,
-  loaded by `CardImages`). Retired national Spell/Landmark and Chaplain/Envoy art is archived in
-  `docs/design/card-art/retired/`. The neutral set is reviewed draft art; Unit card faces still
-  show the older manuscript titles (for example "KNIGHT" on the Knights class).
+- Card artwork: the old images were removed (2026-10-20). The 35 Units use the new art from
+  `art/cards/units/` (runtime copies in `assets/cards/runtime/`). Spell, Landmark and card-back
+  art is still pending; those use the procedural faces until `<card-id>.jpg` files are added.
+  Menu and match-room artwork are retained.
 - The hard bot cannot see the opponent's hand, so it does not anticipate replies; a sampling
   or search bot over the opponent's possible cards would be the next step.
 - The first opening deal of a session can pause up to about 0.2 s while card faces render for

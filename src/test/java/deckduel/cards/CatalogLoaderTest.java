@@ -18,10 +18,10 @@ class CatalogLoaderTest {
     private final Catalog catalog = CatalogLoader.loadBundled();
 
     @Test void theUnitLibraryIsSevenNationsTimesFiveClassesWithFixedPoints() {
-        assertEquals("cards-neutral-1", catalog.version());
+        assertEquals("cards-neutral-2", catalog.version());
         assertEquals(List.of("Hungary", "Poland", "Bohemia", "Austria", "Styria", "Croatia", "Transylvania"), catalog.regions());
         assertEquals(35, catalog.units().size());
-        Map<String, Integer> points = Map.of("Footmen", 1, "Pikemen", 2, "Bowmen", 3, "Riders", 4, "Knights", 5);
+        Map<String, Integer> points = Map.of("Pikemen", 2, "Bowmen", 3, "Riders", 4, "Knights", 5, "Battering Ram", 6);
         for (CardDef unit : catalog.units()) {
             assertEquals(points.get(unit.unitClass()), unit.points(), unit.id());
             assertEquals(1, unit.regions().size());
@@ -31,6 +31,7 @@ class CatalogLoaderTest {
             assertEquals(points.keySet(), catalog.units(nation).stream().map(CardDef::unitClass).collect(Collectors.toSet()), nation);
         assertTrue(catalog.cards().stream().noneMatch(card -> card.name().contains("Chaplain") || card.name().contains("Envoy")),
                 "Chaplain and Envoy are retired");
+        assertTrue(catalog.units().stream().noneMatch(unit -> unit.unitClass().equals("Footmen")), "Battering Ram replaced Footmen");
     }
 
     @Test void theElevenSpellsAndSixLandmarksAreNeutral() {
@@ -41,7 +42,7 @@ class CatalogLoaderTest {
         for (CardDef card : catalog.cards())
             if (card.kind() != CardKind.UNIT) assertTrue(card.regions().isEmpty() && card.classes().isEmpty(), card.id() + " is neutral");
         assertEquals(new Effect.SharedTagBonus(TagType.REGION, 3), catalog.card("embassy").effect(), "provisional Embassy value");
-        assertEquals(new Effect.WeakUnitBonus(2, 1), catalog.card("armory").effect(), "provisional Armory value");
+        assertEquals(new Effect.WeakUnitBonus(3, 1), catalog.card("armory").effect(), "provisional Armory value");
         assertTrue(catalog.cards().stream().noneMatch(card -> card.text().toLowerCase().contains("landmark") && card.id().contains("destroy")),
                 "no Spell destroys a Landmark");
     }

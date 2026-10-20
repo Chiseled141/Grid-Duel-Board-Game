@@ -4,7 +4,7 @@ A two-player card duel being built around Gwent-inspired turns and Balatro-style
 
 Start directly from **Play**: everyone plays the same automatic 46-card deck (all 35 Units and one of each Spell) and chooses two of five Landmarks at the start of a match. Then find an online opponent, host or join a room, or practise against an easy or hard bot. **History** lists your recorded matches. Matches run on an authoritative local server with privacy-filtered views, reconnect and rematch; recorded matches update win/loss records.
 
-The cards are listed in [the catalog notes](docs/card-catalog.md). The Unit library and deck are approved; Landmark numbers and a few edge cases are provisional.
+The cards are listed in [the catalog notes](docs/card-catalog.md): seven nations × Pikemen 2, Bowmen 3, Riders 4, Knights 5 and Battering Ram 6 points. The Unit library and deck are approved; Landmark numbers and a few edge cases are provisional. Unit art lives in `art/cards/units/`; Spells, Landmarks and the card back use drawn faces until their art is added.
 
 ## Build and run
 

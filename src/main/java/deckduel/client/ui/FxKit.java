@@ -19,7 +19,7 @@ import javafx.scene.text.Font;
 import javafx.scene.text.Text;
 
 /**
- * Shared JavaFX pieces for the match table and the Atlas: the game's fonts and colours, themed
+ * Shared JavaFX pieces for the match table: the game's fonts and colours, themed
  * buttons, card images converted from the shared Java2D sprites, and toolkit start-up.
  * Everything except {@link #start()} is used on the JavaFX Application Thread.
  */
@@ -50,11 +50,6 @@ final class FxKit {
         }
         Platform.setImplicitExit(false);
         try { ready.await(); } catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); }
-    }
-
-    /** Runs {@code work} on the JavaFX Application Thread, at once when already there. */
-    static void onFx(Runnable work) {
-        if (Platform.isFxApplicationThread()) work.run(); else Platform.runLater(work);
     }
 
     // ---------------------------------------------------------------- fonts and colours
@@ -113,14 +108,6 @@ final class FxKit {
         button.getStyleClass().addAll("pill", variant);
         button.setFont(display(14));
         button.setFocusTraversable(false);
-        return button;
-    }
-
-    /** A compact pill for map controls. */
-    static Button miniPill(String text, String variant) {
-        Button button = pill(text, variant);
-        button.getStyleClass().add("mini");
-        button.setFont(display(10));
         return button;
     }
 

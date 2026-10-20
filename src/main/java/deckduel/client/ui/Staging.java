@@ -25,9 +25,10 @@ final class Staging {
      */
     static final double TEMPO = 1.8;
 
-    /** Effect colours, named for what they mean on the table. */
+    /** Effect colours, named for what they mean on the table; each Spell family charges in its own. */
     enum Tone {
-        EMBER(0xF0874A), ARCANE(0xA88BE8), CREAM(0xF4E6C6), GOLD(0xF4C766);
+        EMBER(0xF0874A), ARCANE(0xA88BE8), CREAM(0xF4E6C6), GOLD(0xF4C766),
+        CRIMSON(0xE85A4C), STEEL(0xB4C2D8), VERDANT(0x8FD49A), AZURE(0x6FB7F0), TEAL(0x5FD3C4), ASH(0x9A9088);
         final int rgb;
         Tone(int rgb) { this.rgb = rgb; }
     }
@@ -81,6 +82,10 @@ final class Staging {
     record Shatter(CardDef card, List<Suppression> marks, Rectangle at, long seed) implements Effect {
         Shatter { marks = List.copyOf(marks); at = new Rectangle(at); }
     }
+    /** A replaced Unit torn in two and gone for good: it never reaches the discard pile. */
+    record Tear(CardDef card, List<Suppression> marks, Rectangle at, long seed) implements Effect {
+        Tear { marks = List.copyOf(marks); at = new Rectangle(at); }
+    }
     /** A war hammer that winds up over a card and strikes it {@code strike} milliseconds into the step. */
     record Hammer(Rectangle at, int strike) implements Effect {
         Hammer { at = new Rectangle(at); }
@@ -93,11 +98,56 @@ final class Staging {
     record Chains(CardDef card, List<Suppression> marks, Rectangle at) implements Effect {
         Chains { marks = List.copyOf(marks); at = new Rectangle(at); }
     }
+    /** A chain flung from a Spell to the Unit it will bind (Disable Points). */
+    record Lash(Point2D from, Point2D to) implements Effect {
+        Lash { from = (Point2D) from.clone(); to = (Point2D) to.clone(); }
+    }
+    /**
+     * A rune seal descending on a Unit and stamping it {@code stamp} milliseconds into the step,
+     * draining its colour; the card shows {@code marks} from then on (Disable Tags).
+     */
+    record Sigil(CardDef card, List<Suppression> was, List<Suppression> marks, Rectangle at, int stamp) implements Effect {
+        Sigil { was = List.copyOf(was); marks = List.copyOf(marks); at = new Rectangle(at); }
+    }
+    /** A column of light falling on a card, with motes rising through it (Clear Disable). */
+    record Beam(Rectangle at, long seed) implements Effect {
+        Beam { at = new Rectangle(at); }
+    }
+    /** A card burning away from its bottom edge, throwing embers (Random Discard). */
+    record Burn(CardDef card, Rectangle at, long seed) implements Effect {
+        Burn { at = new Rectangle(at); }
+    }
+    /** A golden thread cast from a Spell that hooks a card in a hand, then snaps taut (Random Steal). */
+    record Tether(Point2D from, Point2D hook) implements Effect {
+        Tether { from = (Point2D) from.clone(); hook = (Point2D) hook.clone(); }
+    }
+    /** Motes fountaining up from a deck as it gives up cards (Draw). */
+    record Wellspring(Rectangle pile, Tone tone, long seed) implements Effect {
+        Wellspring { pile = new Rectangle(pile); }
+    }
+    /** A turning vortex that swallows cards and gives others back (Exchange). */
+    record Vortex(Rectangle at, Tone tone) implements Effect {
+        Vortex { at = new Rectangle(at); }
+    }
+    /** A card spiralling from {@code from} into the middle of {@code into}, shrinking as it turns. */
+    record Spiral(CardDef card, Rectangle from, Rectangle into) implements Effect {
+        Spiral { from = new Rectangle(from); into = new Rectangle(into); }
+    }
+    /** Card backs fanning up from a deck to be looked over, then sinking back (Reconnaissance). */
+    record Peek(Rectangle pile, int count) implements Effect {
+        Peek { pile = new Rectangle(pile); }
+    }
+    /** An eye that opens over a hand, looks it over and closes (Spy). */
+    record Eye(double x, double y, double width) implements Effect { }
     /** Light sweeping across a card, as a Landmark wakes. */
     record Shine(Rectangle at) implements Effect {
         Shine { at = new Rectangle(at); }
     }
-    /** A pair link drawing itself, then its bonus. */
+    /** A scoring chip that pops up at {@code from} and flies to the score rail at {@code to}; {@code big} for a +9 pair. */
+    record Chip(String text, Point2D from, Point2D to, Tone tone, boolean big) implements Effect {
+        Chip { from = (Point2D) from.clone(); to = (Point2D) to.clone(); }
+    }
+    /** A pair link drawing itself, then its bonus ({@code bonus} null when a chip carries it instead). */
     record Link(Point2D a, Point2D b, double sag, Tone tone, String bonus) implements Effect {
         Link { a = (Point2D) a.clone(); b = (Point2D) b.clone(); }
     }
@@ -111,7 +161,8 @@ final class Staging {
     record Step(int at, int duration, Effect effect) {
         int end() { return at + duration; }
     }
-    record Beat(int at, Kind kind) { }
+    /** A sound due {@code at}; {@code step} raises the pitch of rising cues such as a chip tally. */
+    record Beat(int at, Kind kind, int step) { }
     record Shake(int at, int duration, double amplitude) { }
 
     private final List<Step> steps = new ArrayList<>();
@@ -123,7 +174,8 @@ final class Staging {
     void add(int at, int duration, Effect effect) { steps.add(new Step(at, duration, effect)); }
     /** Notes a card the sequence will draw, so its image can be prepared before the clock starts. */
     void uses(CardDef card) { if (card != null) cards.add(card); }
-    void sound(int at, Kind kind) { beats.add(new Beat(at, kind)); }
+    void sound(int at, Kind kind) { sound(at, kind, 0); }
+    void sound(int at, Kind kind, int step) { beats.add(new Beat(at, kind, step)); }
     void shake(int at, int duration, double amplitude) { shakes.add(new Shake(at, duration, amplitude)); }
     /** Keeps a row card out of the normal drawing until its animation has put it there. */
     void hideOnRow(long cardId, int until) { hiddenOnRow.merge(cardId, until, Math::max); }

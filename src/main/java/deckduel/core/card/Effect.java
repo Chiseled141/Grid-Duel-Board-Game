@@ -38,7 +38,7 @@ public sealed interface Effect extends Serializable {
         @Serial private static final long serialVersionUID = 1L;
         /** Validates the threshold and bonus. */
         public WeakUnitBonus {
-            if (maxPrinted < 1 || maxPrinted > 5) throw new IllegalArgumentException("Threshold must be 1–5");
+            if (maxPrinted < 1 || maxPrinted > 6) throw new IllegalArgumentException("Threshold must be 1–6");
             positive(points);
         }
         @Override public boolean ongoing() { return true; }

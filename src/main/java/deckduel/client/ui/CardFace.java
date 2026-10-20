@@ -78,41 +78,26 @@ final class CardFace {
         g.setColor(new Color(0, 0, 0, 110));
         g.fillRoundRect(r.x + 3, r.y + 5, r.width, r.height, 9, 9);
         BufferedImage art = CardImages.shared().face(card.id());
-        if (art != null) paintArtwork(g, card, art, r, emphasized, suppressed);
+        if (art != null) paintArtwork(g, art, r, emphasized, suppressed);
         else paintProcedural(g, card, r, emphasized, suppressed);
     }
 
     /**
-     * The painted card. Unit art already shows the title and nation crest, and the neutral Spell
-     * and Landmark art prints its kind, title and description, so only what the art lacks is
-     * added: a Unit's points badge and any disable markers. Full rules stay in the detail line.
+     * The painted card. Unit art already prints its points, nation and class, so only what the
+     * art lacks is added: the selection outline and any disable markers. Full rules stay in the
+     * detail line.
      */
-    private static void paintArtwork(Graphics2D g, CardDef card, BufferedImage art, Rectangle r,
+    private static void paintArtwork(Graphics2D g, BufferedImage art, Rectangle r,
                                      boolean emphasized, List<Suppression> suppressed) {
         Graphics2D clipped = (Graphics2D) g.create();
         clipped.clip(new RoundRectangle2D.Float(r.x, r.y, r.width, r.height, 9, 9));
         clipped.drawImage(art, r.x, r.y, r.width, r.height, null);
         clipped.dispose();
         float scale = Math.max(.62f, Math.min(1.25f, r.width / 104f));
-        int pad = Math.round(7 * scale);
-        if (card.kind() == CardKind.UNIT) pointsBadge(g, card, r.x + pad, r.y + pad, Math.round(24 * scale), scale);
         g.setStroke(new BasicStroke(emphasized ? 2.5f : 1f));
         g.setColor(emphasized ? Theme.AMBER : new Color(0, 0, 0, 120));
         g.drawRoundRect(r.x, r.y, r.width, r.height, 9, 9);
         if (!suppressed.isEmpty()) paintSuppressed(g, r, suppressed, scale);
-    }
-
-    private static void pointsBadge(Graphics2D g, CardDef card, int x, int y, int size, float scale) {
-        g.setColor(Theme.INK);
-        g.fillOval(x, y, size, size);
-        g.setColor(BRASS);
-        g.setStroke(new BasicStroke(1.2f));
-        g.drawOval(x, y, size, size);
-        g.setColor(Theme.CREAM);
-        g.setFont(Theme.bold(14 * scale));
-        String points = String.valueOf(card.points());
-        FontMetrics metrics = g.getFontMetrics();
-        g.drawString(points, x + (size - metrics.stringWidth(points)) / 2, y + (size + metrics.getAscent()) / 2 - 2);
     }
 
     private static void paintProcedural(Graphics2D g, CardDef card, Rectangle r, boolean emphasized, List<Suppression> suppressed) {
@@ -176,11 +161,6 @@ final class CardFace {
             g.drawString(text, r.x + (r.width - g.getFontMetrics().stringWidth(text)) / 2, y);
             y += g.getFontMetrics().getHeight();
         }
-    }
-
-    /** Paints a concealed card back; every card shares the same back, so it reveals nothing. */
-    static void paintBack(Graphics2D g, Rectangle r) {
-        g.drawImage(backSprite(r.width, r.height, pixelScale(g)), r.x, r.y, r.width + SHADOW_X, r.height + SHADOW_Y, null);
     }
 
     private static void renderBack(Graphics2D g, Rectangle r) {

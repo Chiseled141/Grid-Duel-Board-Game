@@ -1,25 +1,21 @@
 package deckduel.client.ui;
 
-import java.awt.Component;
 import java.awt.Graphics2D;
 import java.awt.Image;
 import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.WeakHashMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.imageio.ImageIO;
-import javax.swing.SwingUtilities;
 
 /**
  * Card artwork from {@code /assets/cards/runtime/<card id>.jpg}, decoded once off the EDT.
@@ -39,8 +35,7 @@ final class CardImages {
         thread.setDaemon(true);
         return thread;
     });
-    // EDT only: components to repaint as art arrives, and device-resolution copies for painting.
-    private final Set<Component> watchers = Collections.newSetFromMap(new WeakHashMap<>());
+    // EDT only: device-resolution copies for painting.
     private final List<Runnable> listeners = new java.util.concurrent.CopyOnWriteArrayList<>();
     private final Map<String, Image> scaled = new LinkedHashMap<>(64, .75f, true) {
         @Override protected boolean removeEldestEntry(Map.Entry<String, Image> eldest) { return size() > SCALED_CACHE; }
@@ -50,9 +45,6 @@ final class CardImages {
 
     /** Starts decoding these cards' art in the background. */
     void preload(Collection<String> ids) { ids.forEach(this::request); request(BACK); }
-
-    /** Repaints {@code component} whenever more art finishes loading. */
-    void repaintWhenLoaded(Component component) { watchers.add(component); }
 
     /** Runs {@code listener} on the loader thread whenever more art finishes loading; for non-Swing screens. */
     void onLoaded(Runnable listener) { listeners.add(listener); }
@@ -91,7 +83,6 @@ final class CardImages {
         loader.execute(() -> {
             try {
                 if (decode(id) == null) return;
-                SwingUtilities.invokeLater(() -> List.copyOf(watchers).forEach(Component::repaint));
                 listeners.forEach(Runnable::run);
             } catch (IOException exception) {
                 LOG.log(Level.WARNING, "Could not load card art " + id, exception);

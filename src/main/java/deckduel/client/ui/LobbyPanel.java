@@ -173,7 +173,6 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
         petalTargets.add(play); petalTargets.add(preferences); petalTargets.add(quit);
         line(page, play);
         line(page, preferences);
-        line(page, new MenuAction("Atlas", model::openAtlas, false));
         line(page, quit);
         page.add(Box.createVerticalStrut(14));
         return page;

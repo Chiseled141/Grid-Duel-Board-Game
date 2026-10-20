@@ -17,9 +17,7 @@ import javax.imageio.stream.ImageOutputStream;
  * modest while staying sharp on HiDPI screens. JPEG for opaque art; PNG keeps transparency.
  *
  * <pre>
- * java tools/ResizeArt.java src/main/resources/assets/cards/manuscript-v1 src/main/resources/assets/cards/runtime 320 480 jpg
- * java tools/ResizeArt.java docs/design/heraldry/coats-of-arms src/main/resources/assets/atlas/heraldry/coats 240 360 png
- * java tools/ResizeArt.java docs/design/heraldry/flags src/main/resources/assets/atlas/heraldry/flags 600 400 jpg
+ * java tools/ResizeArt.java source-folder runtime-folder 320 480 jpg
  * </pre>
  */
 public final class ResizeArt {

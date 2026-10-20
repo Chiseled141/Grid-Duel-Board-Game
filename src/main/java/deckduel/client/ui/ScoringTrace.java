@@ -21,6 +21,8 @@ import java.util.Set;
  */
 final class ScoringTrace {
     static final int GLOW_MS = 650, FIRST_PAIR_MS = 260, PAIR_GAP_MS = 150, LINK_MS = 1100, LANDMARK_MS = 600;
+    /** A pair's chip pops this long after its link starts drawing, then takes {@code CHIP_MS} to reach the score rail. */
+    static final int CHIP_POP_MS = 420, CHIP_MS = 600;
     /** Pairs beyond this light together, so a huge combo never makes the trace drag. */
     private static final int PAIR_STEPS = 10;
 
@@ -32,6 +34,9 @@ final class ScoringTrace {
     final Set<TableZone> landmarksChanged = java.util.EnumSet.noneOf(TableZone.class);
     final List<Link> links = new ArrayList<>();
     final List<Beat> beats = new ArrayList<>();
+    /** Each row's change in Unit points, and the changed space its chip rises from (-1: the row as a whole). */
+    final Map<TableZone, Long> unitGain = new EnumMap<>(TableZone.class);
+    final Map<TableZone, Integer> unitSlot = new EnumMap<>(TableZone.class);
     final int landmarkAt, finishAt;
     final long ownGain, opponentGain;
 
@@ -44,6 +49,8 @@ final class ScoringTrace {
             SideView was = zone == TableZone.OWN ? before.you() : before.opponent();
             SideView now = zone == TableZone.OWN ? after.you() : after.opponent();
             changed.put(zone, changedSlots(was.row(), now.row()));
+            unitGain.put(zone, now.score().units() - was.score().units());
+            unitSlot.put(zone, changed.get(zone).stream().min(Integer::compare).orElse(-1));
             Set<String> old = new HashSet<>();
             for (PairBonus pair : was.score().pairs()) old.add(key(was.row(), pair));
             for (PairBonus pair : now.score().pairs()) {
@@ -58,7 +65,10 @@ final class ScoringTrace {
             }
         }
         landmarkAt = links.isEmpty() ? FIRST_PAIR_MS : at;
-        finishAt = landmarkAt + (anyLandmark ? 220 : 0) + 80;
+        // The score counts once the last chip has reached the rail.
+        int landed = unitGain.values().stream().anyMatch(gain -> gain != 0) ? CHIP_MS : 0;
+        for (Link link : links) landed = Math.max(landed, link.at() + CHIP_POP_MS + CHIP_MS);
+        finishAt = Math.max(landmarkAt + (anyLandmark ? 220 : 0) + 80, landed + 60);
         beats.add(0, new Beat(0, new ScoringSounds.Cue(ScoringSounds.Cue.Kind.CARD, 0)));
         if (ownGain != 0) beats.add(new Beat(finishAt, new ScoringSounds.Cue(
                 ownGain > 0 ? ScoringSounds.Cue.Kind.GAIN : ScoringSounds.Cue.Kind.LOSS, 0)));

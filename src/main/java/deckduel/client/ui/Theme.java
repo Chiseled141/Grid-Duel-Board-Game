@@ -122,9 +122,4 @@ public final class Theme {
     public static Font decorative(float size) {
         return decorative.deriveFont(size);
     }
-
-    /** Old-book serif titles give card faces a printed rather than UI-label character. */
-    public static Font cardTitle(float size) {
-        return new Font(Font.SERIF, Font.BOLD, 14).deriveFont(size);
-    }
 }

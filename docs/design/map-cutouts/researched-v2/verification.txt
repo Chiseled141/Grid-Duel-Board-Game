@@ -1,5 +1,0 @@
-PASS: seven 3840x3840 PNG layers.
-PASS: binary transparent alpha and no layer touches the canvas edge.
-PASS: zero pairwise pixel overlap; union equals assembled image.
-PASS: layer colors equal assembled terrain; cropped layers equal the manifest-positioned pixels.
-Historical precision remains limited by the documented reconstruction.

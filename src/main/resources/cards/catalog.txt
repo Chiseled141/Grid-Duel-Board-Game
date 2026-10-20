@@ -1,9 +1,9 @@
 # Deck Duel card catalog: 35 Units, 6 neutral Landmarks, 11 neutral Spells (AGENTS.md §5.1, §5.4, §5.5).
-# Units, classes and printed points are approved initial playtest values (Footmen 1, Pikemen 2,
-# Bowmen 3, Riders 4, Knights 5). Landmark NUMBERS below are PROVISIONAL proposals accepted by the
+# Units, classes and printed points are approved initial playtest values (Pikemen 2, Bowmen 3,
+# Riders 4, Knights 5, Battering Ram 6). Landmark NUMBERS below are PROVISIONAL proposals accepted by the
 # user for implementation; they are not final balance (AGENTS.md §5.6).
 #
-# unit     | id | name | points 1-5 | nation | class
+# unit     | id | name | points 1-6 | nation | class
 # landmark | id | name | effect
 # spell    | id | name | effect
 # Landmark effects: SHARED_TAG_BONUS <REGION|CLASS> <points per pair> · WEAK_UNIT_BONUS <max printed> <points>
@@ -11,53 +11,53 @@
 # Spell effects:    DISABLE <OWN|OPPONENT> <POINTS|TAGS> · DESTROY <OWN|OPPONENT> · CLEAR_DISABLE
 #                   RANDOM_DISCARD <cards> · RANDOM_STEAL <cards> · DRAW <cards> · EXCHANGE <discard> <draw>
 #                   RECONNAISSANCE <look> · SABOTAGE · SPY <cards>
-version | cards-neutral-1
+version | cards-neutral-2
 regions | Hungary;Poland;Bohemia;Austria;Styria;Croatia;Transylvania
 
 # Hungary
-unit | hu-footmen | Hungary Footmen | 1 | Hungary | Footmen
+unit | hu-battering-ram | Hungary Battering Ram | 6 | Hungary | Battering Ram
 unit | hu-pikemen | Hungary Pikemen | 2 | Hungary | Pikemen
 unit | hu-bowmen | Hungary Bowmen | 3 | Hungary | Bowmen
 unit | hu-riders | Hungary Riders | 4 | Hungary | Riders
 unit | hu-knight | Hungary Knights | 5 | Hungary | Knights
 
 # Poland
-unit | pl-footmen | Poland Footmen | 1 | Poland | Footmen
+unit | pl-battering-ram | Poland Battering Ram | 6 | Poland | Battering Ram
 unit | pl-pikemen | Poland Pikemen | 2 | Poland | Pikemen
 unit | pl-bowmen | Poland Bowmen | 3 | Poland | Bowmen
 unit | pl-riders | Poland Riders | 4 | Poland | Riders
 unit | pl-knight | Poland Knights | 5 | Poland | Knights
 
 # Bohemia
-unit | bo-footmen | Bohemia Footmen | 1 | Bohemia | Footmen
+unit | bo-battering-ram | Bohemia Battering Ram | 6 | Bohemia | Battering Ram
 unit | bo-pikemen | Bohemia Pikemen | 2 | Bohemia | Pikemen
 unit | bo-bowmen | Bohemia Bowmen | 3 | Bohemia | Bowmen
 unit | bo-riders | Bohemia Riders | 4 | Bohemia | Riders
 unit | bo-knight | Bohemia Knights | 5 | Bohemia | Knights
 
 # Austria
-unit | au-footmen | Austria Footmen | 1 | Austria | Footmen
+unit | au-battering-ram | Austria Battering Ram | 6 | Austria | Battering Ram
 unit | au-pikemen | Austria Pikemen | 2 | Austria | Pikemen
 unit | au-bowmen | Austria Bowmen | 3 | Austria | Bowmen
 unit | au-riders | Austria Riders | 4 | Austria | Riders
 unit | au-knight | Austria Knights | 5 | Austria | Knights
 
 # Styria
-unit | st-footmen | Styria Footmen | 1 | Styria | Footmen
+unit | st-battering-ram | Styria Battering Ram | 6 | Styria | Battering Ram
 unit | st-pikemen | Styria Pikemen | 2 | Styria | Pikemen
 unit | st-bowmen | Styria Bowmen | 3 | Styria | Bowmen
 unit | st-riders | Styria Riders | 4 | Styria | Riders
 unit | st-knight | Styria Knights | 5 | Styria | Knights
 
 # Croatia
-unit | cr-footmen | Croatia Footmen | 1 | Croatia | Footmen
+unit | cr-battering-ram | Croatia Battering Ram | 6 | Croatia | Battering Ram
 unit | cr-pikemen | Croatia Pikemen | 2 | Croatia | Pikemen
 unit | cr-bowmen | Croatia Bowmen | 3 | Croatia | Bowmen
 unit | cr-riders | Croatia Riders | 4 | Croatia | Riders
 unit | cr-knight | Croatia Knights | 5 | Croatia | Knights
 
 # Transylvania
-unit | tr-footmen | Transylvania Footmen | 1 | Transylvania | Footmen
+unit | tr-battering-ram | Transylvania Battering Ram | 6 | Transylvania | Battering Ram
 unit | tr-pikemen | Transylvania Pikemen | 2 | Transylvania | Pikemen
 unit | tr-bowmen | Transylvania Bowmen | 3 | Transylvania | Bowmen
 unit | tr-riders | Transylvania Riders | 4 | Transylvania | Riders
@@ -66,7 +66,7 @@ unit | tr-knight | Transylvania Knights | 5 | Transylvania | Knights
 # Landmarks: neutral, chosen two of five at match start, outside the draw deck.
 landmark | embassy | Embassy | SHARED_TAG_BONUS REGION 3
 landmark | guild-hall | Guild Hall | SHARED_TAG_BONUS CLASS 3
-landmark | armory | Armory | WEAK_UNIT_BONUS 2 1
+landmark | armory | Armory | WEAK_UNIT_BONUS 3 1
 landmark | ruined-keep | Ruined Keep | EMPTY_SPACE_BONUS 2
 landmark | archive | Archive | FIRST_SPELL_DRAW 1
 landmark | watchtower | Watchtower | DECK_TOP_VIEW
