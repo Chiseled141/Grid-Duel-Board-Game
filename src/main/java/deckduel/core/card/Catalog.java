@@ -7,8 +7,7 @@ import java.util.Map;
 
 /**
  * An immutable, validated card library injected into every match: every nation has one Unit of
- * each shared class, a class prints the same points in every nation, and Landmarks and Spells
- * are neutral. The content itself is configuration supplied from outside core.
+ * each shared class, a class prints the same points in every nation, and Spells are neutral. The content itself is configuration supplied from outside core.
  */
 public final class Catalog {
     /** Shared Unit classes; each nation has exactly one Unit of each. */
@@ -18,7 +17,7 @@ public final class Catalog {
     private final List<String> regions;
     private final Map<String, CardDef> cards;
 
-    /** Validates unique ids, the nation × class Unit grid, consistent class points and enough Landmark offers. */
+    /** Validates unique ids, the nation × class Unit grid and consistent class points. */
     public Catalog(String version, List<String> regions, List<CardDef> cards) {
         if (version == null || version.isBlank()) throw new IllegalArgumentException("Catalog needs a version");
         this.version = version;
@@ -31,8 +30,6 @@ public final class Catalog {
         }
         this.cards = java.util.Collections.unmodifiableMap(byId);
         validateUnits();
-        if (landmarks().size() < Rules.LANDMARK_OFFERS)
-            throw new IllegalArgumentException("At least " + Rules.LANDMARK_OFFERS + " Landmarks are needed for the offers");
     }
 
     private void validateUnits() {
@@ -63,8 +60,6 @@ public final class Catalog {
     public List<CardDef> units(String region) { return units().stream().filter(card -> card.nation().equals(region)).toList(); }
     /** Every neutral Spell. */
     public List<CardDef> spells() { return of(CardKind.SPELL); }
-    /** Every neutral Landmark; offers at match start come from these. */
-    public List<CardDef> landmarks() { return of(CardKind.LANDMARK); }
 
     private List<CardDef> of(CardKind kind) { return cards.values().stream().filter(card -> card.kind() == kind).toList(); }
 }

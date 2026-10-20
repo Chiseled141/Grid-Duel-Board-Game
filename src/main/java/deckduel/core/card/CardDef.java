@@ -7,8 +7,7 @@ import java.util.Objects;
 
 /**
  * One printed card. A Unit has 1–6 printed points, exactly one nation and exactly one class, and
- * no ability. Landmarks and Spells are neutral: no nation, class or printed points, and exactly
- * one effect of the matching family.
+ * no ability. Spells are neutral: no nation, class or printed points, and exactly one effect.
  */
 public record CardDef(String id, String name, CardKind kind, int points,
                       List<String> regions, List<String> classes, Effect effect) implements Serializable {
@@ -28,9 +27,8 @@ public record CardDef(String id, String name, CardKind kind, int points,
             if (effect != null) throw new IllegalArgumentException(id + ": Units have no ability");
         } else {
             if (points != 0) throw new IllegalArgumentException(id + ": only Units have printed points");
-            if (!regions.isEmpty() || !classes.isEmpty()) throw new IllegalArgumentException(id + ": Landmarks and Spells are neutral");
-            if (effect == null || effect.ongoing() != (kind == CardKind.LANDMARK))
-                throw new IllegalArgumentException(id + ": " + kind + " needs one matching effect");
+            if (!regions.isEmpty() || !classes.isEmpty()) throw new IllegalArgumentException(id + ": Spells are neutral");
+            if (effect == null) throw new IllegalArgumentException(id + ": a Spell needs one effect");
         }
     }
 

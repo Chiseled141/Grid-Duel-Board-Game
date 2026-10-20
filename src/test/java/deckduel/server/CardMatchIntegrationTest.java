@@ -87,7 +87,7 @@ class CardMatchIntegrationTest {
         });
     }
 
-    /** Opens a hosted room and joins it; both views start with the Landmark offers. */
+    /** Opens a hosted room and joins it; both views start with round one dealt. */
     private MatchUpdate[] hostAndJoin(Peer host, Peer joiner) throws Exception {
         host.send(new CreateMatchRequest());
         String code = host.expect(MatchCreated.class, any -> true).roomCode();
@@ -95,15 +95,7 @@ class CardMatchIntegrationTest {
         return new MatchUpdate[] {host.update(any -> true), joiner.update(any -> true)};
     }
 
-    /** Both players choose Landmarks at once, quoting the same revision; returns the dealt round-one views. */
-    private MatchUpdate[] chooseLandmarks(Peer a, Peer b, MatchUpdate first, MatchUpdate second) throws Exception {
-        a.move(first);
-        b.move(second);
-        return new MatchUpdate[] {a.update(u -> u.view().phase() == MatchPhase.IN_PROGRESS),
-                b.update(u -> u.view().phase() == MatchPhase.IN_PROGRESS)};
-    }
-
-    private static boolean waitedOn(MatchUpdate update) { return update.view().choosingLandmarks() || update.view().yourTurn(); }
+    private static boolean waitedOn(MatchUpdate update) { return update.view().yourTurn(); }
 
     /** Drives both peers with the greedy bot until each sees the finished view. */
     private MatchUpdate[] playOut(Peer a, Peer b, MatchUpdate first, MatchUpdate second) throws Exception {
@@ -121,16 +113,13 @@ class CardMatchIntegrationTest {
         try (var alice = new Peer("alice", true); var bob = new Peer("bob", true)) {
             MatchUpdate[] opened = hostAndJoin(alice, bob);
             assertEquals("bob", opened[0].opponentName()); assertEquals("alice", opened[1].opponentName());
-            assertEquals(MatchPhase.CHOOSING_LANDMARKS, opened[0].view().phase());
-            assertEquals(5, opened[0].view().offers().size()); assertTrue(opened[0].view().hand().isEmpty());
-            assertTrue(opened[0].view().offers().stream().noneMatch(opened[1].view().offers()::contains), "offers are private");
+            assertEquals(MatchPhase.IN_PROGRESS, opened[0].view().phase(), "round one is dealt at once");
             alice.send(new ListMatchesRequest());
             assertTrue(alice.expect(ListMatchesResponse.class, any -> true).openMatches().isEmpty(), "the room was consumed");
 
-            MatchUpdate[] start = chooseLandmarks(alice, bob, opened[0], opened[1]);
+            MatchUpdate[] start = opened;
             assertEquals(10, start[0].view().hand().size()); assertEquals(10, start[0].view().opponent().handCount());
-            assertEquals(46 - 10, start[0].view().you().deckCount(), "every Unit and Spell, Landmarks apart");
-            assertEquals(2, start[0].view().opponent().landmarks().size());
+            assertEquals(45 - 10, start[0].view().you().deckCount(), "every Unit and Spell");
             assertNotEquals(start[0].view().hand(), start[1].view().hand(), "each player only sees their own hand");
 
             MatchUpdate[] end = playOut(alice, bob, start[0], start[1]);
@@ -141,7 +130,7 @@ class CardMatchIntegrationTest {
             assertEquals(aliceAfter.wins(), bobAfter.losses());
             assertEquals(aliceAfter.losses(), bobAfter.wins());
             var history = matchDao.recentMatches(1).get(0);
-            assertEquals("cards-neutral-2", history.rulesVersion());
+            assertEquals("cards-neutral-3", history.rulesVersion());
             assertEquals(3, matchDao.roundsOf(history.id()).size());
             assertEquals(end[0].view().rounds().get(2).firstScore(), matchDao.roundsOf(history.id()).get(2).firstScore());
             bob.send(new HistoryRequest());
@@ -154,15 +143,12 @@ class CardMatchIntegrationTest {
     @Test void staleIllegalAndRetriedPlaysChangeNothing() throws Exception {
         try (var alice = new Peer("alice", true); var bob = new Peer("bob", true)) {
             MatchUpdate[] opened = hostAndJoin(alice, bob);
-            alice.send(new MoveRequest(90, 0, new DrawCard()));
-            assertTrue(alice.expect(ActionRejected.class, any -> true).reason().contains("Landmarks first"));
-            MatchUpdate[] start = chooseLandmarks(alice, bob, opened[0], opened[1]);
+            MatchUpdate[] start = opened;
             Peer mover = start[0].view().yourTurn() ? alice : bob, waiter = mover == alice ? bob : alice;
             MatchUpdate view = mover == alice ? start[0] : start[1];
             MatchUpdate waiting = mover == alice ? start[1] : start[0];
             PlayCard play = view.view().legalPlays().get(0);
 
-            // Ids above the Landmark choice's, so none is mistaken for a retry of an accepted move.
             waiter.send(new MoveRequest(101, waiting.view().revision(), PlayCard.place(waiting.view().hand().get(0).id(), 0)));
             assertTrue(waiter.expect(ActionRejected.class, any -> true).reason().contains("not your turn"));
             mover.send(new MoveRequest(102, view.view().revision() + 5, play));
@@ -182,7 +168,7 @@ class CardMatchIntegrationTest {
     @Test void skippingIsBroadcastAndStaleOutOfTurnAndRetriedSkipsDoNotConsumeAnotherPlay() throws Exception {
         try (var alice = new Peer("alice", true); var bob = new Peer("bob", true)) {
             MatchUpdate[] opened = hostAndJoin(alice, bob);
-            MatchUpdate[] start = chooseLandmarks(alice, bob, opened[0], opened[1]);
+            MatchUpdate[] start = opened;
             Peer mover = start[0].view().yourTurn() ? alice : bob, waiter = mover == alice ? bob : alice;
             MatchUpdate view = mover == alice ? start[0] : start[1];
             int revision = view.view().revision();
@@ -219,14 +205,14 @@ class CardMatchIntegrationTest {
     @Test void aDroppedPlayerReconnectsToTheSameSeatWithinTheGracePeriod() throws Exception {
         try (var alice = new Peer("alice", true); var bob = new Peer("bob", true)) {
             MatchUpdate[] opened = hostAndJoin(alice, bob);
-            MatchUpdate[] start = chooseLandmarks(alice, bob, opened[0], opened[1]);
+            MatchUpdate[] start = opened;
             bob.close();
             assertFalse(alice.update(u -> !u.opponentConnected()).opponentLeft());
             try (var bobAgain = new Peer("bob", false)) {
                 MatchUpdate restored = bobAgain.update(any -> true);
                 assertEquals(start[1].matchId(), restored.matchId());
                 assertEquals(start[1].view().hand(), restored.view().hand());
-                assertEquals(start[1].view().you().landmarks(), restored.view().you().landmarks(), "Landmarks survive the reconnect");
+                assertEquals(start[1].view().you().row(), restored.view().you().row(), "the row survives the reconnect");
                 assertTrue(alice.update(MatchUpdate::opponentConnected).opponentConnected());
             }
         }
@@ -252,7 +238,9 @@ class CardMatchIntegrationTest {
             assertTrue(bob.update(MatchUpdate::opponentWantsRematch).opponentWantsRematch());
             bob.send(new RematchRequest());
             MatchUpdate second = alice.update(u -> u.game() == 2);
-            assertEquals(MatchPhase.CHOOSING_LANDMARKS, second.view().phase(), "a rematch offers Landmarks again");
+            assertEquals(MatchPhase.IN_PROGRESS, second.view().phase(), "a rematch deals a fresh round one");
+            assertEquals(1, second.view().round());
+            assertEquals(10, second.view().hand().size());
             assertEquals(0, second.view().you().matchTotal());
         }
     }

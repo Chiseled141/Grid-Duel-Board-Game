@@ -4,8 +4,8 @@ import java.io.Serial;
 
 /**
  * Plays one hand card. A Unit names a row space (an empty one, or the Unit to replace on a full
- * row); a Spell uses {@link #NO_SPACE} and names its target when it takes one: a Unit, an enemy
- * Landmark, or another card in the caster's hand.
+ * row); a Spell uses {@link #NO_SPACE} and names its target when it takes one: a Unit or another
+ * card in the caster's hand.
  */
 public record PlayCard(long cardId, int slot, Long targetId) implements Move {
     @Serial private static final long serialVersionUID = 1L;

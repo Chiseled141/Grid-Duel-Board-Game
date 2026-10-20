@@ -10,10 +10,10 @@ public sealed interface Message extends Serializable permits ActionRejected,
         LoginResponse, MatchCreated, MatchUpdate, MatchmakingStatus, MoveRequest, Ping, Pong,
         PracticeRequest, ProfileUpdate, ProtocolHello, ProtocolReady, RegisterRequest, RematchRequest {
     /**
-     * Version 11 adds voluntary SkipTurn moves to the neutral-card rules and server-built deck.
-     * Older peers cannot handle this move and are rejected at the handshake.
+     * Version 12 removes Landmarks (no PickLandmarks move, no Landmark areas or offers) and adds
+     * the row's {@code Formation} to each score. Older peers are rejected at the handshake.
      */
-    int PROTOCOL_VERSION = 11;
+    int PROTOCOL_VERSION = 12;
     /** Greeting shared by both peers. */
     String GREETING = "DECK_DUEL_PROTOCOL:" + PROTOCOL_VERSION;
     /** Restricts deserialization to protocol records, card view contracts and bounded collections. */
@@ -48,19 +48,17 @@ public sealed interface Message extends Serializable permits ActionRejected,
                     + "deckduel.net.RematchRequest;"
                     + "deckduel.net.UserProfile;"
                     + "deckduel.core.card.CardDef;deckduel.core.card.CardInstance;deckduel.core.card.CardKind;"
-                    + "deckduel.core.card.DrawCard;deckduel.core.card.KeepCard;deckduel.core.card.PickLandmarks;"
-                    + "deckduel.core.card.PlayCard;deckduel.core.card.SkipTurn;deckduel.core.card.LandmarkCard;"
-                    + "deckduel.core.card.Effect$SharedTagBonus;deckduel.core.card.Effect$WeakUnitBonus;"
-                    + "deckduel.core.card.Effect$EmptySpaceBonus;deckduel.core.card.Effect$FirstSpellDraw;"
-                    + "deckduel.core.card.Effect$DeckTopView;deckduel.core.card.Effect$Disable;deckduel.core.card.Effect$Destroy;"
+                    + "deckduel.core.card.DrawCard;deckduel.core.card.KeepCard;"
+                    + "deckduel.core.card.PlayCard;deckduel.core.card.SkipTurn;deckduel.core.card.Formation;"
+                    + "deckduel.core.card.Effect$Disable;deckduel.core.card.Effect$Destroy;"
                     + "deckduel.core.card.Effect$ClearDisable;deckduel.core.card.Effect$RandomDiscard;"
                     + "deckduel.core.card.Effect$RandomSteal;deckduel.core.card.Effect$Draw;deckduel.core.card.Effect$Exchange;"
-                    + "deckduel.core.card.Effect$Reconnaissance;deckduel.core.card.Effect$Sabotage;deckduel.core.card.Effect$Spy;"
+                    + "deckduel.core.card.Effect$Reconnaissance;deckduel.core.card.Effect$Spy;"
                     + "deckduel.core.card.MatchEvent;deckduel.core.card.MatchOutcome;deckduel.core.card.MatchPhase;"
                     + "deckduel.core.card.PairBonus;deckduel.core.card.PlayRecord;deckduel.core.card.PlayerView;"
                     + "deckduel.core.card.RoundResult;deckduel.core.card.Row;deckduel.core.card.RowCard;"
                     + "deckduel.core.card.ScoreBreakdown;deckduel.core.card.Seat;deckduel.core.card.SideView;"
-                    + "deckduel.core.card.Suppression;deckduel.core.card.TagType;deckduel.core.card.TargetSide;"
+                    + "deckduel.core.card.Suppression;deckduel.core.card.TargetSide;"
                     + "java.lang.Enum;java.lang.Object;java.lang.String;java.lang.Integer;java.lang.Long;"
                     + "java.lang.Number;java.lang.Boolean;"
                     + "java.util.CollSer;java.util.ImmutableCollections$List12;java.util.ImmutableCollections$ListN;"

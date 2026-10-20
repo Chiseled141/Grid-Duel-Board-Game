@@ -8,9 +8,7 @@ import deckduel.client.ScoringSounds;
 import deckduel.client.state.ClientModel;
 import deckduel.client.state.Screen;
 import deckduel.client.state.ServerConnection;
-import deckduel.core.card.CardInstance;
 import deckduel.core.card.DeckRules;
-import deckduel.core.card.PickLandmarks;
 import deckduel.core.card.Seat;
 import deckduel.core.card.MatchState;
 import deckduel.core.card.PlayCard;
@@ -62,9 +60,7 @@ class FxScreensTest {
         try {
             var catalog = CatalogLoader.loadBundled();
             var deck = DeckRules.deck(catalog);
-            MatchState state = MatchState.start(deck, deck, catalog.landmarks(), 3);
-            for (Seat seat : Seat.values())
-                state = state.apply(seat, new PickLandmarks(state.view(seat).offers().stream().limit(2).map(CardInstance::id).toList()));
+            MatchState state = MatchState.start(deck, deck, 3);
             PlayerView view = state.view(state.turn());
             SwingUtilities.invokeAndWait(() -> model[0].handleMessage(
                     new MatchUpdate("M1", 1, "alice", "bob", false, true, false, false, false, view)));

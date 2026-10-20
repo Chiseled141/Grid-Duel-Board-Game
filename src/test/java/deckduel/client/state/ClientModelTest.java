@@ -34,31 +34,24 @@ class ClientModelTest {
         });
     }
 
-    /** The opening of a match on the bundled catalog, before ({@code choosing}) or after both chose Landmarks. */
-    static MatchUpdate update(String id, deckduel.core.card.Seat seat, boolean choosing) {
+    /** The dealt opening of a match on the bundled catalog, as {@code seat} sees it. */
+    static MatchUpdate update(String id, deckduel.core.card.Seat seat) {
         var catalog = deckduel.cards.CatalogLoader.loadBundled();
         var deck = deckduel.core.card.DeckRules.deck(catalog);
-        var state = deckduel.core.card.MatchState.start(deck, deck, catalog.landmarks(), 1);
-        if (!choosing)
-            for (var each : deckduel.core.card.Seat.values())
-                state = state.apply(each, new deckduel.core.card.PickLandmarks(
-                        state.view(each).offers().stream().limit(2).map(deckduel.core.card.CardInstance::id).toList()));
+        var state = deckduel.core.card.MatchState.start(deck, deck, 1);
         return new MatchUpdate(id, 1, "alice", "bob", false, true, false, false, false, state.view(seat));
     }
 
-    static MatchUpdate update(String id, deckduel.core.card.Seat seat) { return update(id, seat, false); }
-
-    @Test void landmarkChoicesAreSentWhileChoosingThoughNoOneHoldsTheTurn() throws Exception {
+    @Test void onlyOneMoveIsSentPerShownView() throws Exception {
         SwingUtilities.invokeAndWait(() -> {
             var f = fixture();
             f.model.handleMessage(new LoginResponse(true, null, new UserProfile("alice", 0, 0)));
-            var choosing = update("M1", deckduel.core.card.Seat.FIRST, true);
-            f.model.handleMessage(choosing);
+            var mine = update("M1", deckduel.core.card.Seat.FIRST);
+            var moving = mine.view().yourTurn() ? mine : update("M1", deckduel.core.card.Seat.SECOND);
+            f.model.handleMessage(moving);
             f.sent.clear();
-            var pick = new deckduel.core.card.PickLandmarks(
-                    choosing.view().offers().stream().limit(2).map(deckduel.core.card.CardInstance::id).toList());
-            f.model.move(pick);
-            assertEquals(pick, ((MoveRequest) f.sent.get(0)).move());
+            f.model.move(new deckduel.core.card.DrawCard());
+            assertEquals(new deckduel.core.card.DrawCard(), ((MoveRequest) f.sent.get(0)).move());
             f.model.move(new deckduel.core.card.DrawCard());
             assertEquals(1, f.sent.size(), "one move per shown view");
         });

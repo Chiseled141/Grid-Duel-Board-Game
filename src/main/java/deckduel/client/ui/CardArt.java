@@ -18,7 +18,7 @@ import java.util.Locale;
 
 /**
  * Procedural heraldic art derived from a card's real data: nation banner colours
- * and one emblem per class, Landmark or Spell effect. It is a stand-in until card artwork
+ * and one emblem per class or Spell effect. It is a stand-in until card artwork
  * exists and carries no meaning beyond the card's tags.
  */
 final class CardArt {
@@ -58,15 +58,14 @@ final class CardArt {
         }
     }
 
-    /** A small light emblem for the corner of Landmark and Spell cards. */
+    /** A small light emblem for the corner of Spell cards. */
     static void cornerEmblem(Graphics2D g, CardDef card, Rectangle box) {
         emblem(g, effectEmblem(card), box, GOLD);
     }
 
     private static String effectEmblem(CardDef card) {
-        if (card.kind() == CardKind.LANDMARK) return "Landmark";
         if (card.effect() instanceof Effect.Destroy) return "Remove";
-        return card.effect() instanceof Effect.Disable || card.effect() instanceof Effect.Sabotage ? "Disable" : "Spell";
+        return card.effect() instanceof Effect.Disable ? "Disable" : "Spell";
     }
 
     private static void emblem(Graphics2D g, String name, Rectangle box, Color color) {
@@ -81,7 +80,6 @@ final class CardArt {
                 case "Riders" -> horseshoe(local);
                 case "Bowmen" -> bow(local);
                 case "Knights" -> local.fill(crown());
-                case "Landmark" -> local.fill(tower());
                 case "Remove" -> local.fill(bolt());
                 case "Disable" -> brokenLink(local);
                 default -> initial(local, name);
@@ -116,16 +114,6 @@ final class CardArt {
         Path2D path = new Path2D.Double();
         path.moveTo(.1, .8); path.lineTo(.1, .3); path.lineTo(.3, .55); path.lineTo(.5, .2);
         path.lineTo(.7, .55); path.lineTo(.9, .3); path.lineTo(.9, .8); path.closePath();
-        return path;
-    }
-
-    private static Shape tower() {
-        Path2D path = new Path2D.Double();
-        path.moveTo(.22, .95); path.lineTo(.22, .2); path.lineTo(.32, .2); path.lineTo(.32, .08);
-        path.lineTo(.44, .08); path.lineTo(.44, .2); path.lineTo(.56, .2); path.lineTo(.56, .08);
-        path.lineTo(.68, .08); path.lineTo(.68, .2); path.lineTo(.78, .2); path.lineTo(.78, .95);
-        path.lineTo(.58, .95); path.lineTo(.58, .7); path.quadTo(.5, .6, .42, .7); path.lineTo(.42, .95);
-        path.closePath();
         return path;
     }
 

@@ -19,7 +19,7 @@ import java.util.Locale;
  * (points, tags, a short effect) laid over it; cards without art get a procedural face.
  */
 final class CardFace {
-    private static final Color UNIT = new Color(0xE6D3A8), LANDMARK = new Color(0x4C5A42), SPELL = new Color(0x4B3346);
+    private static final Color UNIT = new Color(0xE6D3A8), SPELL = new Color(0x4B3346);
     private static final Color BRASS = new Color(0xAD8954), BACK = new Color(0x3A2C22);
 
     /** Room a sprite keeps right of and below the card for its drop shadow. */
@@ -83,9 +83,9 @@ final class CardFace {
     }
 
     /**
-     * The painted card. Unit art already prints its points, nation and class, so only what the
-     * art lacks is added: the selection outline and any disable markers. Full rules stay in the
-     * detail line.
+     * The painted card. Unit and Spell art already prints its points, nation, class or rules
+     * text, so only what the art lacks is added: the selection outline and any disable markers.
+     * Full rules stay in the detail line.
      */
     private static void paintArtwork(Graphics2D g, BufferedImage art, Rectangle r,
                                      boolean emphasized, List<Suppression> suppressed) {
@@ -101,7 +101,7 @@ final class CardFace {
     }
 
     private static void paintProcedural(Graphics2D g, CardDef card, Rectangle r, boolean emphasized, List<Suppression> suppressed) {
-        g.setColor(card.kind() == CardKind.UNIT ? UNIT : card.kind() == CardKind.LANDMARK ? LANDMARK : SPELL);
+        g.setColor(card.kind() == CardKind.UNIT ? UNIT : SPELL);
         g.fillRoundRect(r.x, r.y, r.width, r.height, 9, 9);
         g.setStroke(new BasicStroke(emphasized ? 2.5f : 1.2f));
         g.setColor(emphasized ? Theme.AMBER : BRASS);

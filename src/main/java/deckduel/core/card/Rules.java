@@ -18,24 +18,13 @@ public final class Rules {
     public static final int MANUAL_DRAWS = 3;
     /** Rounds per match. */
     public static final int ROUNDS = 3;
-    /** Landmarks offered to each player at match start. */
-    public static final int LANDMARK_OFFERS = 5;
-    /** Landmarks each player keeps from their offers. */
-    public static final int LANDMARK_PICKS = 2;
-
-    /** Both players' public table from one player's side: Unit rows and Landmark areas. */
-    public record Board(Row own, List<LandmarkCard> ownLandmarks, Row opponent, List<LandmarkCard> opponentLandmarks) {
-        /** Copies the Landmark lists. */
-        public Board {
-            ownLandmarks = List.copyOf(ownLandmarks);
-            opponentLandmarks = List.copyOf(opponentLandmarks);
-        }
-
+    /** Both players' public Unit rows from one player's side. */
+    public record Board(Row own, Row opponent) {
         /** This player's live score. */
-        public ScoreBreakdown ownScore() { return Scoring.score(own, ownLandmarks); }
+        public ScoreBreakdown ownScore() { return Scoring.score(own); }
 
         /** The opponent's live score. */
-        public ScoreBreakdown opponentScore() { return Scoring.score(opponent, opponentLandmarks); }
+        public ScoreBreakdown opponentScore() { return Scoring.score(opponent); }
 
         /** This player's live score minus the opponent's. */
         public long lead() { return ownScore().total() - opponentScore().total(); }
@@ -60,12 +49,12 @@ public final class Rules {
     /** Whether a Spell names a target when one is available. */
     public static boolean takesTarget(Effect effect) {
         return effect instanceof Effect.Disable || effect instanceof Effect.Destroy || effect instanceof Effect.ClearDisable
-                || effect instanceof Effect.Sabotage || effect instanceof Effect.Exchange;
+                || effect instanceof Effect.Exchange;
     }
 
     /**
-     * Ids of what a Spell may target now: Units on a row, an enemy Landmark, or for Exchange
-     * another card in the caster's hand. Empty for Spells without a target.
+     * Ids of what a Spell may target now: Units on a row, or for Exchange another card in the
+     * caster's hand. Empty for Spells without a target.
      */
     public static List<Long> spellTargets(CardInstance spell, List<CardInstance> hand, Board board) {
         Effect effect = spell.def().effect();
@@ -76,8 +65,6 @@ public final class Rules {
             for (RowCard unit : row(board, destroy.side()).cards()) ids.add(unit.card().id());
         } else if (effect instanceof Effect.ClearDisable) {
             for (RowCard unit : board.own().cards()) if (!unit.suppressed().isEmpty()) ids.add(unit.card().id());
-        } else if (effect instanceof Effect.Sabotage) {
-            for (LandmarkCard landmark : board.opponentLandmarks()) if (landmark.active()) ids.add(landmark.card().id());
         } else if (effect instanceof Effect.Exchange) {
             for (CardInstance card : hand) if (card.id() != spell.id()) ids.add(card.id());
         }
@@ -112,7 +99,7 @@ public final class Rules {
         RowCard replaced = own.at(play.slot());
         if (replaced != null && !own.isFull())
             throw new RuleViolation("That space is taken. Replacing is only allowed when your row is full.");
-        Board after = new Board(own.place(play.slot(), card), board.ownLandmarks(), board.opponent(), board.opponentLandmarks());
+        Board after = new Board(own.place(play.slot(), card), board.opponent());
         String where = " to space " + (play.slot() + 1);
         if (replaced == null) return new Resolution(after, List.of(), "played " + card.def().name() + where);
         return new Resolution(after, List.of(replaced.card()),
@@ -135,22 +122,9 @@ public final class Rules {
         }
         if (play.targetId() == null || !targets.contains(play.targetId())) throw new RuleViolation("Choose a legal target for " + name + ".");
         long target = play.targetId();
-        if (effect instanceof Effect.Sabotage) return sabotage(card, target, board);
         if (effect instanceof Effect.Exchange)
             return new Resolution(board, List.of(card), "cast " + name + ", discarding a card from hand");
         return onUnit(card, target, board);
-    }
-
-    private static Resolution sabotage(CardInstance card, long target, Board board) {
-        List<LandmarkCard> landmarks = new ArrayList<>();
-        String name = null;
-        for (LandmarkCard landmark : board.opponentLandmarks()) {
-            boolean hit = landmark.card().id() == target;
-            if (hit) name = landmark.def().name();
-            landmarks.add(hit ? new LandmarkCard(landmark.card(), true) : landmark);
-        }
-        Board after = new Board(board.own(), board.ownLandmarks(), board.opponent(), landmarks);
-        return new Resolution(after, List.of(card), "cast " + card.def().name() + " on " + name);
     }
 
     /** Disable, Destroy or Clear Disable on a Unit of either row. */
@@ -169,8 +143,7 @@ public final class Rules {
         } else {
             changed = row.update(unit.with(((Effect.Disable) effect).what()));
         }
-        Board after = onOwn ? new Board(changed, board.ownLandmarks(), board.opponent(), board.opponentLandmarks())
-                : new Board(board.own(), board.ownLandmarks(), changed, board.opponentLandmarks());
+        Board after = onOwn ? new Board(changed, board.opponent()) : new Board(board.own(), changed);
         return new Resolution(after, discarded, "cast " + card.def().name() + " on " + unit.def().name());
     }
 

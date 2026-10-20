@@ -70,8 +70,7 @@ public final class CardBot implements AutoCloseable {
             else client.send(new FindMatchRequest(true));
             return;
         }
-        boolean waitedOn = update.view().choosingLandmarks() || update.view().yourTurn();
-        if (!waitedOn || update.view().revision() == playedRevision) return;
+        if (!update.view().yourTurn() || update.view().revision() == playedRevision) return;
         playedRevision = update.view().revision();
         client.send(new MoveRequest(requests++, playedRevision, GreedyBot.choose(update.view())));
     }

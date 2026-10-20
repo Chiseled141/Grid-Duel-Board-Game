@@ -4,25 +4,21 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import deckduel.cards.CatalogLoader;
 import deckduel.core.card.CardDef;
-import deckduel.core.card.CardKind;
 import java.awt.Rectangle;
 import java.awt.image.BufferedImage;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
 class CardArtworkTest {
-    @Test void everyUnitHasRuntimeArtAndNeutralCardsAndTheBackUseTheDrawnFace() throws Exception {
+    @Test void everyCardHasRuntimeArtAndTheBackUsesTheDrawnFace() throws Exception {
         for (CardDef card : CatalogLoader.loadBundled().cards()) {
             BufferedImage art = CardImages.shared().decode(card.id());
-            if (card.kind() == CardKind.UNIT) {
-                assertNotNull(art, card.id() + " has art");
-                assertEquals(320, art.getWidth(), card.id());
-                assertEquals(480, art.getHeight(), card.id());
-            } else {
-                assertNull(art, card.id() + " keeps the drawn face until its art exists");
-            }
+            assertNotNull(art, card.id() + " has art");
+            assertEquals(480, art.getWidth(), card.id());
+            assertEquals(720, art.getHeight(), card.id());
         }
         assertNull(CardImages.shared().decode(CardImages.BACK));
+        assertNull(CardImages.shared().decode("sabotage"), "removed with the Landmarks");
     }
 
     @Test void retiredArtworkIsNoLongerShipped() throws Exception {

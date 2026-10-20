@@ -8,7 +8,6 @@ import java.awt.Rectangle;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
-import javafx.geometry.Point2D;
 import javafx.geometry.Rectangle2D;
 import javafx.scene.Group;
 import javafx.scene.Node;
@@ -139,15 +138,6 @@ final class TableEffects {
         return runs.stream().anyMatch(run -> run.staging.hiddenInHand(cardId, run.elapsed(now)));
     }
 
-    /** The camera jolt now: a decaying random offset, strongest for the biggest moments. */
-    Point2D shake(long now) {
-        double amplitude = 0;
-        for (Run run : runs) amplitude = Math.max(amplitude, run.staging.shakeAmplitude(run.elapsed(now)));
-        if (amplitude < .3) return Point2D.ZERO;
-        Random random = new Random(now / 16_000_000L);
-        return new Point2D((random.nextDouble() * 2 - 1) * amplitude, (random.nextDouble() * 2 - 1) * amplitude);
-    }
-
     /** Advances every sequence to {@code now} and plays the cues that have come due; false once all have finished. */
     boolean tick(long now) {
         for (var it = runs.iterator(); it.hasNext();) {
@@ -171,7 +161,6 @@ final class TableEffects {
         else if (effect instanceof Staging.Charge c) FxKit.face(c.spell(), List.of(), c.at().width, c.at().height, true, pixelScale);
         else if (effect instanceof Staging.Dissolve d) image(d.spell(), List.of(), d.at());
         else if (effect instanceof Staging.Chains c) image(c.card(), c.marks(), c.at());
-        else if (effect instanceof Staging.Cracks c) image(c.card(), c.marks(), c.at());
         else if (effect instanceof Staging.Tear t) image(t.card(), t.marks(), t.at());
         else if (effect instanceof Staging.Sigil g) { image(g.card(), g.was(), g.at()); image(g.card(), g.marks(), g.at()); }
         else if (effect instanceof Staging.Burn b) image(b.card(), List.of(), b.at());
@@ -286,9 +275,7 @@ final class TableEffects {
         if (effect instanceof Staging.Shatter s) return shatter(s);
         if (effect instanceof Staging.Tear t) return tear(t);
         if (effect instanceof Staging.Chains c) return chains(c);
-        if (effect instanceof Staging.Hammer h) return hammer(h, duration);
         if (effect instanceof Staging.Impact i) return impact(i);
-        if (effect instanceof Staging.Cracks c) return cracks(c);
         if (effect instanceof Staging.Shine s) return shine(s);
         if (effect instanceof Staging.Lash l) return lash(l);
         if (effect instanceof Staging.Sigil g) return sigil(g);
@@ -497,7 +484,7 @@ final class TableEffects {
         };
     }
 
-    /** A card blown apart: its face cut into shards that fly outward and fall, after a white flash. */
+    /** A card blown apart: its face cut into shards that fly outward and fall, after a soft flash. */
     private Live shatter(Staging.Shatter s) {
         Rectangle at = s.at();
         Image image = FxKit.face(s.card(), s.marks(), at.width, at.height, false, 2);
@@ -535,7 +522,7 @@ final class TableEffects {
                         shard.setRotate(Math.toDegrees(m[2] * 2.4 * p));
                         shard.setOpacity(Math.max(0, 1 - p * 1.1));
                     }
-                flash.setOpacity(p < .18 ? .9 * (1 - p / .18) : 0);
+                flash.setOpacity(p < .18 ? .3 * (1 - p / .18) : 0);
             }
         };
     }
@@ -581,7 +568,7 @@ final class TableEffects {
             { node.getChildren().addAll(left, right, glow, bits); }
             @Override void update(double p) {
                 double strain = Math.min(1, p / .3), open = Math.max(0, (p - .3) / .7);
-                double shake = p < .3 ? Math.sin(p * 120) * 3 * strain : 0;
+                double shake = p < .3 ? Math.sin(p * 60) * 1.5 * strain : 0;
                 double part = 1 - Math.pow(1 - open, 2), fall = open * open;
                 left.setTranslateX(shake - 46 * part);
                 right.setTranslateX(shake + 46 * part);
@@ -660,7 +647,7 @@ final class TableEffects {
         return new Live() {
             { node.getChildren().addAll(card, veil, links); }
             @Override void update(double p) {
-                double shudder = Math.sin(p * Math.PI * 9) * 5 * (1 - p);
+                double shudder = Math.sin(p * Math.PI * 5) * 2 * (1 - p);
                 card.pose(at.getCenterX() + shudder, at.getCenterY(), 0, 1, 0);
                 veil.setTranslateX(shudder);
                 veilClip.setHeight((at.height + 8) * Math.min(1, p * 2.2));
@@ -673,158 +660,7 @@ final class TableEffects {
         };
     }
 
-    /**
-     * A war hammer over a card: it appears, winds up slowly, swings down fast (with a faint trail
-     * of its own path) to strike the card's centre at {@code strike}, rebounds a little and fades.
-     */
-    private Live hammer(Staging.Hammer h, int duration) {
-        Rectangle at = h.at();
-        double length = at.height * 1.05, headW = at.height * .5, headH = at.height * .22;
-        // The grip sits right of and a little below the card, so the head lands on its centre.
-        double reach = length + headH * .3, dx = .96, dy = .28, norm = Math.hypot(dx, dy);
-        double gripX = at.getCenterX() + reach * dx / norm, gripY = at.getCenterY() + reach * dy / norm;
-        double impact = Math.toDegrees(Math.atan2(-dx, dy)), windUp = impact + 78;
-        double strikeAt = h.strike() / (double) duration;
-        Group[] copies = new Group[3];
-        // Turned about the grip, as a hammer swings from the hand; setRotate would pivot on the bounds' centre.
-        Rotate[] swings = new Rotate[copies.length];
-        for (int i = 0; i < copies.length; i++) {
-            copies[i] = hammerShape(length, headW, headH);
-            swings[i] = new Rotate(0, 0, 0);
-            copies[i].getTransforms().add(swings[i]);
-            copies[i].setTranslateX(gripX);
-            copies[i].setTranslateY(gripY);
-            copies[i].setOpacity(i == 0 ? 1 : .22 / i);
-        }
-        copies[0].setEffect(new DropShadow(BlurType.GAUSSIAN, Color.rgb(0, 0, 0, .6), 18, .1, 8, 14));
-        Circle flash = new Circle(at.getCenterX(), at.getCenterY(), at.width * .45, Color.rgb(255, 244, 214));
-        flash.setEffect(new GaussianBlur(24));
-        flash.setBlendMode(BlendMode.ADD);
-        return new Live() {
-            { node.getChildren().addAll(copies[2], copies[1], copies[0], flash); }
-            @Override void update(double p) {
-                for (int i = 0; i < copies.length; i++) {
-                    // Trailing copies show where the head was a moment ago, only while it swings fast.
-                    double q = Math.max(0, p - i * .025);
-                    swings[i].setAngle(angle(q));
-                    copies[i].setVisible(i == 0 || q > strikeAt * .62 && q < strikeAt);
-                }
-                double in = Math.min(1, p / (strikeAt * .25)), out = p < strikeAt + .1 ? 1 : 1 - (p - strikeAt - .1) / (.9 - strikeAt);
-                copies[0].setOpacity(Math.max(0, Math.min(in, out)));
-                double since = (p - strikeAt) / (1 - strikeAt);
-                flash.setOpacity(since < 0 || since > .25 ? 0 : .9 * (1 - since / .25));
-            }
-
-            /** Wind up (eased out), swing (accelerating into the blow), then a damped rebound. */
-            private double angle(double p) {
-                double lift = .62 * strikeAt;
-                if (p < lift) return impact + (windUp - impact) * easeOutCubic(p / lift);
-                if (p < strikeAt) { double q = (p - lift) / (strikeAt - lift); return windUp + (impact - windUp) * q * q * q; }
-                double t = (p - strikeAt) * duration;
-                return impact + 14 * Math.exp(-t / 90) * Math.sin(t / 40);
-            }
-        };
-    }
-
-    /** A hammer drawn with its grip at the origin and its head straight up. */
-    private static Group hammerShape(double length, double headW, double headH) {
-        double handleW = Math.max(6, headH * .34);
-        var handle = new javafx.scene.shape.Rectangle(-handleW / 2, -length, handleW, length);
-        handle.setArcWidth(handleW);
-        handle.setArcHeight(handleW);
-        handle.setFill(new LinearGradient(0, 0, 1, 0, true, CycleMethod.NO_CYCLE, new Stop(0, Color.web("#5A3A1E")),
-                new Stop(.45, Color.web("#A0703F")), new Stop(1, Color.web("#4A2E16"))));
-        var grip = new javafx.scene.shape.Rectangle(-handleW * .65, -length * .3, handleW * 1.3, length * .3);
-        grip.setArcWidth(handleW);
-        grip.setArcHeight(handleW);
-        grip.setFill(Color.web("#3B2618"));
-        Group wraps = new Group();
-        for (int i = 1; i < 6; i++) {
-            Line wrap = new Line(-handleW * .65, -length * .05 * i, handleW * .65, -length * .05 * i - handleW * .4);
-            wrap.setStroke(Color.web("#6B4A2E"));
-            wrap.setStrokeWidth(1.4);
-            wraps.getChildren().add(wrap);
-        }
-        double headY = -length - headH * .55;
-        var head = new javafx.scene.shape.Rectangle(-headW / 2, headY, headW, headH);
-        head.setArcWidth(headH * .3);
-        head.setArcHeight(headH * .3);
-        head.setFill(new LinearGradient(0, 0, 0, 1, true, CycleMethod.NO_CYCLE, new Stop(0, Color.web("#A9ADB3")),
-                new Stop(.35, Color.web("#5E6268")), new Stop(1, Color.web("#2B2D31"))));
-        head.setStroke(Color.web("#1C1D20"));
-        head.setStrokeWidth(1.5);
-        // The striking face, lit along its edge.
-        var face = new javafx.scene.shape.Rectangle(-headW / 2 - headH * .12, headY - headH * .08, headH * .3, headH * 1.16);
-        face.setArcWidth(headH * .15);
-        face.setArcHeight(headH * .15);
-        face.setFill(new LinearGradient(0, 0, 1, 0, true, CycleMethod.NO_CYCLE, new Stop(0, Color.web("#D9DCE0")),
-                new Stop(1, Color.web("#6A6E74"))));
-        var band = new javafx.scene.shape.Rectangle(-handleW * .8, headY + headH - 2, handleW * 1.6, headH * .3);
-        band.setFill(Color.web("#3A3C40"));
-        return new Group(handle, grip, wraps, band, head, face);
-    }
-
-    /** Cracks running out from the point of the blow while the card shudders, before it breaks. */
-    private Live cracks(Staging.Cracks c) {
-        Rectangle at = c.at();
-        CardNode card = card(c.card(), c.marks(), at);
-        Random random = new Random(c.seed());
-        double cx = at.getCenterX(), cy = at.getCenterY(), reach = Math.hypot(at.width, at.height) * .6;
-        List<double[]> branches = new ArrayList<>();
-        for (int i = 0; i < 7; i++) {
-            double heading = i * Math.PI * 2 / 7 + random.nextDouble() * .6;
-            double[] points = new double[12];
-            double x = cx, y = cy;
-            for (int k = 0; k < 6; k++) {
-                heading += (random.nextDouble() - .5) * .9;
-                double step = reach / 6 * (.7 + random.nextDouble() * .6);
-                x += Math.cos(heading) * step;
-                y += Math.sin(heading) * step;
-                points[k * 2] = x;
-                points[k * 2 + 1] = y;
-            }
-            branches.add(points);
-        }
-        Group fissures = new Group();
-        List<Polyline[]> lines = new ArrayList<>();
-        for (int i = 0; i < branches.size(); i++) {
-            Polyline dark = new Polyline(), light = new Polyline();
-            dark.setStroke(Color.rgb(20, 12, 6, .9));
-            dark.setStrokeWidth(3.2);
-            light.setStroke(Color.rgb(255, 226, 170, .95));
-            light.setStrokeWidth(1.1);
-            for (Polyline line : new Polyline[]{dark, light}) line.setStrokeLineCap(StrokeLineCap.ROUND);
-            fissures.getChildren().addAll(dark, light);
-            lines.add(new Polyline[]{dark, light});
-        }
-        var clip = new javafx.scene.shape.Rectangle(at.x, at.y, at.width, at.height);
-        clip.setArcWidth(9);
-        clip.setArcHeight(9);
-        fissures.setClip(clip);
-        fissures.setEffect(new DropShadow(BlurType.GAUSSIAN, Color.rgb(255, 190, 110, .6), 6, .2, 0, 0));
-        return new Live() {
-            { node.getChildren().addAll(card, fissures); }
-            @Override void update(double p) {
-                double shudder = Math.sin(p * Math.PI * 11) * 4 * (1 - p), grown = easeOutCubic(Math.min(1, p / .7));
-                card.pose(cx + shudder, cy, Math.sin(p * Math.PI * 7) * .02 * (1 - p), 1, 0);
-                fissures.setTranslateX(shudder);
-                for (int i = 0; i < branches.size(); i++) {
-                    double[] points = branches.get(i);
-                    List<Double> drawn = new ArrayList<>(List.of(cx, cy));
-                    double segments = grown * 6;
-                    for (int k = 0; k < 6 && k < segments; k++) {
-                        double px = k == 0 ? cx : points[k * 2 - 2], py = k == 0 ? cy : points[k * 2 - 1];
-                        double part = Math.min(1, segments - k);
-                        drawn.add(px + (points[k * 2] - px) * part);
-                        drawn.add(py + (points[k * 2 + 1] - py) * part);
-                    }
-                    for (Polyline line : lines.get(i)) line.getPoints().setAll(drawn);
-                }
-            }
-        };
-    }
-
-    /** A diagonal light sweeping across a card, as a Landmark wakes. */
+    /** A diagonal light sweeping across a card as its disables are cleared. */
     private Live shine(Staging.Shine s) {
         Rectangle at = s.at();
         var band = new javafx.scene.shape.Rectangle(-at.width * .3, at.y - at.height, at.width * .6, at.height * 3);
@@ -1119,7 +955,7 @@ final class TableEffects {
             @Override void update(double p) {
                 boolean stamped = p >= stampAt;
                 double since = stamped ? (p - stampAt) / (1 - stampAt) : 0;
-                double shudder = stamped ? Math.sin(since * Math.PI * 8) * 3 * (1 - since) : 0;
+                double shudder = stamped ? Math.sin(since * Math.PI * 5) * 1.5 * (1 - since) : 0;
                 was.setVisible(!stamped);
                 now.setVisible(stamped);
                 (stamped ? now : was).pose(cx + shudder, cy, 0, 1 + (stamped ? CardMotion.punch(since * 400, .04, 70, 24) : 0), 0);
@@ -1133,7 +969,7 @@ final class TableEffects {
                 seal.setScaleY(size);
                 seal.setRotate(200 * p);
                 seal.setOpacity(stamped ? 1 - since : Math.min(1, p / (stampAt * .4)));
-                flash.setOpacity(stamped && since < .3 ? .85 * (1 - since / .3) : 0);
+                flash.setOpacity(stamped && since < .3 ? .35 * (1 - since / .3) : 0);
             }
         };
     }

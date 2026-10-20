@@ -17,7 +17,7 @@ import javax.imageio.stream.ImageOutputStream;
  * modest while staying sharp on HiDPI screens. JPEG for opaque art; PNG keeps transparency.
  *
  * <pre>
- * java tools/ResizeArt.java source-folder runtime-folder 320 480 jpg
+ * java tools/ResizeArt.java source-folder runtime-folder 480 720 jpg
  * </pre>
  */
 public final class ResizeArt {

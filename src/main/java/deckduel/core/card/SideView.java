@@ -2,23 +2,17 @@ package deckduel.core.card;
 
 import java.io.Serial;
 import java.io.Serializable;
-import java.util.List;
 import java.util.Objects;
 
-/**
- * Public information about one player: Unit row, Landmark area, live score, counters and banked
- * match total. While Landmarks are being chosen the opponent's picks stay hidden ({@code ready}
- * only says whether they have chosen).
- */
-public record SideView(Row row, List<LandmarkCard> landmarks, ScoreBreakdown score, int playsUsed, int drawsUsed,
-                       int handCount, int deckCount, int discardCount, long matchTotal, boolean ready) implements Serializable {
+/** Public information about one player: Unit row, live score, counters and banked match total. */
+public record SideView(Row row, ScoreBreakdown score, int playsUsed, int drawsUsed, int handCount, int deckCount,
+                       int discardCount, long matchTotal) implements Serializable {
     @Serial private static final long serialVersionUID = 1L;
 
-    /** Requires the row and score and copies the Landmarks. */
+    /** Requires the row and score. */
     public SideView {
         Objects.requireNonNull(row, "row");
         Objects.requireNonNull(score, "score");
-        landmarks = List.copyOf(landmarks);
     }
 
     /** Card plays left this round. */

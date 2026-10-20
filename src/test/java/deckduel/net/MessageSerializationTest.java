@@ -9,7 +9,6 @@ import deckduel.core.card.GreedyBot;
 import deckduel.core.card.KeepCard;
 import deckduel.core.card.MatchPhase;
 import deckduel.core.card.MatchState;
-import deckduel.core.card.PickLandmarks;
 import deckduel.core.card.PlayCard;
 import deckduel.core.card.Seat;
 import java.io.*;
@@ -23,7 +22,7 @@ class MessageSerializationTest {
         var catalog = CatalogLoader.loadBundled();
         var deck = DeckRules.deck(catalog);
         // A real view after a played round exercises every card contract that crosses the wire.
-        var state = MatchState.start(deck, deck, catalog.landmarks(), 5);
+        var state = MatchState.start(deck, deck, 5);
         while (state.round() == 1 && state.phase() != MatchPhase.FINISHED) {
             Seat seat = state.awaits(Seat.FIRST) ? Seat.FIRST : Seat.SECOND;
             state = state.apply(seat, GreedyBot.choose(state.view(seat)));
@@ -34,7 +33,7 @@ class MessageSerializationTest {
                 new CreateMatchRequest(), new MatchCreated("ABCDE"), new JoinMatchRequest("ABCDE"),
                 new FindMatchRequest(true), new MatchmakingStatus(false, "Matchmaking is unavailable"),
                 new PracticeRequest(true), new MoveRequest(3, 7, PlayCard.cast(4, 9L)), new MoveRequest(4, 7, new DrawCard()),
-                new MoveRequest(5, 0, new PickLandmarks(List.of(501L, 503L))), new MoveRequest(6, 8, new KeepCard(12)),
+                new MoveRequest(6, 8, new KeepCard(12)),
                 new MoveRequest(7, 9, new SkipTurn()),
                 new ActionRejected(3, "Not your turn"),
                 new LeaveMatchRequest(), new RematchRequest(), new ProfileUpdate(user),

@@ -16,7 +16,6 @@ class MatchStateTest {
     private static final CardDef STEAL = spell("steal", new Effect.RandomSteal(1));
     private static final CardDef RECON = spell("recon", new Effect.Reconnaissance(3));
     private static final CardDef SPY = spell("spy", new Effect.Spy(3));
-    private static final CardDef SABOTAGE = spell("sabotage", new Effect.Sabotage());
     private static final CardDef DESTROY = spell("destroy", new Effect.Destroy(TargetSide.OPPONENT));
     private static final CardDef DISABLE_TAGS = spell("disable-tags", new Effect.Disable(TargetSide.OPPONENT, Suppression.TAGS));
     private static final CardDef CLEAR = spell("clear", new Effect.ClearDisable());
@@ -24,7 +23,7 @@ class MatchStateTest {
     /** The full automatic composition: every Unit and one copy of each Spell. */
     private static List<CardDef> fullDeck() {
         List<CardDef> deck = new ArrayList<>(UNITS);
-        deck.addAll(List.of(DRAW_TWO, EXCHANGE, DISCARD, STEAL, RECON, SPY, SABOTAGE, DESTROY, DISABLE_TAGS, CLEAR));
+        deck.addAll(List.of(DRAW_TWO, EXCHANGE, DISCARD, STEAL, RECON, SPY, DESTROY, DISABLE_TAGS, CLEAR));
         return deck;
     }
 
@@ -41,36 +40,16 @@ class MatchStateTest {
 
     // ------------------------------------------------------------------ setup
 
-    @Test void eachPlayerChoosesTwoOfFivePrivateOffersBeforeTenCardsAreDealt() {
-        MatchState state = MatchState.start(fullDeck(), fullDeck(), landmarkPool(), 7);
-        PlayerView first = state.view(Seat.FIRST);
-        assertEquals(MatchPhase.CHOOSING_LANDMARKS, first.phase());
-        assertEquals(Rules.LANDMARK_OFFERS, first.offers().size());
-        assertEquals(5, first.offers().stream().map(c -> c.def().id()).distinct().count(), "five different Landmarks");
-        assertTrue(first.hand().isEmpty(), "no cards before Landmarks are chosen");
-        assertNull(first.turn());
-        assertThrows(RuleViolation.class, () -> state.apply(Seat.FIRST, new DrawCard()), "no draws while choosing");
-        long one = first.offers().get(0).id(), foreign = state.view(Seat.SECOND).offers().get(0).id();
-        assertThrows(RuleViolation.class, () -> state.apply(Seat.FIRST, new PickLandmarks(List.of(one))));
-        assertThrows(RuleViolation.class, () -> state.apply(Seat.FIRST, new PickLandmarks(List.of(one, one))));
-        assertThrows(RuleViolation.class, () -> state.apply(Seat.FIRST, new PickLandmarks(List.of(one, foreign))));
-
-        MatchState chose = state.apply(Seat.FIRST, pick(first));
-        assertEquals(MatchPhase.CHOOSING_LANDMARKS, chose.phase(), "waits for the other player");
-        assertTrue(chose.view(Seat.SECOND).opponent().ready());
-        assertTrue(chose.view(Seat.SECOND).opponent().landmarks().isEmpty(), "the other's picks stay hidden until both chose");
-        assertThrows(RuleViolation.class, () -> chose.apply(Seat.FIRST, pick(first)), "choosing happens once");
-
-        MatchState playing = chose.apply(Seat.SECOND, pick(chose.view(Seat.SECOND)));
-        assertEquals(MatchPhase.IN_PROGRESS, playing.phase());
+    @Test void theMatchDealsTenCardsToEachPlayerAtOnceWithNoSetupStep() {
+        MatchState state = MatchState.start(fullDeck(), fullDeck(), 7);
+        assertEquals(MatchPhase.IN_PROGRESS, state.phase());
+        assertNotNull(state.turn(), "someone starts round one immediately");
+        assertEquals(1, state.round());
         for (Seat seat : Seat.values()) {
-            PlayerView view = playing.view(seat);
+            PlayerView view = state.view(seat);
             assertEquals(Rules.HAND_SIZE, view.hand().size());
-            assertEquals(fullDeck().size() - Rules.HAND_SIZE, view.you().deckCount(), "Landmarks are outside the deck");
-            assertEquals(2, view.you().landmarks().size());
-            assertEquals(2, view.opponent().landmarks().size(), "both areas are public once chosen");
-            assertTrue(view.offers().isEmpty());
-            assertTrue(view.hand().stream().noneMatch(card -> card.def().kind() == CardKind.LANDMARK));
+            assertEquals(fullDeck().size() - Rules.HAND_SIZE, view.you().deckCount());
+            assertEquals(Rules.PLAYS_PER_ROUND, view.you().playsRemaining());
         }
     }
 
@@ -106,10 +85,8 @@ class MatchStateTest {
         assertEquals(1, replaced.view(view.seat()).you().discardCount());
     }
 
-    @Test void theRoundEndsAfterTenPlaysEachThenTenFreshCardsAndLandmarksPersist() {
-        long seed = seedOffering(Seat.FIRST, "embassy", "guild");
-        MatchState state = started(fullDeck(), fullDeck(), seed, "embassy", "guild");
-        List<LandmarkCard> chosen = state.view(Seat.FIRST).you().landmarks();
+    @Test void theRoundEndsAfterTenPlaysEachThenTenFreshCardsAreDealt() {
+        MatchState state = started(fullDeck(), fullDeck(), seedStartedBy(Seat.FIRST));
         while (state.round() == 1) state = state.apply(state.turn(), GreedyBot.choose(state.view(state.turn())));
         PlayerView next = state.view(Seat.FIRST);
         assertEquals(2, next.round());
@@ -117,8 +94,6 @@ class MatchStateTest {
         assertEquals(Rules.HAND_SIZE, next.hand().size(), "a fresh ten-card hand, not the old one");
         assertEquals(0, next.you().drawsUsed(), "manual draws reset");
         assertTrue(next.you().row().cards().isEmpty());
-        assertEquals(chosen.stream().map(l -> l.card().id()).toList(), next.you().landmarks().stream().map(l -> l.card().id()).toList(),
-                "the same Landmarks stay; there is no new selection");
         assertEquals(MatchPhase.IN_PROGRESS, next.phase());
     }
 
@@ -154,7 +129,6 @@ class MatchStateTest {
         assertEquals(before.you().playsUsed() + 1, after.you().playsUsed());
         assertEquals(before.hand(), after.hand());
         assertEquals(before.you().row(), after.you().row());
-        assertEquals(before.you().landmarks(), after.you().landmarks());
         assertEquals(before.you().score(), after.you().score());
         assertEquals(before.you().drawsUsed(), after.you().drawsUsed());
         assertEquals(before.you().deckCount(), after.you().deckCount());
@@ -188,10 +162,7 @@ class MatchStateTest {
         assertEquals(state.rounds().stream().mapToLong(RoundResult::firstScore).sum(), state.matchTotal(Seat.FIRST));
     }
 
-    @Test void skipsAreRejectedBeforeLandmarksAndOnTheOpponentsTurn() {
-        MatchState choosing = MatchState.start(fullDeck(), fullDeck(), landmarkPool(), 3);
-        assertFalse(choosing.view(Seat.FIRST).canSkip());
-        assertThrows(RuleViolation.class, () -> choosing.apply(Seat.FIRST, new SkipTurn()));
+    @Test void skipsAreRejectedOnTheOpponentsTurn() {
         MatchState state = started(fullDeck(), fullDeck(), seedStartedBy(Seat.FIRST));
         PlayerView before = state.view(Seat.SECOND);
         assertFalse(before.canSkip());
@@ -213,23 +184,17 @@ class MatchStateTest {
 
     @Test void boardSpellsResolveOnTheirTargets() {
         // A known board and hand, resolved through the same Rules the match uses.
-        Rules.Board board = new Rules.Board(row(UNITS.get(0)), landmarks(), row(UNITS.get(1), UNITS.get(2)),
-                landmarks(new Effect.SharedTagBonus(TagType.REGION, 3)));
-        CardInstance destroy = copy(DESTROY), disable = copy(DISABLE_TAGS), sabotage = copy(SABOTAGE), clear = copy(CLEAR);
-        List<CardInstance> hand = List.of(destroy, disable, sabotage, clear);
+        Rules.Board board = new Rules.Board(row(UNITS.get(0)), row(UNITS.get(1), UNITS.get(2)));
+        CardInstance destroy = copy(DESTROY), disable = copy(DISABLE_TAGS), clear = copy(CLEAR);
+        List<CardInstance> hand = List.of(destroy, disable, clear);
         long enemy = board.opponent().at(0).card().id();
         Rules.Board destroyed = Rules.resolve(destroy, PlayCard.cast(destroy.id(), enemy), hand, board).board();
         assertNull(destroyed.opponent().find(enemy));
         Rules.Board disabled = Rules.resolve(disable, PlayCard.cast(disable.id(), enemy), hand, board).board();
         assertTrue(disabled.opponent().find(enemy).has(Suppression.TAGS));
-        long landmark = board.opponentLandmarks().get(0).card().id();
-        Rules.Board sabotaged = Rules.resolve(sabotage, PlayCard.cast(sabotage.id(), landmark), hand, board).board();
-        assertFalse(sabotaged.opponentLandmarks().get(0).active());
-        assertEquals(1, sabotaged.opponentLandmarks().size(), "Sabotage never removes a Landmark");
-        assertTrue(Rules.spellTargets(sabotage, hand, sabotaged).isEmpty(), "an already sabotaged Landmark is no target");
         assertTrue(Rules.spellTargets(clear, hand, board).isEmpty(), "nothing to clear yet");
         Rules.Board ownDisabled = new Rules.Board(board.own().update(board.own().at(0).with(Suppression.POINTS).with(Suppression.TAGS)),
-                board.ownLandmarks(), board.opponent(), board.opponentLandmarks());
+                board.opponent());
         long own = ownDisabled.own().at(0).card().id();
         Rules.Board cleared = Rules.resolve(clear, PlayCard.cast(clear.id(), own), hand, ownDisabled).board();
         assertTrue(cleared.own().find(own).suppressed().isEmpty(), "both disables are cleared");
@@ -237,24 +202,11 @@ class MatchStateTest {
                 "Destroy targets an enemy Unit only");
     }
 
-    @Test void sabotageLastsUntilTheRoundEnds() {
-        long seed = seedOffering(Seat.FIRST, "embassy", "guild");
-        List<CardDef> deck = new ArrayList<>(copies(SABOTAGE, 10));
-        deck.addAll(unitsOnly(20));
-        MatchState state = started(deck, fullDeck(), seed, "embassy", "guild");
-        PlayerView view = state.view(Seat.FIRST);
-        long target = view.opponent().landmarks().get(0).card().id();
-        state = state.play(Seat.FIRST, PlayCard.cast(inHand(view, SABOTAGE).id(), target));
-        assertFalse(state.view(Seat.SECOND).you().landmarks().get(0).active(), "the owner sees it sabotaged");
-        while (state.round() == 1) state = state.apply(state.turn(), GreedyBot.choose(state.view(state.turn())));
-        assertTrue(state.view(Seat.SECOND).you().landmarks().stream().allMatch(LandmarkCard::active), "it recovers next round");
-    }
-
     @Test void drawTwoAndExchangeDrawWithoutUsingManualDraws() {
         List<CardDef> deck = new ArrayList<>(List.of(DRAW_TWO, EXCHANGE));
         deck.addAll(unitsOnly(30));
-        long seed = findHolding(deck, Seat.FIRST, EMBASSY_GUILD, DRAW_TWO, EXCHANGE);
-        MatchState state = started(deck, fullDeck(), seed, "embassy", "guild");
+        long seed = findHolding(deck, Seat.FIRST, DRAW_TWO, EXCHANGE);
+        MatchState state = started(deck, fullDeck(), seed);
         PlayerView view = state.view(Seat.FIRST);
         MatchState drew = state.play(Seat.FIRST, PlayCard.cast(inHand(view, DRAW_TWO).id(), null));
         PlayerView after = drew.view(Seat.FIRST);
@@ -275,8 +227,8 @@ class MatchStateTest {
     @Test void randomDiscardAndStealAreSeededServerSideAndDoNothingToAnEmptyHand() {
         List<CardDef> deck = new ArrayList<>(List.of(DISCARD, STEAL));
         deck.addAll(unitsOnly(30));
-        long seed = findHolding(deck, Seat.FIRST, EMBASSY_GUILD, DISCARD, STEAL);
-        MatchState state = started(deck, fullDeck(), seed, "embassy", "guild");
+        long seed = findHolding(deck, Seat.FIRST, DISCARD, STEAL);
+        MatchState state = started(deck, fullDeck(), seed);
         PlayerView view = state.view(Seat.FIRST);
         MatchState discarded = state.play(Seat.FIRST, PlayCard.cast(inHand(view, DISCARD).id(), null));
         assertEquals(Rules.HAND_SIZE - 1, discarded.view(Seat.SECOND).hand().size());
@@ -294,8 +246,8 @@ class MatchStateTest {
     @Test void reconnaissanceShowsTheTopThreeOnlyToTheCasterWhoKeepsOne() {
         List<CardDef> deck = new ArrayList<>(List.of(RECON));
         deck.addAll(unitsOnly(30));
-        long seed = findHolding(deck, Seat.FIRST, EMBASSY_GUILD, RECON);
-        MatchState state = started(deck, fullDeck(), seed, "embassy", "guild");
+        long seed = findHolding(deck, Seat.FIRST, RECON);
+        MatchState state = started(deck, fullDeck(), seed);
         PlayerView view = state.view(Seat.FIRST);
         MatchState looking = state.play(Seat.FIRST, PlayCard.cast(inHand(view, RECON).id(), null));
         PlayerView caster = looking.view(Seat.FIRST);
@@ -319,8 +271,8 @@ class MatchStateTest {
     @Test void spyRevealsThreeEnemyCardsToTheCasterOnly() {
         List<CardDef> deck = new ArrayList<>(List.of(SPY));
         deck.addAll(unitsOnly(30));
-        long seed = findHolding(deck, Seat.FIRST, EMBASSY_GUILD, SPY);
-        MatchState state = started(deck, fullDeck(), seed, "embassy", "guild");
+        long seed = findHolding(deck, Seat.FIRST, SPY);
+        MatchState state = started(deck, fullDeck(), seed);
         MatchState spied = state.play(Seat.FIRST, PlayCard.cast(inHand(state.view(Seat.FIRST), SPY).id(), null));
         List<CardInstance> revealed = spied.view(Seat.FIRST).revealed();
         assertEquals(3, revealed.size());
@@ -329,38 +281,12 @@ class MatchStateTest {
         assertFalse(visibleIds(spied.view(Seat.FIRST)).contains(unrevealedId(spied)), "no other enemy card reaches the caster");
     }
 
-    @Test void archiveDrawsOnTheFirstSpellOnlyAndWatchtowerShowsTheTopCardPrivately() {
-        List<CardDef> deck = new ArrayList<>(copies(DISCARD, 2));
-        deck.addAll(unitsOnly(30));
-        long seed = findHolding(deck, Seat.FIRST, new String[]{"archive", "watchtower"}, DISCARD, DISCARD);
-        MatchState state = started(deck, fullDeck(), seed, "archive", "watchtower");
-        PlayerView view = state.view(Seat.FIRST);
-        assertNotNull(view.deckTop(), "Watchtower shows the owner's top card");
-        // Both seats kept a Watchtower here: each sees only the top of their own deck.
-        CardInstance theirs = state.view(Seat.SECOND).deckTop();
-        assertNotEquals(view.deckTop(), theirs);
-        assertFalse(visibleIds(view).contains("#" + theirs.id() + "#"), "nothing of the opponent's deck reaches this player");
-        CardInstance top = view.deckTop();
-        MatchState drew = state.apply(Seat.FIRST, new DrawCard());
-        assertTrue(drew.view(Seat.FIRST).hand().contains(top), "the shown card is the next drawn");
-        List<CardInstance> spells = view.hand().stream().filter(c -> c.def().equals(DISCARD)).toList();
-        MatchState first = state.play(Seat.FIRST, PlayCard.cast(spells.get(0).id(), null));
-        assertEquals(1, first.view(Seat.FIRST).lastPlay().drawn(), "Archive: the first Spell draws one");
-        MatchState back = first.apply(Seat.SECOND, firstPlace(first.view(Seat.SECOND)));
-        CardInstance second = back.view(Seat.FIRST).hand().stream().filter(c -> c.def().equals(DISCARD)).findFirst().orElseThrow();
-        assertEquals(0, back.play(Seat.FIRST, PlayCard.cast(second.id(), null)).view(Seat.FIRST).lastPlay().drawn(), "only the first");
-    }
-
     // ------------------------------------------------------------------ privacy, replay, ending
 
-    @Test void viewsNeverContainTheOpponentsHandDeckOrOffers() {
-        MatchState state = MatchState.start(fullDeck(), fullDeck(), landmarkPool(), 99);
-        String choosing = visibleIds(state.view(Seat.FIRST));
-        for (CardInstance offer : state.view(Seat.SECOND).offers()) assertFalse(choosing.contains("#" + offer.id() + "#"), "opponent offers");
-        state = started(fullDeck(), fullDeck(), seedOffering(Seat.FIRST, "embassy", "guild"), "embassy", "guild");
+    @Test void viewsNeverContainTheOpponentsHandOrDeck() {
+        MatchState state = started(fullDeck(), fullDeck(), 99);
         String view = visibleIds(state.view(Seat.FIRST));
         for (CardInstance card : state.view(Seat.SECOND).hand()) assertFalse(view.contains("#" + card.id() + "#"), "opponent hand");
-        assertNull(state.view(Seat.FIRST).deckTop(), "no deck card without a Watchtower");
         List<String> fields = java.util.Arrays.stream(PlayerView.class.getRecordComponents()).map(c -> c.getName()).toList();
         assertTrue(fields.stream().noneMatch(name -> name.contains("seed") || name.contains("pile") || name.contains("library")),
                 "the view contract has no seed, RNG or deck order: " + fields);
@@ -382,8 +308,8 @@ class MatchStateTest {
         assertEquals(first, a.matchTotal(Seat.FIRST), "match totals are the banked round scores");
     }
 
-    @Test void forfeitEndsTheMatchEvenWhileChoosingLandmarks() {
-        MatchState state = MatchState.start(fullDeck(), fullDeck(), landmarkPool(), 3).forfeit(Seat.FIRST);
+    @Test void forfeitEndsTheMatchImmediately() {
+        MatchState state = MatchState.start(fullDeck(), fullDeck(), 3).forfeit(Seat.FIRST);
         assertEquals(MatchPhase.FINISHED, state.phase());
         assertEquals(Seat.SECOND, state.outcome().winner());
         assertTrue(state.outcome().forfeit());
@@ -391,15 +317,11 @@ class MatchStateTest {
 
     // ------------------------------------------------------------------ helpers
 
-    private static final String[] EMBASSY_GUILD = {"embassy", "guild"};
-
-    /** A seed started by {@code seat}, offering both named Landmarks to both seats, whose opening hand holds the named cards. */
-    private static long findHolding(List<CardDef> deck, Seat seat, String[] landmarks, CardDef... wanted) {
+    /** A seed started by {@code seat} whose opening hand holds the named cards. */
+    private static long findHolding(List<CardDef> deck, Seat seat, CardDef... wanted) {
         for (long seed = 1; seed < 20000; seed++) {
             if ((new java.util.Random(seed).nextBoolean() ? Seat.FIRST : Seat.SECOND) != seat) continue;
-            MatchState state = MatchState.start(deck, fullDeck(), landmarkPool(), seed);
-            if (!offers(state, landmarks)) continue;
-            MatchState dealt = started(deck, fullDeck(), seed, landmarks);
+            MatchState dealt = started(deck, fullDeck(), seed);
             List<CardDef> held = new ArrayList<>(dealt.view(seat).hand().stream().map(CardInstance::def).toList());
             // Each named card counts once, so naming a card twice needs two copies in hand.
             boolean all = true;
@@ -407,12 +329,6 @@ class MatchStateTest {
             if (all) return seed;
         }
         throw new AssertionError("no such seed");
-    }
-
-    private static boolean offers(MatchState state, String... ids) {
-        for (Seat seat : Seat.values())
-            if (!state.view(seat).offers().stream().map(o -> o.def().id()).toList().containsAll(List.of(ids))) return false;
-        return true;
     }
 
     /** An enemy hand card the caster was not shown, as it would appear in a serialized view. */
@@ -426,13 +342,10 @@ class MatchStateTest {
     private static String visibleIds(PlayerView view) {
         StringBuilder ids = new StringBuilder();
         List<CardInstance> cards = new ArrayList<>(view.hand());
-        cards.addAll(view.offers());
         cards.addAll(view.looking());
         cards.addAll(view.revealed());
-        if (view.deckTop() != null) cards.add(view.deckTop());
         for (SideView side : List.of(view.you(), view.opponent())) {
             side.row().cards().forEach(card -> cards.add(card.card()));
-            side.landmarks().forEach(landmark -> cards.add(landmark.card()));
         }
         if (view.lastPlay() != null)
             for (CardInstance card : java.util.Arrays.asList(view.lastPlay().card(), view.lastPlay().handCard(),

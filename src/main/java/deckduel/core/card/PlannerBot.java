@@ -7,7 +7,7 @@ import java.util.Set;
 
 /**
  * The stronger practice opponent. Like {@link GreedyBot} it sees only its own {@link PlayerView}
- * and makes the same Landmark, keep and draw decisions, but for card plays it plays out the rest
+ * and makes the same keep and draw decisions, but for card plays it plays out the rest
  * of its known hand for each candidate, scores round-ending plays exactly, and holds disruption
  * Spells while the opponent still has plays left to rebuild with. Deterministic for a given view.
  */
@@ -15,10 +15,11 @@ public final class PlannerBot {
     /** Value given up per opponent play left when a disruption Spell is cast now rather than later. */
     static final double SPELL_PATIENCE = 1.5;
     /**
-     * Weight of the played-out hand against the immediate lead. Against a static opponent most
-     * orders reach a similar final row, so the playout only refines the immediate lead.
+     * Weight of the played-out hand against the immediate lead. Formations multiply a whole row, so
+     * the row the hand can still build matters as much as the lead now: against the greedy bot over
+     * 400 seeded matches, 0.2 won 203–195, 0.5 won 205–192, 1.0 won 254–146 and 1.5 won 250–150.
      */
-    static final double FUTURE_WEIGHT = 0.2;
+    static final double FUTURE_WEIGHT = 1.0;
 
     private PlannerBot() { }
 
@@ -87,8 +88,7 @@ public final class PlannerBot {
     private static boolean disruptsOpponent(CardDef card) {
         Effect effect = card.effect();
         return effect instanceof Effect.Destroy destroy && destroy.side() == TargetSide.OPPONENT
-                || effect instanceof Effect.Disable disable && disable.side() == TargetSide.OPPONENT
-                || effect instanceof Effect.Sabotage;
+                || effect instanceof Effect.Disable disable && disable.side() == TargetSide.OPPONENT;
     }
 
     private static CardInstance find(List<CardInstance> hand, long id) {
