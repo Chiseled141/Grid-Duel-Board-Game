@@ -37,7 +37,9 @@ public final class ClientFrame extends JFrame {
         model = new ClientModel(client);
         model.setReducedMotion(settings.reducedMotion());
         var catalog = CatalogLoader.loadBundled();
-        CardImages.shared().preload(catalog.cards().stream().map(deckduel.core.card.CardDef::id).toList());
+        // Code-drawn pixel faces never read a JPEG, so only cards still on painted art are decoded.
+        CardImages.shared().preload(catalog.cards().stream().filter(card -> !PixelCardFace.supports(card))
+                .map(deckduel.core.card.CardDef::id).toList());
         content.add(new LoginPanel(model, settings), Screen.LOGIN.name());
         content.add(new LobbyPanel(model, settings, this::closeAndSave), Screen.LOBBY.name());
         scoringSounds = new deckduel.client.ScoringSounds(settings::gameSounds);

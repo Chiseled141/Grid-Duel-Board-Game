@@ -208,7 +208,9 @@ final class TableEffects {
     }
 
     private CardNode card(CardDef face, List<Suppression> marks, Rectangle size) {
-        return new CardNode(image(face, marks, size), size.width, size.height);
+        CardNode node = new CardNode(image(face, marks, size), size.width, size.height);
+        node.view.setSmooth(face != null && !PixelCardFace.supports(face));
+        return node;
     }
 
     /** A soft shadow cast on the table by a lifted card. */
@@ -498,6 +500,7 @@ final class TableEffects {
                 double[] m = motion[c * rows + r];
                 m[0] = random.nextDouble() * 2 - 1; m[1] = -random.nextDouble(); m[2] = random.nextDouble() * 2 - 1;
                 ImageView shard = new ImageView(image);
+                shard.setSmooth(!PixelCardFace.supports(s.card()));
                 shard.setViewport(new Rectangle2D(c * w * 2, r * h * 2, w * 2, h * 2));
                 shard.setFitWidth(w);
                 shard.setFitHeight(h);

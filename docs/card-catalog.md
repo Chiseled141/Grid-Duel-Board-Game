@@ -1,7 +1,7 @@
-# Card catalog — `cards-neutral-3`
+# Card catalog — `cards-neutral-4`
 
 The game reads one file, `src/main/resources/cards/catalog.txt`; no code names a card. Its
-version, `cards-neutral-3`, is recorded with every match result. `CatalogLoader` validates it
+version, `cards-neutral-4`, is recorded with every match result. `CatalogLoader` validates it
 at startup: every nation has exactly one Unit of each class, a class prints the same points in
 every nation, and Spells are neutral. Landmarks and the Sabotage Spell were removed on
 2026-10-21; matches recorded under `cards-neutral-2` and earlier had them.
@@ -17,11 +17,14 @@ classes = 35 Units. Each Unit has exactly one nation, one class and no ability.
 | Bowmen | 3 |
 | Riders | 4 |
 | Knights | 5 |
-| Battering Ram | 6 |
+| Axemen | 4 |
 
-Battering Ram replaced Footmen (1 point) on 2026-10-20; matches recorded under
-`cards-neutral-1` used Footmen. Unit and Spell art is in `art/cards/units/` and `art/cards/spells/` (1024×1536 sources,
-outside the jar); `tools/ResizeArt.java` writes the 480×720 copies (sharp on 2× screens and in the hover preview) in `assets/cards/runtime/`.
+Axemen (4 points) replaced Battering Ram (6) in every nation on 2026-10-21; Battering Ram had
+replaced Footmen (1) on 2026-10-20. Matches recorded under `cards-neutral-1` used Footmen and
+under `-2`/`-3` Battering Ram. Riders and Axemen both print 4 but are different classes: pairs
+and formations compare class tags, never points. Unit faces are drawn in Java (see Artwork).
+Painted Spell art is in `art/cards/spells/` (1024×1536 sources, outside the jar);
+`tools/ResizeArt.java` writes the 480×720 runtime copies in `assets/cards/runtime/`.
 
 Chaplain and Envoy, and the earlier Infantry/Cavalry/Archer/Clergy/Noble tags, are retired.
 
@@ -52,13 +55,18 @@ Spells never leaves a player without a play.
 ## Formations — Balatro-style; values PROVISIONAL
 
 Like a poker hand in Balatro, each row is checked for its best formation; only that one counts.
+Every nation formation has a class twin of equal value; when both apply, the strongest wins.
 Units with disabled tags do not count toward a formation. Values are in `core/card/Formation`.
 
 | Formation | Needs | Bonus | Mult |
 | --- | --- | --- | --- |
 | Company | 3 Units of one class | +10 | ×1 |
 | Retinue | 3 Units of one nation | +10 | ×1 |
+| Two Companies | 2 Units each of two classes | +15 | ×1 |
 | Two Banners | 2 Units each of two nations | +15 | ×1 |
+| Three Companies | 2 Units each of three classes | +25 | ×1 |
+| Three Banners | 2 Units each of three nations | +25 | ×1 |
+| Full Regiment | 3 of one class + 2 of another | +20 | ×2 |
 | Full Muster | 3 of one nation + 2 of another | +20 | ×2 |
 | Regiment | 4 Units of one class | +25 | ×2 |
 | Royal Line | one Unit of each class | +30 | ×2 |
@@ -76,10 +84,20 @@ points and 18 pair points (three Hungarian pairs, one Polish pair, two class pai
 
 ## Artwork
 
-The old card images were removed at the user's request on 2026-10-20. All 35 Units and 10
-Spells now use the new art from `art/cards/units/` and `art/cards/spells/`. The Spells were
-redrawn to match the Unit illustration style; older Spell drafts were removed. The art prints each card's
-points, nation and class or its rules text, so the game adds only the selection outline and
-disable markers. The card back has no art yet and uses the procedural face; `CardImages` loads replacements from
-`src/main/resources/assets/cards/runtime/<card-id>.jpg` and `card-back.jpg`.
+Card faces are chosen in `CardFace`:
+
+1. **Java pixel art** (`PixelCardFace`, 80×120; see `CARD_RENDERING_GUIDE.md`) covers all
+   **35 Units** and the Draw Two and Spy Spells. Every Unit uses the same class silhouette
+   across seven nation palettes, matching cloth/shield colours and seven distinct stylized
+   crests. Points, names and labels come from the catalog. Transylvania uses two header lines.
+   Native art is created from Java drawing instructions and cached for JavaFX display;
+   exported PNGs are verification artifacts, not runtime inputs.
+2. **Painted art** from `art/cards/spells/` (runtime JPEG copies) covers the other eight Spells.
+3. The **card back** keeps its existing procedural face.
+
+No Unit image ships in the jar: the old painted Unit runtime JPEGs (and the retired Battering
+Ram copies) were removed on 2026-10-21, so `assets/cards/runtime/` holds only the ten Spell
+JPEGs. Old painted Unit sources remain in `art/cards/units/` for reference only. All Riders
+display their catalog value 4 through the pixel renderer.
+Evidence: `docs/verification/2026-10-21-all-unit-pixel/`.
 The menu and match-room background artwork are retained. The Atlas section is removed.

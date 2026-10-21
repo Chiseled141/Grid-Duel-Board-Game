@@ -20,7 +20,7 @@ import java.util.Locale;
  */
 final class CardFace {
     private static final Color UNIT = new Color(0xE6D3A8), SPELL = new Color(0x4B3346);
-    private static final Color BRASS = new Color(0xAD8954), BACK = new Color(0x3A2C22);
+    private static final Color BRASS = new Color(0xAD8954);
 
     /** Room a sprite keeps right of and below the card for its drop shadow. */
     static final int SHADOW_X = 4, SHADOW_Y = 6;
@@ -37,13 +37,19 @@ final class CardFace {
     /** Paints one face; suppressed parts are labeled on the card itself. */
     static void paint(Graphics2D g, CardDef card, Rectangle r, boolean emphasized, List<Suppression> suppressed) {
         BufferedImage sprite = sprite(card, suppressed, r.width, r.height, emphasized, pixelScale(g));
-        g.drawImage(sprite, r.x, r.y, r.width + SHADOW_X, r.height + SHADOW_Y, null);
+        Graphics2D local = (Graphics2D) g.create();
+        if (PixelCardFace.supports(card)) local.setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION,
+                java.awt.RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
+        local.drawImage(sprite, r.x, r.y, r.width + SHADOW_X, r.height + SHADOW_Y, null);
+        local.dispose();
     }
 
     /** A card face, shadow included, rendered once for this size at {@code scale} pixels per unit. */
     static BufferedImage sprite(CardDef card, List<Suppression> suppressed, int width, int height, boolean emphasized, double scale) {
-        boolean art = CardImages.shared().face(card.id()) != null;
-        String key = card.id() + "|" + width + "x" + height + "|" + emphasized + "|" + suppressed + "|" + scale + "|" + art;
+        boolean pixel = PixelCardFace.supports(card);
+        boolean art = !pixel && CardImages.shared().face(card.id()) != null;
+        String key = card.id() + "|" + width + "x" + height + "|" + emphasized + "|" + suppressed + "|" + scale + "|" + art
+                + (pixel ? "|pixel|" + card.points() : "");
         return cached(key, () -> render(width + SHADOW_X, height + SHADOW_Y, scale,
                 g -> renderFace(g, card, new Rectangle(0, 0, width, height), emphasized, suppressed)));
     }
@@ -54,7 +60,7 @@ final class CardFace {
 
     /** The shared card back, shadow included, rendered once per size. */
     static BufferedImage backSprite(int width, int height, double scale) {
-        String key = "back|" + width + "x" + height + "|" + scale + "|" + (CardImages.shared().back() != null);
+        String key = "pxl-back|" + width + "x" + height + "|" + scale;
         return cached(key, () -> render(width + SHADOW_X, height + SHADOW_Y, scale,
                 g -> renderBack(g, new Rectangle(0, 0, width, height))));
     }
@@ -77,9 +83,28 @@ final class CardFace {
     private static void renderFace(Graphics2D g, CardDef card, Rectangle r, boolean emphasized, List<Suppression> suppressed) {
         g.setColor(new Color(0, 0, 0, 110));
         g.fillRoundRect(r.x + 3, r.y + 5, r.width, r.height, 9, 9);
+        if (PixelCardFace.supports(card)) {
+            paintPixel(g, card, r, emphasized, suppressed);
+            return;
+        }
         BufferedImage art = CardImages.shared().face(card.id());
         if (art != null) paintArtwork(g, art, r, emphasized, suppressed);
         else paintProcedural(g, card, r, emphasized, suppressed);
+    }
+
+    private static void paintPixel(Graphics2D g, CardDef card, Rectangle r,
+                                   boolean emphasized, List<Suppression> suppressed) {
+        Graphics2D local = (Graphics2D) g.create();
+        local.setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION,
+                java.awt.RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
+        local.drawImage(PixelCardFace.render(card), r.x, r.y, r.width, r.height, null);
+        local.dispose();
+        if (emphasized) {
+            g.setStroke(new BasicStroke(2.5f));
+            g.setColor(Theme.AMBER);
+            g.drawRoundRect(r.x, r.y, r.width, r.height, 9, 9);
+        }
+        if (!suppressed.isEmpty()) paintSuppressed(g, r, suppressed, Math.max(.62f, Math.min(1.25f, r.width / 104f)));
     }
 
     /**
@@ -166,22 +191,15 @@ final class CardFace {
     private static void renderBack(Graphics2D g, Rectangle r) {
         g.setColor(new Color(0, 0, 0, 100));
         g.fillRoundRect(r.x + 2, r.y + 3, r.width, r.height, 7, 7);
-        BufferedImage back = CardImages.shared().back();
-        if (back != null) {
-            Graphics2D clipped = (Graphics2D) g.create();
-            clipped.clip(new RoundRectangle2D.Float(r.x, r.y, r.width, r.height, 7, 7));
-            clipped.drawImage(back, r.x, r.y, r.width, r.height, null);
-            clipped.dispose();
-            return;
-        }
-        g.setColor(BACK);
-        g.fillRoundRect(r.x, r.y, r.width, r.height, 7, 7);
-        g.setColor(BRASS);
-        g.setStroke(new BasicStroke(1.2f));
-        g.drawRoundRect(r.x, r.y, r.width, r.height, 7, 7);
-        g.drawRoundRect(r.x + 4, r.y + 4, r.width - 8, r.height - 8, 5, 5);
-        int size = Math.min(r.width, r.height) / 3;
-        g.drawOval(r.x + (r.width - size) / 2, r.y + (r.height - size) / 2, size, size);
+        BufferedImage back = new BufferedImage(PixelCardFace.WIDTH, PixelCardFace.HEIGHT, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D pixels = back.createGraphics();
+        try { PxlCardArt.paint(pixels, "card-back"); }
+        finally { pixels.dispose(); }
+        Graphics2D local = (Graphics2D) g.create();
+        local.setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION,
+                java.awt.RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
+        local.drawImage(back, r.x, r.y, r.width, r.height, null);
+        local.dispose();
     }
 
     /** Draws word-wrapped text and returns the baseline below the last line. */

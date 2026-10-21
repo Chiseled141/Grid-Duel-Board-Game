@@ -11,21 +11,21 @@ import javafx.scene.canvas.Canvas;
 import javafx.scene.canvas.GraphicsContext;
 import javafx.scene.layout.Region;
 import javafx.scene.paint.Color;
-import javafx.scene.paint.CycleMethod;
-import javafx.scene.paint.RadialGradient;
-import javafx.scene.paint.Stop;
 import javafx.scene.text.Font;
 
 /**
- * The stacked card-duel score rail, in JavaFX. Values come from the server's view, never from UI
+ * The stacked card-duel score rail, in JavaFX: a quiet dark panel with your score, the opponent's
+ * score, a short breakdown and the round counters. Values come from the server's view, never from UI
  * arithmetic. A change is told in steps: as each scoring chip from the table lands, its well
  * (Units, Combos or the opponent's score) ticks toward the accepted value with a flash, and your
- * round score climbs with them; then the score settles on the accepted value with a springy
- * punch, a glow and, for a gain, a burst of rays. Used on the JavaFX thread.
+ * round score climbs with them; then the score settles on the accepted value with a gentle
+ * punch and the change shown beside it. Used on the JavaFX thread.
  */
 public final class ScoreRail extends Region {
-    private static final Color LEATHER = Color.web("#352B24"), WELL = Color.web("#201D19"), BRASS = Color.web("#AD8954");
-    private static final Color BLUE = Color.web("#385D6D"), RED = Color.web("#8B4236"), FLASH = Color.web("#FFF1CF");
+    // A quiet dark palette: one warm accent for your score and formation, muted labels.
+    private static final Color PANEL = Color.web("#1F1B18"), SURFACE = Color.web("#2B2622"), EDGE = Color.rgb(255, 240, 210, .09);
+    private static final Color TEXT = Color.web("#F4EBDD"), MUTED = Color.web("#9C9285"), ACCENT = Color.web("#E9B95C");
+    private static final Color BLUE = Color.web("#5D9BB8"), RED = Color.web("#D06A55");
     private static final NumberFormat NUMBERS = NumberFormat.getIntegerInstance(Locale.ROOT);
     /** The final count, the score's punch, and how long a well flashes when a chip lands. */
     private static final long COUNT_NANOS = 800_000_000L, PULSE_NANOS = 1_100_000_000L, HIT_NANOS = 320_000_000L;
@@ -133,10 +133,10 @@ public final class ScoreRail extends Region {
     Point2D pocket(Pocket pocket) {
         double scale = scale();
         Point2D at = switch (pocket) {
-            case UNITS -> new Point2D(63.5, 350);
-            case COMBOS -> new Point2D(188.5, 350);
-            case FORMATION -> new Point2D(126, 276);
-            case OPPONENT -> new Point2D(126, 96);
+            case UNITS -> new Point2D(205, 255);
+            case COMBOS -> new Point2D(205, 299);
+            case FORMATION -> new Point2D(190, 346);
+            case OPPONENT -> new Point2D(205, 155);
         };
         return new Point2D((getWidth() - 260 * scale) / 2 + at.getX() * scale, at.getY() * scale);
     }
@@ -238,115 +238,130 @@ public final class ScoreRail extends Region {
         if (scale <= 0) return;
         long now = System.nanoTime();
         double since = display == null ? -1 : sinceFinish(now);
-        // A big change jolts the rail for a moment as it settles.
-        double jolt = since < 0 ? 0 : emphasis * 3 * Math.exp(-since * 9) * Math.sin(since * 70);
-        g.translate((getWidth() - 260 * scale) / 2 + jolt, 0);
+        g.translate((getWidth() - 260 * scale) / 2, 0);
         g.scale(scale, scale);
         drawRail(g, now, since);
     }
 
     private void drawRail(GraphicsContext g, long now, double since) {
-        g.setFill(FxKit.SHADOW);
-        g.fillRoundRect(4, 6, 252, 540, 14, 14);
-        g.setFill(LEATHER);
-        g.fillRoundRect(0, 0, 252, 540, 14, 14);
-        g.setStroke(BRASS);
-        g.setLineWidth(1.5);
-        g.strokeRoundRect(5, 5, 242, 530, 10, 10);
-        label(g, "DECK DUEL", 14, 33, 224, 19, BRASS);
-        double opponentHit = display == null ? 0 : hit(Pocket.OPPONENT, now);
-        well(g, 14, 48, 224, 74, WELL, opponentHit);
-        label(g, "OPPONENT'S ROUND SCORE", 23, 68, 206, 10, FxKit.MUTED);
-        label(g, display == null ? "—" : number(shown(Pocket.OPPONENT, now)), 23, 108, 206, 34 * (1 + .22 * opponentHit), FxKit.CREAM);
-        well(g, 14, 135, 224, 116, WELL, 0);
-        label(g, "YOUR ROUND SCORE", 23, 158, 206, 12, BRASS);
+        g.setFill(Color.rgb(0, 0, 0, .35));
+        g.fillRoundRect(2, 5, 252, 535, 18, 18);
+        g.setFill(PANEL);
+        g.fillRoundRect(0, 0, 252, 532, 18, 18);
+        g.setStroke(EDGE);
+        g.setLineWidth(1);
+        g.strokeRoundRect(.5, .5, 251, 531, 18, 18);
+        caption(g, "YOUR SCORE", LEFT, 38);
         drawScore(g, now, since);
-        // Balatro-style: the row's formation, with its bonus and multiplier, heads the breakdown.
-        String formation = display == null ? null : display.formation();
-        double formationHit = display == null ? 0 : hit(Pocket.FORMATION, now);
-        if (formation == null) label(g, "SCORE BREAKDOWN", 14, 280, 224, 12, FxKit.CREAM);
-        else label(g, formation, 14, 281, 224, 14 * (1 + .3 * formationHit), FxKit.AMBER);
-        double unitsHit = display == null ? 0 : hit(Pocket.UNITS, now), combosHit = display == null ? 0 : hit(Pocket.COMBOS, now);
-        well(g, 14, 293, 99, 88, BLUE, unitsHit);
-        well(g, 139, 293, 99, 88, RED, combosHit);
-        label(g, "UNITS", 19, 315, 89, 11, FxKit.CREAM);
-        label(g, "COMBOS", 144, 315, 89, 11, FxKit.CREAM);
-        label(g, display == null ? "—" : number(shown(Pocket.UNITS, now)), 19, 362, 89, 35 * (1 + .3 * unitsHit), FxKit.CREAM);
-        label(g, display == null ? "—" : number(shown(Pocket.COMBOS, now)), 144, 362, 89, 35 * (1 + .3 * combosHit), FxKit.CREAM);
-        label(g, "+", 114, 348, 24, 24, FxKit.CREAM);
-        well(g, 14, 394, 107, 64, WELL, 0);
-        well(g, 131, 394, 107, 64, WELL, 0);
-        label(g, "PLAYS LEFT", 20, 414, 95, 10, FxKit.MUTED);
-        label(g, "ROUND", 137, 414, 95, 10, FxKit.MUTED);
-        label(g, display == null ? "—" : String.valueOf(display.playsRemaining()), 20, 446, 95, 28, FxKit.CREAM);
-        label(g, display == null ? "—" : display.round() + " / 3", 137, 446, 95, 26, FxKit.CREAM);
-        well(g, 14, 471, 224, 50, WELL, 0);
-        label(g, "MATCH TOTAL", 22, 491, 110, 11, BRASS);
-        label(g, display == null ? "—" : number(display.matchTotal()), 137, 507, 91, 28, FxKit.CREAM);
+        drawLead(g, now);
+        divider(g, 192);
+        caption(g, "BREAKDOWN", LEFT, 222);
+        row(g, 236, "Units", BLUE, display == null ? "—" : number(shown(Pocket.UNITS, now)), hit(Pocket.UNITS, now));
+        row(g, 280, "Combos", RED, display == null ? "—" : number(shown(Pocket.COMBOS, now)), hit(Pocket.COMBOS, now));
+        drawFormation(g, now);
+        divider(g, 386);
+        stat(g, LEFT, 404, "PLAYS LEFT", display == null ? "—" : String.valueOf(display.playsRemaining()));
+        stat(g, 134, 404, "ROUND", display == null ? "—" : display.round() + " / 3");
+        g.setFill(SURFACE);
+        g.fillRoundRect(LEFT - 6, 470, RIGHT - LEFT + 12, 44, 12, 12);
+        caption(g, "MATCH TOTAL", LEFT + 6, 497);
+        value(g, display == null ? "—" : number(display.matchTotal()), RIGHT - 6, 500, FxKit.display(22), TEXT);
     }
 
-    /**
-     * Your round score: it nudges up as each of your chips lands, then on settling it punches
-     * (a damped spring), glows, throws rays for a gain, and shows the change in a pill.
-     */
+    /** Your round score, large: it nudges up as each of your chips lands, then settles with a gentle punch. */
     private void drawScore(GraphicsContext g, long now, double since) {
-        if (display == null) { label(g, "—", 23, 218, 206, 56, FxKit.CREAM); label(g, "LIVE TABLE VALUE", 23, 239, 206, 12, FxKit.CREAM); return; }
-        boolean loss = gain < 0;
-        Color accent = loss ? FxKit.CORAL : FxKit.AMBER;
-        double nudge = .07 * Math.max(hit(Pocket.UNITS, now), hit(Pocket.COMBOS, now));
-        double punch = since < 0 ? 0 : emphasis * .2 * Math.exp(-since * 5) * Math.cos(since * 22);
-        double glow = since < 0 ? nudge * 4 : Math.max(0, 1 - since / (PULSE_NANOS / 1e9)) * emphasis;
-        double cx = 126, cy = 200;
-        if (glow > 0) {
-            g.setFill(new RadialGradient(0, 0, cx, cy, 95, false, CycleMethod.NO_CYCLE,
-                    new Stop(0, accent.deriveColor(0, 1, 1, .55 * Math.min(1, glow))), new Stop(1, accent.deriveColor(0, 1, 1, 0))));
-            g.fillRect(14, 135, 224, 114);
-        }
-        if (since >= 0 && since < .5 && !loss) {
-            double grow = 1 - Math.pow(1 - since / .5, 3), fade = 1 - since / .5;
-            g.setStroke(accent.deriveColor(0, 1, 1, .8 * fade * emphasis));
-            g.setLineWidth(2.5);
-            for (int i = 0; i < 12; i++) {
-                double a = Math.PI * 2 * i / 12 + .2, inner = 34 + 30 * grow, outer = inner + 14 + 10 * emphasis;
-                g.strokeLine(cx + Math.cos(a) * inner * 1.6, cy + Math.sin(a) * inner * .7,
-                        cx + Math.cos(a) * outer * 1.6, cy + Math.sin(a) * outer * .7);
-            }
-        }
-        Color colour = since >= 0 || nudge > 0 ? accent : FxKit.CREAM;
-        label(g, number(shownScore(now)), 23, 218, 206, 56 * (1 + punch + nudge), colour);
-        if (since < 0) { label(g, "LIVE TABLE VALUE", 23, 239, 206, 12, FxKit.CREAM); return; }
-        String change = (gain > 0 ? "+" : "") + NUMBERS.format(gain) + " POINTS";
-        double width = FxKit.width(change, FxKit.bold(12)) + 20;
+        if (display == null) { left(g, "—", LEFT, 100, FxKit.display(54), TEXT); return; }
+        double nudge = .05 * Math.max(hit(Pocket.UNITS, now), hit(Pocket.COMBOS, now));
+        double punch = since < 0 ? 0 : emphasis * .1 * Math.exp(-since * 6) * Math.cos(since * 20);
+        Color colour = since >= 0 || nudge > 0 ? (gain < 0 ? FxKit.CORAL : ACCENT) : TEXT;
+        Font font = FxKit.display(54 * (1 + punch + nudge));
+        String score = number(shownScore(now));
+        left(g, score, LEFT, 100, font, colour);
+        if (since < 0 || gain == 0) return;
+        // The change fades in beside the score, then out.
         g.setGlobalAlpha(Math.min(1, since / .12) * (since > .85 ? Math.max(0, 1 - (since - .85) / .25) : 1));
-        g.setFill(accent);
-        g.fillRoundRect(cx - width / 2, 229, width, 18, 18, 18);
-        label(g, change, cx - width / 2, 242, width, 12, Color.web("#2A1A0E"));
+        left(g, (gain > 0 ? "+" : "−") + NUMBERS.format(Math.abs(gain)), LEFT + FxKit.width(score, font) + 10, 96,
+                FxKit.bold(16), gain < 0 ? FxKit.CORAL : ACCENT);
         g.setGlobalAlpha(1);
     }
 
-    /** A recessed panel; {@code hit} flashes it brighter with a lit rim as a chip lands in it. */
-    private static void well(GraphicsContext g, double x, double y, double w, double h, Color color, double hit) {
-        g.setFill(Color.rgb(0, 0, 0, .35));
-        g.fillRoundRect(x, y + 3, w, h, 7, 7);
-        g.setFill(color.interpolate(FLASH, .38 * hit));
-        g.fillRoundRect(x, y, w, h - 2, 7, 7);
-        g.setStroke(hit > 0 ? FxKit.AMBER.deriveColor(0, 1, 1, .4 + .6 * hit) : Color.rgb(255, 239, 198, .11));
-        g.setLineWidth(1 + 2 * hit);
-        g.strokeRoundRect(x, y, w, h - 2, 7, 7);
+    /** The opponent's score, and a slim bar of your share of both scores. */
+    private void drawLead(GraphicsContext g, long now) {
+        long mine = display == null ? 0 : shownScore(now), theirs = display == null ? 0 : shown(Pocket.OPPONENT, now);
+        double share = mine + theirs <= 0 ? .5 : Math.max(0, Math.min(1, mine / (double) (mine + theirs)));
+        double width = RIGHT - LEFT;
+        g.setFill(SURFACE);
+        g.fillRoundRect(LEFT, 120, width, 6, 6, 6);
+        g.setFill(ACCENT);
+        g.fillRoundRect(LEFT, 120, Math.max(6, width * share), 6, 6, 6);
+        double hit = display == null ? 0 : hit(Pocket.OPPONENT, now);
+        caption(g, "OPPONENT", LEFT, 160);
+        value(g, display == null ? "—" : number(theirs), RIGHT, 163, FxKit.display(22 * (1 + .15 * hit)), hit > 0 ? ACCENT : TEXT);
+    }
+
+    /** The row's formation as a gold pill, or a quiet note when the row has none. */
+    private void drawFormation(GraphicsContext g, long now) {
+        String formation = display == null ? null : display.formation();
+        double hit = display == null ? 0 : hit(Pocket.FORMATION, now);
+        if (formation == null) {
+            g.setFill(SURFACE);
+            g.fillRoundRect(LEFT - 6, 324, RIGHT - LEFT + 12, 44, 12, 12);
+            left(g, "No formation", LEFT + 6, 351, FxKit.normal(14), MUTED);
+            return;
+        }
+        int split = formation.indexOf("  +");
+        String name = split < 0 ? formation : formation.substring(0, split), bonus = split < 0 ? "" : formation.substring(split).trim();
+        g.setFill(ACCENT.deriveColor(0, 1, 1, .16 + .2 * hit));
+        g.fillRoundRect(LEFT - 6, 324, RIGHT - LEFT + 12, 44, 12, 12);
+        g.setStroke(ACCENT.deriveColor(0, 1, 1, .45 + .4 * hit));
+        g.strokeRoundRect(LEFT - 5.5, 324.5, RIGHT - LEFT + 11, 43, 12, 12);
+        left(g, FxKit.fit(name, FxKit.bold(15), 120), LEFT + 6, 351, FxKit.bold(15), ACCENT);
+        value(g, bonus, RIGHT - 6, 351, FxKit.bold(15), TEXT);
+    }
+
+    // ---------------------------------------------------------------- drawing helpers
+
+    /** Left and right edges of the content. */
+    private static final double LEFT = 22, RIGHT = 230;
+
+    /** One breakdown line: a colour dot, its name, and its value; {@code hit} lights it as a chip lands. */
+    private static void row(GraphicsContext g, double top, String name, Color dot, String value, double hit) {
+        g.setFill(SURFACE.interpolate(dot, .25 * hit));
+        g.fillRoundRect(LEFT - 6, top, RIGHT - LEFT + 12, 38, 12, 12);
+        g.setFill(dot);
+        g.fillOval(LEFT + 4, top + 15, 8, 8);
+        left(g, name, LEFT + 20, top + 25, FxKit.normal(15), TEXT);
+        value(g, value, RIGHT - 6, top + 27, FxKit.display(20 * (1 + .15 * hit)), TEXT);
+    }
+
+    /** A small labelled number in the footer. */
+    private static void stat(GraphicsContext g, double x, double top, String label, String value) {
+        caption(g, label, x, top + 14);
+        left(g, value, x, top + 46, FxKit.display(24), TEXT);
+    }
+
+    private static void divider(GraphicsContext g, double y) {
+        g.setFill(EDGE);
+        g.fillRect(LEFT, y, RIGHT - LEFT, 1);
+    }
+
+    /** A small muted capital label. */
+    private static void caption(GraphicsContext g, String text, double x, double y) {
+        left(g, text, x, y, FxKit.bold(10.5), MUTED);
     }
 
     private static String number(long value) { return NUMBERS.format(value); }
 
-    /** Centred text that shrinks, then shortens, to fit; full values remain accessible. */
-    private static void label(GraphicsContext g, String text, double x, double y, double width, double size, Color color) {
-        Font font = FxKit.bold(size);
-        while (FxKit.width(text, font) > width && font.getSize() > 8) font = FxKit.bold(font.getSize() - 1);
-        String fitted = FxKit.fit(text, font, width);
-        double left = x + (width - FxKit.width(fitted, font)) / 2;
+    /** Text from {@code x}; full values remain accessible. */
+    private static void left(GraphicsContext g, String text, double x, double y, Font font, Color color) {
         g.setFont(font);
-        g.setFill(FxKit.SHADOW);
-        g.fillText(fitted, left + 1, y + 2);
         g.setFill(color);
-        g.fillText(fitted, left, y);
+        g.fillText(text, x, y);
+    }
+
+    /** Text ending at {@code right}, shrinking to stay inside the panel. */
+    private static void value(GraphicsContext g, String text, double right, double y, Font font, Color color) {
+        while (FxKit.width(text, font) > 130 && font.getSize() > 9) font = new Font(font.getName(), font.getSize() - 1);
+        left(g, text, right - FxKit.width(text, font), y, font, color);
     }
 }

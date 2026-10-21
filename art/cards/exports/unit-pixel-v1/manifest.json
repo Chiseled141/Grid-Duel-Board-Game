@@ -1,0 +1,16 @@
+{
+  "pack": "unit-pixel-v1",
+  "catalog_sha256": "78a09562a797ddd5389225689e6b00778dd385faa7ca39108bf19aaf8288378e",
+  "integrated_this_batch": false,
+  "native_size": [80, 120],
+  "png4x_size": [320, 480],
+  "cards": [
+    {"id": "pl-pikemen", "name": "Poland Pikemen", "nation": "Poland", "class": "Pikemen", "points": 2, "native": "native/pl-pikemen.png", "png4x": "png-4x/pl-pikemen.png", "sha256_native": "881c4679e3033fc8f7408e712c175ce82f101c093f0dd14c8b038ee6c6ec2b24", "sha256_png4x": "9e4a7b04383e063025e9f54efd2d3ddc85efb62bd56c753f878c428fd887fced"},
+    {"id": "pl-bowmen", "name": "Poland Bowmen", "nation": "Poland", "class": "Bowmen", "points": 3, "native": "native/pl-bowmen.png", "png4x": "png-4x/pl-bowmen.png", "sha256_native": "dbb990f0b5d772d1fdf92967c5005ab869c926d194ced0d78d50376768edd43a", "sha256_png4x": "606b0103dc3f6847881720a1f477b891d78e078406854fc6485d159fb12a4068"},
+    {"id": "pl-riders", "name": "Poland Riders", "nation": "Poland", "class": "Riders", "points": 4, "native": "native/pl-riders.png", "png4x": "png-4x/pl-riders.png", "sha256_native": "fe48a1805b126b47c7126979efaf98ba030ef4874de22ca7cccecef70bc43b8e", "sha256_png4x": "91b30c4a26c9e6f5dc4835466b7c05520536f16848155c39eb9b0fd4ad69fda7"},
+    {"id": "pl-knight", "name": "Poland Knights", "nation": "Poland", "class": "Knights", "points": 5, "native": "native/pl-knight.png", "png4x": "png-4x/pl-knight.png", "sha256_native": "d0cf17bd82a2106a0f225622c8407aeef5e8be4d1c30cb0652623ac5ed5f95ed", "sha256_png4x": "7bb4bcab7f10a329dd20f5215ba734255135cf93ac9ea3c8eadd8e849e935367"},
+    {"id": "pl-battering-ram", "name": "Poland Battering Ram", "nation": "Poland", "class": "Battering Ram", "points": 6, "native": "native/pl-battering-ram.png", "png4x": "png-4x/pl-battering-ram.png", "sha256_native": "f5b8605c9c41c53609c700a7470edd2c09c8828d02d84a602ffedc528aa9d8f5", "sha256_png4x": "585ac4931cf5a7bd4104a58358b3686a163f513143ecf6c132e7b8a44bb2b7ac"},
+    {"id": "hu-knight", "name": "Hungary Knights", "nation": "Hungary", "class": "Knights", "points": 5, "native": "native/hu-knight.png", "png4x": "png-4x/hu-knight.png", "sha256_native": "63fbf4f7ea25baf45c17eff1c505050b8b31acba95759dbf6f116607d5eb61f6", "sha256_png4x": "856d8c560ac88d1983636e75423e6ad9ced79c03f8e5d7ff898a1cab0e45c8ef"},
+    {"id": "au-knight", "name": "Austria Knights", "nation": "Austria", "class": "Knights", "points": 5, "native": "native/au-knight.png", "png4x": "png-4x/au-knight.png", "sha256_native": "08a414d38e567db16b19c3e353e1584e60a7877ea62ff39c0cf274870355c5a3", "sha256_png4x": "452d82caf445383eb0f1bf66b10fc9a518e307de939cdc5e828ad0adfbed001a"}
+  ]
+}
