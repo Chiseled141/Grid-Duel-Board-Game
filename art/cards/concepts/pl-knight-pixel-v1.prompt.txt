@@ -1,0 +1,11 @@
+Preview concept: Poland Knights (pl-knight), 5 points.
+Generated with the built-in image_gen tool. Not wired into runtime assets.
+The generated image is a pixel-style illustration, not a validated fixed-grid sprite.
+
+Use case: stylized-concept
+Asset type: one complete pixel-art card face concept for the JavaFX medieval card game Deck Duel.
+Primary request: Design one beautiful original medieval unit card with the visual clarity, chunky pixels and playful retro playing-card feel of Balatro. This is a preview of Poland Knights, an existing unit with 5 printed points, nation Poland, class Knights. No added powers or rules.
+Composition: one upright flat front-facing card, portrait playing-card proportion approximately 71:95, entire card visible, card occupies almost all the canvas with tiny transparent padding, no scene or mockup around it. Cream paper face, simple thick stepped pixel borders, crimson inner frame. Large 5 in the upper left corner with a tiny sword class icon below it; a small crimson shield bearing a simplified white eagle in the upper right corner. Main art centered: a charming imposing medieval Polish knight in silver plate armour with crimson surcoat, closed helmet and red plume, holding an upright sword and a crimson shield with white eagle. Strong graphic silhouette, simple geometric pixel clusters, slight asymmetry and personality. Deep blue shadow blocks, warm silver highlights, rich crimson accents. The character fills the central illustration well.
+Style: authentic low-resolution sprite aesthetic as if drawn on a roughly 142 by 190 pixel grid then enlarged with nearest-neighbor, hard square pixels, limited palette about 16 colors, flat color clusters and restrained dithering. No painterly brushwork, no smooth gradients, no blur, no vector smoothing, no photorealism, no 3D. Pixelated corners and bitmap lettering, very readable at small card size.
+Text verbatim: "5" in the upper left, "KNIGHTS" on a compact cream title strip at the bottom, "POLAND" beneath it in smaller uppercase bitmap letters. Only these three texts. No price, mana, rarity, ability text, logos, signatures or watermark.
+Background: genuinely transparent outside the card; the entire card interior is opaque. Exactly one card.

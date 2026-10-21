@@ -4,21 +4,27 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import deckduel.cards.CatalogLoader;
 import deckduel.core.card.CardDef;
+import deckduel.core.card.CardKind;
 import java.awt.Rectangle;
 import java.awt.image.BufferedImage;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
 class CardArtworkTest {
-    @Test void everyCardHasRuntimeArtAndTheBackUsesTheDrawnFace() throws Exception {
-        for (CardDef card : CatalogLoader.loadBundled().cards()) {
+    @Test void everyUnitHasCodeArtAndOtherCardsHaveRuntimeArt() throws Exception {
+        var catalog = CatalogLoader.loadBundled();
+        assertTrue(catalog.units().stream().allMatch(PixelCardFace::supports), "all 35 Units render from code");
+        for (CardDef card : catalog.cards()) {
             BufferedImage art = CardImages.shared().decode(card.id());
+            if (card.kind() == CardKind.UNIT) assertNull(art, card.id() + ": the old painted Unit art is no longer shipped");
+            if (PixelCardFace.supports(card)) continue;
             assertNotNull(art, card.id() + " has art");
             assertEquals(480, art.getWidth(), card.id());
             assertEquals(720, art.getHeight(), card.id());
         }
         assertNull(CardImages.shared().decode(CardImages.BACK));
         assertNull(CardImages.shared().decode("sabotage"), "removed with the Landmarks");
+        assertNull(CardImages.shared().decode("hu-battering-ram"), "Axemen replaced Battering Ram");
     }
 
     @Test void retiredArtworkIsNoLongerShipped() throws Exception {

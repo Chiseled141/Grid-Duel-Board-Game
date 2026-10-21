@@ -1,0 +1,75 @@
+# EXPORT SNAPSHOT ONLY. User selected Axemen 4 on 2026-10-21.
+# Not the active game catalog. Claude will migrate gameplay when asked.
+# Deck Duel card catalog: 35 Units and 10 neutral Spells (AGENTS.md §5.1, §5.5).
+# Units, classes and printed points are approved initial playtest values (Pikemen 2, Bowmen 3,
+# Riders 4, Knights 5, Axemen 4). Landmarks and Sabotage were removed at the user's request
+# (2026-10-21); the eleventh Spell slot is open until a new Spell is designed.
+#
+# unit     | id | name | points 1-6 | nation | class
+# spell    | id | name | effect
+# Spell effects:    DISABLE <OWN|OPPONENT> <POINTS|TAGS> · DESTROY <OWN|OPPONENT> · CLEAR_DISABLE
+#                   RANDOM_DISCARD <cards> · RANDOM_STEAL <cards> · DRAW <cards> · EXCHANGE <discard> <draw>
+#                   RECONNAISSANCE <look> · SPY <cards>
+version | cards-neutral-3-axemen-preview
+regions | Hungary;Poland;Bohemia;Austria;Styria;Croatia;Transylvania
+
+# Hungary
+unit | hu-axemen | Hungary Axemen | 4 | Hungary | Axemen
+unit | hu-pikemen | Hungary Pikemen | 2 | Hungary | Pikemen
+unit | hu-bowmen | Hungary Bowmen | 3 | Hungary | Bowmen
+unit | hu-riders | Hungary Riders | 4 | Hungary | Riders
+unit | hu-knight | Hungary Knights | 5 | Hungary | Knights
+
+# Poland
+unit | pl-axemen | Poland Axemen | 4 | Poland | Axemen
+unit | pl-pikemen | Poland Pikemen | 2 | Poland | Pikemen
+unit | pl-bowmen | Poland Bowmen | 3 | Poland | Bowmen
+unit | pl-riders | Poland Riders | 4 | Poland | Riders
+unit | pl-knight | Poland Knights | 5 | Poland | Knights
+
+# Bohemia
+unit | bo-axemen | Bohemia Axemen | 4 | Bohemia | Axemen
+unit | bo-pikemen | Bohemia Pikemen | 2 | Bohemia | Pikemen
+unit | bo-bowmen | Bohemia Bowmen | 3 | Bohemia | Bowmen
+unit | bo-riders | Bohemia Riders | 4 | Bohemia | Riders
+unit | bo-knight | Bohemia Knights | 5 | Bohemia | Knights
+
+# Austria
+unit | au-axemen | Austria Axemen | 4 | Austria | Axemen
+unit | au-pikemen | Austria Pikemen | 2 | Austria | Pikemen
+unit | au-bowmen | Austria Bowmen | 3 | Austria | Bowmen
+unit | au-riders | Austria Riders | 4 | Austria | Riders
+unit | au-knight | Austria Knights | 5 | Austria | Knights
+
+# Styria
+unit | st-axemen | Styria Axemen | 4 | Styria | Axemen
+unit | st-pikemen | Styria Pikemen | 2 | Styria | Pikemen
+unit | st-bowmen | Styria Bowmen | 3 | Styria | Bowmen
+unit | st-riders | Styria Riders | 4 | Styria | Riders
+unit | st-knight | Styria Knights | 5 | Styria | Knights
+
+# Croatia
+unit | cr-axemen | Croatia Axemen | 4 | Croatia | Axemen
+unit | cr-pikemen | Croatia Pikemen | 2 | Croatia | Pikemen
+unit | cr-bowmen | Croatia Bowmen | 3 | Croatia | Bowmen
+unit | cr-riders | Croatia Riders | 4 | Croatia | Riders
+unit | cr-knight | Croatia Knights | 5 | Croatia | Knights
+
+# Transylvania
+unit | tr-axemen | Transylvania Axemen | 4 | Transylvania | Axemen
+unit | tr-pikemen | Transylvania Pikemen | 2 | Transylvania | Pikemen
+unit | tr-bowmen | Transylvania Bowmen | 3 | Transylvania | Bowmen
+unit | tr-riders | Transylvania Riders | 4 | Transylvania | Riders
+unit | tr-knight | Transylvania Knights | 5 | Transylvania | Knights
+
+# Spells: neutral, one copy each in every deck.
+spell | disable-tags | Disable Tags | DISABLE OPPONENT TAGS
+spell | disable-points | Disable Points | DISABLE OPPONENT POINTS
+spell | destroy-unit | Destroy Unit | DESTROY OPPONENT
+spell | random-discard | Random Discard | RANDOM_DISCARD 1
+spell | random-steal | Random Steal | RANDOM_STEAL 1
+spell | draw-two | Draw Two | DRAW 2
+spell | exchange | Exchange | EXCHANGE 1 2
+spell | reconnaissance | Reconnaissance | RECONNAISSANCE 3
+spell | spy | Spy | SPY 3
+spell | clear-disable | Clear Disable | CLEAR_DISABLE

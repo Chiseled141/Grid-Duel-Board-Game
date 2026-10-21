@@ -13,6 +13,7 @@ import java.util.logging.Logger;
 import javafx.application.Platform;
 import javafx.embed.swing.SwingFXUtils;
 import javafx.scene.control.Button;
+import javafx.scene.canvas.GraphicsContext;
 import javafx.scene.image.Image;
 import javafx.scene.paint.Color;
 import javafx.scene.text.Font;
@@ -118,8 +119,28 @@ final class FxKit {
         return convert(CardFace.sprite(card, marks, width, height, emphasized, scale));
     }
 
+    /** Draws a face without smoothing away the trial card's native pixel grid. */
+    static void drawFace(GraphicsContext g, CardDef card, List<Suppression> marks, int width, int height,
+                         boolean emphasized, double scale, double x, double y) {
+        boolean smoothing = g.isImageSmoothing();
+        try {
+            if (PixelCardFace.supports(card)) g.setImageSmoothing(false);
+            g.drawImage(face(card, marks, width, height, emphasized, scale), x, y,
+                    width + CardFace.SHADOW_X, height + CardFace.SHADOW_Y);
+        } finally { g.setImageSmoothing(smoothing); }
+    }
+
     /** The shared card back. */
     static Image back(int width, int height, double scale) { return convert(CardFace.backSprite(width, height, scale)); }
+
+    /** Draws the pixel back without changing sampling for the surrounding table. */
+    static void drawBack(GraphicsContext g, int width, int height, double scale, double x, double y) {
+        boolean smoothing = g.isImageSmoothing();
+        try {
+            g.setImageSmoothing(false);
+            g.drawImage(back(width, height, scale), x, y, width + CardFace.SHADOW_X, height + CardFace.SHADOW_Y);
+        } finally { g.setImageSmoothing(smoothing); }
+    }
 
     /** A JavaFX copy of a Java2D image, converted once per image. */
     static Image convert(BufferedImage image) {

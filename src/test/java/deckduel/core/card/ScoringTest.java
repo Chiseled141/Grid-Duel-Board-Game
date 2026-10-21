@@ -79,6 +79,34 @@ class ScoringTest {
         assertEquals(Formation.BANNER_HOST, Formation.best(row(host)), "all five of a nation outranks the Royal Line it also makes");
     }
 
+    @Test void classFormationsMirrorTheNationOnesAndThreePairsBeatTwo() {
+        assertEquals(Formation.TWO_COMPANIES, Formation.best(row(unit("a", 1, "N1", "A"), unit("b", 1, "N2", "A"),
+                unit("c", 1, "N3", "B"), unit("d", 1, "N4", "B"))));
+        assertEquals(Formation.THREE_COMPANIES, Formation.best(row(unit("a", 1, "N1", "A"), unit("b", 1, "N2", "A"),
+                unit("c", 1, "N3", "B"), unit("d", 1, "N4", "B"), unit("e", 1, "N5", "C"), unit("f", 1, "N6", "C"))));
+        assertEquals(Formation.THREE_BANNERS, Formation.best(row(unit("a", 1, "N1", "A"), unit("b", 1, "N1", "B"),
+                unit("c", 1, "N2", "C"), unit("d", 1, "N2", "D"), unit("e", 1, "N3", "A"), unit("f", 1, "N3", "B"))),
+                "three nation pairs outrank the two class pairs the same row makes");
+        assertEquals(Formation.FULL_REGIMENT, Formation.best(row(unit("a", 1, "N1", "A"), unit("b", 1, "N2", "A"),
+                unit("c", 1, "N3", "A"), unit("d", 1, "N4", "B"), unit("e", 1, "N5", "B"))));
+        // Three nation pairs plus a third Unit of one of them is also a Full Muster, which outranks them.
+        assertEquals(Formation.FULL_MUSTER, Formation.best(row(unit("a", 1, "N1", "A"), unit("b", 1, "N1", "B"),
+                unit("g", 1, "N1", "C"), unit("c", 1, "N2", "A"), unit("d", 1, "N2", "B"), unit("e", 1, "N3", "C"),
+                unit("f", 1, "N3", "D"))));
+    }
+
+    @Test void ridersAndAxemenShareFourPointsButAreDifferentClasses() {
+        var catalog = deckduel.cards.CatalogLoader.loadBundled();
+        CardDef riders = catalog.card("pl-riders"), axemen = catalog.card("hu-axemen");
+        assertEquals(riders.points(), axemen.points(), "both print 4");
+        assertEquals(0, Scoring.pairBonus(riders, axemen), "equal points make no pair");
+        assertEquals(Scoring.SINGLE_MATCH, Scoring.pairBonus(axemen, catalog.card("pl-axemen")), "two Axemen share a class");
+        Row twoPairs = row(riders, catalog.card("hu-riders"), axemen, catalog.card("au-axemen"));
+        assertEquals(Formation.TWO_COMPANIES, Formation.best(twoPairs), "a Riders pair and an Axemen pair, not four of a class");
+        Row line = row(catalog.card("pl-pikemen"), catalog.card("hu-bowmen"), riders, catalog.card("au-knight"), axemen);
+        assertEquals(Formation.ROYAL_LINE, Formation.best(line), "Axemen complete the five classes");
+    }
+
     @Test void theFormationBonusJoinsBeforeItsMultiplierAndTheSevenNationBonusIsNeverMultiplied() {
         Row muster = row(unit("a", 2, "N1", "A"), unit("b", 3, "N1", "B"), unit("c", 4, "N1", "C"),
                 unit("d", 5, "N2", "A"), unit("e", 6, "N2", "B"));

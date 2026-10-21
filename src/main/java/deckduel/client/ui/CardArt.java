@@ -76,7 +76,7 @@ final class CardArt {
             local.setColor(color);
             local.setStroke(new BasicStroke(.08f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
             switch (name) {
-                case "Battering Ram" -> local.fill(shield());
+                case "Axemen" -> local.fill(shield());
                 case "Riders" -> horseshoe(local);
                 case "Bowmen" -> bow(local);
                 case "Knights" -> local.fill(crown());

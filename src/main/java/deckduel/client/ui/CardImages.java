@@ -44,7 +44,7 @@ final class CardImages {
     static CardImages shared() { return SHARED; }
 
     /** Starts decoding these cards' art in the background. */
-    void preload(Collection<String> ids) { ids.forEach(this::request); request(BACK); }
+    void preload(Collection<String> ids) { ids.forEach(this::request); }
 
     /** Runs {@code listener} on the loader thread whenever more art finishes loading; for non-Swing screens. */
     void onLoaded(Runnable listener) { listeners.add(listener); }
@@ -55,9 +55,6 @@ final class CardImages {
         if (image == null) request(id);
         return image;
     }
-
-    /** The shared card back, or null while loading. */
-    BufferedImage back() { return face(BACK); }
 
     /** Draws art into a rectangle, using a copy pre-scaled to the device's real pixel size. */
     void draw(Graphics2D g, String id, BufferedImage image, int x, int y, int width, int height) {

@@ -1,0 +1,3 @@
+35 Unit frames changed; interiors identical apart from the two separator lines.
+Seven distinct nation borders; all five classes match within each nation.
+Draw Two and Spy remain pixel-identical.

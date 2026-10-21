@@ -18,7 +18,7 @@ class CardDetailsTest {
             boolean[] closed = {false};
             var details = new CardDetails(() -> closed[0] = true);
             new Scene(details, 1280, 720);
-            for (String key : new String[]{"hu-battering-ram", "reconnaissance"}) {
+            for (String key : new String[]{"hu-axemen", "reconnaissance"}) {
                 var card = new CardInstance(10, catalog.card(key));
                 details.showRevealed(card);
                 assertTrue(details.isVisible());

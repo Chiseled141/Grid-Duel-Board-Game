@@ -357,7 +357,7 @@ final class CardTableView extends Pane {
         var formation = you.score().formation();
         return new ScoreRail.Display(you.score().total(), view.opponent().score().total(), you.score().units(),
                 you.score().combos(), you.matchTotal(), you.playsRemaining(), view.round(), formation == null ? null
-                : formation.title().toUpperCase(Locale.ROOT) + "  +" + formation.bonus() + "  ×" + formation.multiplier());
+                : formation.title() + "  +" + formation.bonus() + "  ×" + formation.multiplier());
     }
 
     // ---------------------------------------------------------------- frames
@@ -1018,8 +1018,7 @@ final class CardTableView extends Pane {
         double x = at.getMaxX() + 14 + w <= board.getWidth() - 8 ? at.getMaxX() + 14 : at.x - 14 - w;
         x = Math.max(8, Math.min(x, board.getWidth() - w - 8));
         double y = Math.max(8, Math.min(at.getCenterY() - h / 2.0, board.getHeight() - h - 8));
-        g.drawImage(FxKit.face(unit.def(), unit.suppressed(), w, h, false, pixelScale()), x, y,
-                w + CardFace.SHADOW_X, h + CardFace.SHADOW_Y);
+        FxKit.drawFace(g, unit.def(), unit.suppressed(), w, h, false, pixelScale(), x, y);
     }
 
     private void drawHeader(GraphicsContext g) {
@@ -1030,9 +1029,8 @@ final class CardTableView extends Pane {
         text(g, "Match total: you " + view.you().matchTotal() + " – " + view.opponent().matchTotal()
                 + (history.isEmpty() ? "" : "   ·   " + history), 160, 56, FxKit.normal(12), FxKit.MUTED, false);
         int count = view.opponent().handCount(), backW = 22, backH = 33, right = opponentHandAnchorX() - 18;
-        Image back = FxKit.back(backW, backH, pixelScale());
         for (int i = 0; i < count; i++)
-            g.drawImage(back, right - backW - (count - 1 - i) * 12, 20, backW + CardFace.SHADOW_X, backH + CardFace.SHADOW_Y);
+            FxKit.drawBack(g, backW, backH, pixelScale(), right - backW - (count - 1 - i) * 12, 20);
         String hand = count + " in hand";
         Font font = FxKit.normal(12);
         double handLeft = right - backW - (count - 1) * 12 - FxKit.width(hand, font) - 10;
@@ -1045,8 +1043,7 @@ final class CardTableView extends Pane {
         if (revealed.isEmpty()) return;
         for (int i = 0; i < revealed.size(); i++) {
             Rectangle r = revealedBounds(i);
-            g.drawImage(FxKit.face(revealed.get(i).def(), List.of(), r.width, r.height, false, pixelScale()), r.x, r.y,
-                    r.width + CardFace.SHADOW_X, r.height + CardFace.SHADOW_Y);
+            FxKit.drawFace(g, revealed.get(i).def(), List.of(), r.width, r.height, false, pixelScale(), r.x, r.y);
             if (hover != null && hover.zone() == TableZone.REVEALED && hover.index() == i) outline(g, r, FxKit.AMBER);
         }
         Font font = FxKit.bold(10);
@@ -1084,8 +1081,8 @@ final class CardTableView extends Pane {
             Rectangle r = rowCardBounds(zone, slot);
             boolean destination = rearranging ? slot != pressedSlot : playAt(active, new Hit(zone, slot)) != null;
             boolean hovered = hover != null && hover.zone() == zone && hover.index() == slot;
-            g.drawImage(FxKit.face(card.def(), card.suppressed(), r.width, r.height, destination && hovered, pixelScale()),
-                    r.x, r.y, r.width + CardFace.SHADOW_X, r.height + CardFace.SHADOW_Y);
+            FxKit.drawFace(g, card.def(), card.suppressed(), r.width, r.height, destination && hovered,
+                    pixelScale(), r.x, r.y);
             if (destination) outline(g, r, hovered ? FxKit.AMBER : FxKit.AMBER.deriveColor(0, 1, 1, .6));
             else if (!hovered) { g.setFill(QUIET); g.fillRoundRect(r.x, r.y, r.width, r.height, 9, 9); }
             drawTriggers(g, zone, slot, r);
@@ -1163,7 +1160,7 @@ final class CardTableView extends Pane {
     /** A deck, face down, and its counts. */
     private void drawPiles(GraphicsContext g, SideView side, int top) {
         if (side.deckCount() > 0)
-            g.drawImage(FxKit.back(54, 81, pixelScale()), pilesX, top + 4, 54 + CardFace.SHADOW_X, 81 + CardFace.SHADOW_Y);
+            FxKit.drawBack(g, 54, 81, pixelScale(), pilesX, top + 4);
         else emptySlot(g, new Rectangle(pilesX, top + 4, 54, 81), false, false);
         text(g, "Deck " + side.deckCount(), pilesX, top + 103, FxKit.normal(11), FxKit.CREAM, true);
         text(g, "Discard " + side.discardCount(), pilesX, top + 119, FxKit.normal(11), FxKit.CREAM, true);
@@ -1336,8 +1333,7 @@ final class CardTableView extends Pane {
         g.scale(scale, scale);
         g.setEffect(chosen ? new DropShadow(BlurType.GAUSSIAN, FxKit.AMBER.deriveColor(0, 1, 1, .75), 26, .25, 0, 4)
                 : lift > .5 ? new DropShadow(BlurType.GAUSSIAN, Color.rgb(0, 0, 0, .55), 8 + lift, .1, lift * .2, lift * .45) : null);
-        g.drawImage(FxKit.face(card, marks, cardW, cardH, chosen, pixelScale()), -cardW / 2.0, -cardH / 2.0,
-                cardW + CardFace.SHADOW_X, cardH + CardFace.SHADOW_Y);
+        FxKit.drawFace(g, card, marks, cardW, cardH, chosen, pixelScale(), -cardW / 2.0, -cardH / 2.0);
         g.setEffect(null);
         if (dim != null) {
             g.setFill(dim);

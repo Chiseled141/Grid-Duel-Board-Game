@@ -130,7 +130,7 @@ class CardMatchIntegrationTest {
             assertEquals(aliceAfter.wins(), bobAfter.losses());
             assertEquals(aliceAfter.losses(), bobAfter.wins());
             var history = matchDao.recentMatches(1).get(0);
-            assertEquals("cards-neutral-3", history.rulesVersion());
+            assertEquals("cards-neutral-4", history.rulesVersion());
             assertEquals(3, matchDao.roundsOf(history.id()).size());
             assertEquals(end[0].view().rounds().get(2).firstScore(), matchDao.roundsOf(history.id()).get(2).firstScore());
             bob.send(new HistoryRequest());
