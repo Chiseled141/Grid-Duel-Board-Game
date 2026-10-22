@@ -50,7 +50,7 @@ public final class ClientFrame extends JFrame {
             }
             @Override public void onError(String text) {
                 if (fxScreens.showing()) fxScreens.notice(text);
-                else JOptionPane.showMessageDialog(ClientFrame.this, text, "Deck Duel", JOptionPane.INFORMATION_MESSAGE);
+                else UiKit.noticeDialog(ClientFrame.this, "Deck Duel", text);
             }
         });
         screens.show(content, Screen.LOGIN.name());

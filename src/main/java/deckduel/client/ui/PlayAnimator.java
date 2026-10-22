@@ -30,7 +30,9 @@ import java.util.stream.Collectors;
  * have already resolved on the server. Only public facts and the viewer's own hand are used.
  */
 final class PlayAnimator {
-    static final int FLIGHT = 480, LAND = 260, RISE = 420, CHARGE = 300, BOLT = 240, EJECT = 480;
+    static final int FLIGHT = 480, LAND = 260, RISE = 420, CHARGE = 300, LASH = 240, EJECT = 480;
+    /** A Destroy axe's whole swing and the moment its blade bites: a slow wind-up, then a fast chop. */
+    static final int CHOP = 640, CHOP_HIT = 380;
     /** A draw is an unhurried glide (about 1.3 s at {@link Staging#TEMPO}); dealt cards follow each other closely. */
     static final int DRAW = 720, DEAL_GAP = 150;
     /** A Disable Tags seal and the moment it stamps; a Random Steal thread and when it hooks its card. */
@@ -128,11 +130,11 @@ final class PlayAnimator {
 
     /**
      * A Spell rises to the middle of the table and charges in its own colour, then shows its own
-     * effect, so no two Spells look alike: a bolt shatters a destroyed Unit, a flung chain binds
-     * one (Disable Points), a rune seal stamps one grey (Disable Tags), a beam of light clears one,
-     * a discarded card burns, a golden thread hooks a stolen
-     * card, Draw dives into its deck and fountains, Exchange opens a vortex, Reconnaissance fans the
-     * deck's top cards up and Spy opens an eye over the enemy hand. Without a target it dissolves.
+     * effect, so no two Spells look alike: an axe chops a destroyed Unit apart, a flung iron
+     * chain binds one (Disable Points), a sigil slams into one (Disable Tags), candlelight
+     * clears one, a discarded card burns, a brass wire hooks a stolen card, Draw dives into its deck
+     * and fountains, Exchange opens a vortex of light, Reconnaissance fans the deck's top cards up
+     * and Spy opens an eye of light over the enemy hand. Without a target it chars into embers.
      */
     private static int cast(Staging s, PlayerView before, PlayRecord play, Rectangle from, Layout layout, boolean flip) {
         CardDef spell = play.card().def();
@@ -195,29 +197,32 @@ final class PlayAnimator {
         }
     }
 
-    /** A crimson bolt arcs into the Unit, which shatters with a soft flash and a brief hit-stop. */
+    /** A war axe winds up and chops down on the Unit, which shatters with dust and sparks and a brief hit-stop. */
     private static int destroy(Cast c, Target target) {
         Staging s = c.s();
         RowCard unit = target.unit();
         Rectangle at = target.at();
-        int hit = c.launch() + BOLT;
-        s.add(c.launch(), BOLT, new Staging.Charge(c.play().card().def(), c.stage(), c.tone()));
-        s.add(c.launch(), BOLT, new Staging.Bolt(centre(c.stage()), centre(at), c.tone()));
+        int hit = c.launch() + CHOP_HIT;
+        s.add(c.launch(), CHOP_HIT, new Staging.Charge(c.play().card().def(), c.stage(), c.tone()));
+        s.add(c.launch(), CHOP, new Staging.Chop(at));
+        // The swing is heard as the axe comes down, just before it bites.
+        s.sound(c.launch() + CHOP_HIT * 3 / 5, Kind.WHOOSH);
         c.spent(hit);
-        // The destroyed Unit is already gone from the view; show it until the bolt arrives.
+        // The destroyed Unit is already gone from the view; show it until the axe bites.
         s.add(0, hit, new Staging.Hold(unit.def(), unit.suppressed(), at));
         s.add(hit, 460, new Staging.Ring(at.getCenterX(), at.getCenterY(), at.width * 1.1, c.tone()));
         s.add(hit, 520, new Staging.Burst(at.getCenterX(), at.getCenterY(), c.tone(), 22, at.width, c.play().targetId()));
         s.sound(hit, Kind.IMPACT);
         s.add(hit, 760, new Staging.Shatter(unit.def(), unit.suppressed(), at, c.play().targetId()));
+        s.add(hit, 300, new Staging.Shake(7));
         return hit + 90;
     }
 
     /** A chain is flung from the Spell and binds the Unit, which shudders under a grey veil. */
     private static int shackle(Cast c, Target target) {
         Staging s = c.s();
-        int hit = c.launch() + BOLT;
-        s.add(c.launch(), BOLT, new Staging.Lash(centre(c.stage()), centre(target.at())));
+        int hit = c.launch() + LASH;
+        s.add(c.launch(), LASH, new Staging.Lash(centre(c.stage()), centre(target.at())));
         c.spent(hit);
         c.hold(target, hit, hit + 520);
         s.sound(hit, Kind.CHAIN);
@@ -225,7 +230,7 @@ final class PlayAnimator {
         return hit + 40;
     }
 
-    /** A rune seal descends on the Unit and stamps it; its colour drains as its tags fall silent. */
+    /** A sigil of binding draws itself over the Unit and slams into it; its colour drains as its tags fall silent. */
     private static int seal(Cast c, Target target) {
         Staging s = c.s();
         RowCard unit = target.unit();
@@ -234,6 +239,7 @@ final class PlayAnimator {
         c.hold(target, c.launch(), c.launch() + SEAL);
         s.add(c.launch(), SEAL, new Staging.Sigil(unit.def(), unit.suppressed(), c.marksAfter(target), target.at(), STAMP));
         s.sound(stamp, Kind.SEAL);
+        s.add(stamp, 220, new Staging.Shake(3.5));
         return stamp + 60;
     }
 
@@ -266,7 +272,7 @@ final class PlayAnimator {
         return lit + 200;
     }
 
-    /** A golden thread is cast into the enemy hand and hooks a card, which then crosses to the thief. */
+    /** A brass wire is cast into the enemy hand and hooks a card, which then crosses to the thief. */
     private static int tether(Cast c) {
         Staging s = c.s();
         Rectangle hand = c.mine() ? c.layout().opponentHand() : c.layout().hand(c.before().hand(), c.play().handCard().id());

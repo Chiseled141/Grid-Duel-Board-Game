@@ -31,6 +31,7 @@ import javafx.animation.AnimationTimer;
 import javafx.geometry.Point2D;
 import javafx.geometry.Pos;
 import javafx.scene.AccessibleRole;
+import javafx.scene.Node;
 import javafx.scene.PerspectiveCamera;
 import javafx.scene.SceneAntialiasing;
 import javafx.scene.SubScene;
@@ -372,6 +373,9 @@ final class CardTableView extends Pane {
             sounds.play(trace.beats.get(beatsPlayed++).cue());
         if (trace != null && elapsed > trace.finishAt + GAIN_MILLIS) trace = null;
         if (staged && !effects.tick(now)) staged = false;
+        // A heavy blow shakes the cards and effects, never the room behind them.
+        double[] shake = staged ? effects.shake() : new double[2];
+        for (Node shaken : List.of(board, effectsScene)) { shaken.setTranslateX(shake[0]); shaken.setTranslateY(shake[1]); }
         boolean lifting = stepCards(now);
         redraw();
         if (System.currentTimeMillis() > noticeUntil && trace == null && !staged && !lifting) { frames.stop(); running = false; }

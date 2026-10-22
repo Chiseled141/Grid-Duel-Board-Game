@@ -133,6 +133,34 @@ public final class UiKit {
         return Color.getHSBColor(hsb[0], hsb[1], Math.min(1f, hsb[2] * factor));
     }
 
+    /**
+     * A menu tile of {@code w} by {@code h} at the origin: a blackened iron plate with a gold
+     * hairline that brightens while {@code lit}, or an aged-gold plate when {@code gold}.
+     */
+    static void paintTile(Graphics2D g, int w, int h, boolean gold, boolean lit) {
+        g.setColor(Theme.WOOD_LINE);
+        g.fill(chamfer(0, 0, w, h, 5));
+        Color top = gold ? Theme.BRASS_LIGHT : new Color(0x3A3431);
+        Color bottom = gold ? Theme.BRASS_DARK : Theme.IRON_DARK;
+        if (lit) { top = brighter(top, 1.15f); bottom = brighter(bottom, 1.3f); }
+        g.setPaint(new java.awt.GradientPaint(0, 0, top, 0, h, bottom));
+        g.fill(chamfer(1, 1, w - 2, h - 2, 4));
+        g.setColor(gold ? Theme.withAlpha(Theme.BRASS_LIGHT, 200) : Theme.withAlpha(Theme.BRASS, lit ? 235 : 95));
+        g.setStroke(new java.awt.BasicStroke(1f));
+        g.draw(chamfer(2.5, 2.5, w - 5, h - 5, 3));
+    }
+
+    /** A dark slot of {@code w} by {@code h} sunk into a plate, its gold hairline bright while {@code lit}. */
+    static void paintSlot(Graphics2D g, int w, int h, boolean lit) {
+        g.setColor(Theme.WOOD_LINE);
+        g.fill(chamfer(0, 0, w, h, 4));
+        g.setColor(Theme.SLOT);
+        g.fill(chamfer(1.5, 1.5, w - 3, h - 3, 3));
+        g.setColor(Theme.withAlpha(Theme.BRASS, lit ? 230 : 100));
+        g.setStroke(new java.awt.BasicStroke(1f));
+        g.draw(chamfer(2.5, 2.5, w - 5, h - 5, 3));
+    }
+
     /** A rectangle with its four corners cut at 45 degrees, the shape of the table's plates. */
     static java.awt.geom.Path2D chamfer(double x, double y, double w, double h, double cut) {
         java.awt.geom.Path2D.Double path = new java.awt.geom.Path2D.Double();
@@ -452,34 +480,7 @@ public final class UiKit {
      */
     public static boolean confirmDialog(Component parent, String title, String message,
                                         String yesText, Pill yesVariant) {
-        Window owner = parent instanceof Window window ? window
-                : SwingUtilities.getWindowAncestor(parent);
-        DialogSurface surface = new DialogSurface();
-        surface.setLayout(new BorderLayout(0, 14));
-        surface.setBorder(BorderFactory.createEmptyBorder(24, 26, 24 + SHADOW, 26 + SHADOW));
-
-        JDialog dialog = new JDialog(owner, title, Dialog.ModalityType.APPLICATION_MODAL);
-        dialog.setUndecorated(true);
-        dialog.setBackground(new Color(0, 0, 0, 0));
-        dialog.setContentPane(surface);
-        dialog.setSize(360, 180);
-        dialog.setLocationRelativeTo(parent);
-        dialog.getRootPane().getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW)
-                .put(KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_ESCAPE, 0),
-                        "closeDialog");
-        dialog.getRootPane().getActionMap().put("closeDialog",
-                new javax.swing.AbstractAction() {
-                    @Override
-                    public void actionPerformed(java.awt.event.ActionEvent event) {
-                        dialog.dispose();
-                    }
-                });
-
-        JLabel question = new JLabel(message, SwingConstants.CENTER);
-        question.setFont(Theme.bold(15f));
-        question.setForeground(Theme.CREAM);
-        surface.add(question, BorderLayout.CENTER);
-
+        JDialog dialog = themedDialog(parent, title, message);
         // Equal-width pill pair on one row; No keeps the dialog open-state.
         JPanel buttons = new JPanel(new GridLayout(1, 2, 12, 0));
         buttons.setOpaque(false);
@@ -493,11 +494,64 @@ public final class UiKit {
             dialog.dispose();
         });
         buttons.add(yes);
-        surface.add(buttons, BorderLayout.SOUTH);
+        show(dialog, buttons);
+        return accepted[0];
+    }
 
+    /**
+     * Themed notice replacing the stock JOptionPane message box: an iron DialogSurface with
+     * {@code message} in cream and one gold OK pill. Blocks the EDT like JOptionPane; Enter,
+     * ESC and OK all close it.
+     */
+    public static void noticeDialog(Component parent, String title, String message) {
+        JDialog dialog = themedDialog(parent, title, message);
+        JButton ok = pill("OK", Pill.GOLD);
+        ok.addActionListener(event -> dialog.dispose());
+        dialog.getRootPane().setDefaultButton(ok);
+        JPanel buttons = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.CENTER, 0, 0));
+        buttons.setOpaque(false);
+        buttons.add(ok);
+        show(dialog, buttons);
+    }
+
+    /** An undecorated modal dialog on an iron surface with {@code message} centred; ESC closes it. */
+    private static JDialog themedDialog(Component parent, String title, String message) {
+        Window owner = parent instanceof Window window ? window
+                : SwingUtilities.getWindowAncestor(parent);
+        DialogSurface surface = new DialogSurface();
+        surface.setLayout(new BorderLayout(0, 14));
+        surface.setBorder(BorderFactory.createEmptyBorder(24, 26, 24 + SHADOW, 26 + SHADOW));
+        JDialog dialog = new JDialog(owner, title, Dialog.ModalityType.APPLICATION_MODAL);
+        dialog.setUndecorated(true);
+        dialog.setBackground(new Color(0, 0, 0, 0));
+        dialog.setContentPane(surface);
+        dialog.getRootPane().getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW)
+                .put(KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_ESCAPE, 0),
+                        "closeDialog");
+        dialog.getRootPane().getActionMap().put("closeDialog",
+                new javax.swing.AbstractAction() {
+                    @Override
+                    public void actionPerformed(java.awt.event.ActionEvent event) {
+                        dialog.dispose();
+                    }
+                });
+        JLabel text = new JLabel(message, SwingConstants.CENTER);
+        text.putClientProperty("html.disable", Boolean.TRUE);
+        text.setFont(Theme.bold(15f));
+        text.setForeground(Theme.CREAM);
+        surface.add(text, BorderLayout.CENTER);
+        return dialog;
+    }
+
+    /** Adds {@code buttons}, sizes the dialog to fit (at least 360 by 180) and blocks until it closes. */
+    private static void show(JDialog dialog, JPanel buttons) {
+        DialogSurface surface = (DialogSurface) dialog.getContentPane();
+        surface.add(buttons, BorderLayout.SOUTH);
+        java.awt.Dimension natural = surface.getPreferredSize();
+        dialog.setSize(Math.max(360, natural.width), Math.max(180, natural.height));
+        dialog.setLocationRelativeTo(dialog.getOwner());
         playAppearTween(surface);
         dialog.setVisible(true); // blocks here until closed
-        return accepted[0];
     }
 
     // ------------------------------------------------------------------

@@ -95,11 +95,11 @@ class PlayAnimatorTest {
         assertEquals(ScoringSounds.Cue.Kind.WHOOSH, cues.get(0).kind(), "the card is heard leaving the hand first");
     }
 
-    @Test void aRemovalWaitsForTheBoltToStrikeBeforeScoring() throws Exception {
+    @Test void aRemovalWaitsForTheAxeToBiteBeforeScoring() throws Exception {
         MatchState[] step = find((before, after) -> after.round() == before.round()
                 && after.view(Seat.FIRST).lastPlay().removed() != null);
         var plan = PlayAnimator.play(step[0].view(Seat.FIRST), step[1].view(Seat.FIRST), "bob", LAYOUT);
-        int hit = PlayAnimator.RISE + PlayAnimator.CHARGE + PlayAnimator.BOLT;
+        int hit = PlayAnimator.RISE + PlayAnimator.CHARGE + PlayAnimator.CHOP_HIT;
         assertTrue(plan.scoringDelay() > hit, "the score changes only after the impact and a short hit-stop");
         assertTrue(plan.staging().steps().stream().anyMatch(s -> s.effect() instanceof Staging.Shatter && s.at() == hit));
         assertTrue(performThrough(plan.staging()).stream().anyMatch(cue -> cue.kind() == ScoringSounds.Cue.Kind.IMPACT));
@@ -132,7 +132,7 @@ class PlayAnimatorTest {
     /** A Spell's own effect, the step no other Spell stages. */
     private record Signature(String spell, java.util.function.Predicate<PlayRecord> cast, Class<? extends Staging.Effect> effect) { }
 
-    @Test void everySpellHasItsOwnSignatureAndOnlyDestroyFiresTheBolt() throws Exception {
+    @Test void everySpellHasItsOwnSignatureAndOnlyDestroySwingsTheAxe() throws Exception {
         List<Signature> signatures = List.of(
                 new Signature("destroy-unit", play -> play.removed() != null, Staging.Shatter.class),
                 new Signature("disable-points", play -> play.targetId() != null, Staging.Lash.class),
@@ -155,8 +155,8 @@ class PlayAnimatorTest {
                 var plan = PlayAnimator.play(step[0].view(viewer), step[1].view(viewer), "bob", LAYOUT);
                 var steps = plan.staging().steps();
                 assertTrue(steps.stream().anyMatch(s -> signature.effect().isInstance(s.effect())), signature.spell() + " shows its signature");
-                assertEquals(signature.spell().equals("destroy-unit"), steps.stream().anyMatch(s -> s.effect() instanceof Staging.Bolt),
-                        signature.spell() + ": only Destroy fires the bolt");
+                assertEquals(signature.spell().equals("destroy-unit"), steps.stream().anyMatch(s -> s.effect() instanceof Staging.Chop),
+                        signature.spell() + ": only Destroy swings the axe");
                 for (Signature other : signatures)
                     if (other != signature)
                         assertTrue(steps.stream().noneMatch(s -> other.effect().isInstance(s.effect())),
