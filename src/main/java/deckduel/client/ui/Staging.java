@@ -145,6 +145,14 @@ final class Staging {
     }
     /** A large title for round changes and combo call-outs. */
     record Banner(String title, String subtitle, double x, double y, Tone tone, double size) implements Effect { }
+    /**
+     * A small plate naming a new formation, with its bonus and multiplier on a ribbon tag,
+     * rising into the gap just above its row ({@code at} is the plate's bottom centre) so it never
+     * covers the cards that scored.
+     */
+    record Callout(String title, String value, Point2D at, Tone tone) implements Effect {
+        Callout { at = (Point2D) at.clone(); }
+    }
     /** Gold flakes falling over an area, for a victory. */
     record Confetti(Rectangle area, long seed) implements Effect {
         Confetti { area = new Rectangle(area); }

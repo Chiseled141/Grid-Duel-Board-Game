@@ -19,8 +19,8 @@ import javax.swing.JToggleButton;
 import javax.swing.SwingUtilities;
 
 /**
- * Login and registration screen: a cream sticker card centered on the animated valley
- * background with gold pill buttons. Credentials validate inline (short
+ * Login and registration screen: an iron plate, like the match table's score rail, centered
+ * on the animated valley background, with dark sunken fields and gold and iron plate buttons. Credentials validate inline (short
  * entries shake the card), the password has a show/hide eye, and a muted
  * hint names the server the client will dial. Failed attempts are shown
  * inline.
@@ -66,7 +66,7 @@ public final class LoginPanel extends BattlefieldMenuPanel {
             }
         });
 
-        card = UiKit.sticker(26);
+        card = UiKit.plate(30);
         card.setLayout(new GridBagLayout());
         GridBagConstraints constraints = new GridBagConstraints();
         constraints.insets = new Insets(5, 6, 5, 6);
@@ -76,8 +76,9 @@ public final class LoginPanel extends BattlefieldMenuPanel {
         constraints.gridy = 0;
         constraints.gridwidth = 2;
         JLabel welcome = new JLabel("WELCOME");
-        welcome.setFont(Theme.display(22f));
-        welcome.setForeground(Theme.INK);
+        welcome.setFont(Theme.display(24f));
+        welcome.setForeground(Theme.BRASS_LIGHT);
+        welcome.setHorizontalAlignment(JLabel.CENTER);
         card.add(welcome, constraints);
 
         constraints.gridwidth = 1;
@@ -91,25 +92,25 @@ public final class LoginPanel extends BattlefieldMenuPanel {
         constraints.gridy = 2;
         JLabel passwordLabel = new JLabel("PASSWORD");
         passwordLabel.setFont(Theme.bold(12f));
-        passwordLabel.setForeground(Theme.INK);
+        passwordLabel.setForeground(Theme.FADED);
         card.add(passwordLabel, constraints);
         constraints.gridx = 1;
         card.add(passwordRow, constraints);
 
         constraints.gridx = 0;
         constraints.gridy = 3;
-        JButton register = UiKit.pill("Register", UiKit.Pill.GOLD);
+        JButton register = UiKit.pill("Register", UiKit.Pill.GOLD_OUTLINE);
         register.addActionListener(event -> submit(false));
         card.add(register, constraints);
         constraints.gridx = 1;
-        JButton login = UiKit.pill("Login", UiKit.Pill.GOLD_OUTLINE);
+        JButton login = UiKit.pill("Login", UiKit.Pill.GOLD);
         login.addActionListener(event -> submit(true));
         card.add(login, constraints);
 
         constraints.gridx = 0;
         constraints.gridy = 4;
         constraints.gridwidth = 2;
-        errorLabel.setForeground(Theme.VERMILION);
+        errorLabel.setForeground(Theme.CORAL);
         errorLabel.setFont(Theme.bold(11f));
         errorLabel.setHorizontalAlignment(JLabel.CENTER);
         card.add(errorLabel, constraints);
@@ -119,7 +120,7 @@ public final class LoginPanel extends BattlefieldMenuPanel {
         JLabel serverHint = new JLabel("SERVER  "
                 + settings.host() + ":" + settings.port());
         serverHint.setFont(Theme.normal(10f));
-        serverHint.setForeground(Theme.MUTED_INK);
+        serverHint.setForeground(Theme.withAlpha(Theme.FADED, 150));
         serverHint.setHorizontalAlignment(JLabel.CENTER);
         card.add(serverHint, constraints);
 
@@ -166,13 +167,12 @@ public final class LoginPanel extends BattlefieldMenuPanel {
                 var g = UiKit.nice(graphics);
                 int cx = getWidth() / 2;
                 int cy = getHeight() / 2;
-                g.setColor(Theme.MUTED_INK);
+                g.setColor(Theme.FADED);
                 g.setStroke(new BasicStroke(1.8f));
                 g.drawOval(cx - 8, cy - 5, 16, 10);
                 g.fillOval(cx - 3, cy - 3, 6, 6);
                 if (!isSelected()) {
                     // slash = password hidden (echo on)
-                    g.setColor(Theme.MUTED_INK);
                     g.drawLine(cx - 9, cy + 7, cx + 9, cy - 7);
                 }
                 g.dispose();
@@ -187,16 +187,23 @@ public final class LoginPanel extends BattlefieldMenuPanel {
         constraints.gridy = row;
         JLabel label = new JLabel(labelText);
         label.setFont(Theme.bold(12f));
-        label.setForeground(Theme.INK);
+        label.setForeground(Theme.FADED);
         card.add(label, constraints);
         constraints.gridx = 1;
         card.add(field, constraints);
     }
 
     private void styleField(JTextField field) {
-        field.setBackground(Theme.INPUT_PAPER);
-        field.setForeground(Theme.INK);
-        field.setCaretColor(Theme.INK);
+        field.setBackground(Theme.SLOT);
+        field.setForeground(Theme.CREAM);
+        field.setCaretColor(Theme.BRASS_LIGHT);
+        field.setSelectionColor(Theme.BRASS_DARK);
+        field.setSelectedTextColor(Theme.CREAM);
+        // The gold hairline brightens with focus, so repaint the border when focus moves.
+        field.addFocusListener(new java.awt.event.FocusAdapter() {
+            @Override public void focusGained(java.awt.event.FocusEvent event) { field.repaint(); }
+            @Override public void focusLost(java.awt.event.FocusEvent event) { field.repaint(); }
+        });
         field.setBorder(UiKit.fieldBorder());
         field.setFont(Theme.normal(14f));
     }

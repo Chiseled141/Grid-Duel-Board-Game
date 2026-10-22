@@ -66,10 +66,10 @@ final class PlayAnimator {
     static Plan opening(PlayerView view, Layout layout) {
         Staging s = new Staging();
         view.hand().forEach(card -> s.uses(card.def()));
-        Rectangle table = layout.table();
         s.sound(0, Kind.ROUND);
+        Point2D gap = gap(layout);
         s.add(0, 1400, new Staging.Banner("Round " + view.round(), "Ten cards each · ten plays · three draws",
-                table.getCenterX(), table.getCenterY(), Tone.GOLD, 46));
+                gap.getX(), gap.getY(), Tone.GOLD, 46));
         deal(s, view.hand(), layout, 450);
         return new Plan(s, 0);
     }
@@ -403,11 +403,11 @@ final class PlayAnimator {
             }
         }
         RoundResult last = after.rounds().get(after.rounds().size() - 1);
-        Rectangle table = layout.table();
         int bannerAt = clearAt + 380;
         s.sound(bannerAt, Kind.ROUND);
         String score = "Round " + last.round() + ": you " + last.scoreOf(after.seat()) + " – " + last.scoreOf(after.seat().other()) + " " + opponent;
-        s.add(bannerAt, 1700, new Staging.Banner("Round " + after.round(), score, table.getCenterX(), table.getCenterY(), Tone.GOLD, 46));
+        Point2D gap = gap(layout);
+        s.add(bannerAt, 1700, new Staging.Banner("Round " + after.round(), score, gap.getX(), gap.getY(), Tone.GOLD, 46));
         deal(s, after.hand(), layout, bannerAt + 700);
     }
 
@@ -425,9 +425,9 @@ final class PlayAnimator {
     /**
      * Combos, after the card has landed: the Units' change pops up as a chip over the card, each
      * new pair link draws itself and its bonus pops as a chip (gold for a +9 pair), and every chip
-     * is flung onto its place on the score rail in turn, chinking a little higher each time. A
-     * call-out marks several pairs at once, and a new formation is announced Balatro-style with
-     * its bonus and multiplier flung onto the rail. Returns when each chip lands, for the rail.
+     * is flung onto its place on the score rail in turn, chinking a little higher each time. A new
+     * formation is named in a slim callout above its row, never over the cards, and its bonus and
+     * multiplier are flung onto the rail. Returns when each chip lands, for the rail.
      */
     static List<ScoreRail.Tally> combos(Staging s, ScoringTrace trace, int delay, Layout layout) {
         List<ScoreRail.Tally> tallies = new ArrayList<>();
@@ -453,35 +453,24 @@ final class PlayAnimator {
                         pair.points(), new Point2D.Double((left.getX() + right.getX()) / 2, left.getY() + dip * 1.2 + 4),
                         big ? Tone.GOLD : Tone.CRIMSON, big, step);
             }
-            int bonus = links.stream().mapToInt(link -> link.pair().points()).sum();
-            if (links.size() >= 2) {
-                int at = delay + links.get(links.size() - 1).at() + 160;
-                Rectangle row = rowSpan(zone, layout);
-                double x = row.getCenterX(), y = row.getCenterY();
-                Tone tone = own ? Tone.GOLD : Tone.CREAM;
-                s.add(at, 1150, new Staging.Banner("Combo ×" + links.size(), "+" + bonus + " combo points", x, y, tone,
-                        links.size() >= 4 ? 40 : 32));
-                s.add(at, 700, new Staging.Burst(x, y - 10, tone, 18 + links.size() * 4, 120 + bonus * 2, bonus));
-            }
             Formation formation = trace.formations.get(zone);
             if (formation != null) formation(s, tallies, layout, zone, formation, delay + trace.formationAt, step);
         }
         return tallies;
     }
 
-    /** A formation's name and its bonus and multiplier announced over the row, then flung onto the rail. */
+    /** A formation's name, bonus and multiplier called out just above its row, then flung onto the rail. */
     private static void formation(Staging s, List<ScoreRail.Tally> tallies, Layout layout, TableZone zone, Formation formation,
                                   int at, int[] step) {
         boolean own = zone == TableZone.OWN;
         Rectangle row = rowSpan(zone, layout);
-        double x = row.getCenterX(), y = row.getCenterY();
+        Point2D above = new Point2D.Double(row.getCenterX(), row.y - 4);
         String value = "+" + formation.bonus() + "  ×" + formation.multiplier();
         Tone tone = formation.multiplier() > 1 ? Tone.GOLD : Tone.CREAM;
         s.sound(at, Kind.CHIME);
-        s.add(at, ScoringTrace.FORMATION_MS + 300, new Staging.Banner(formation.title(), value, x, y, tone, formation.multiplier() > 1 ? 44 : 34));
-        s.add(at, 700, new Staging.Burst(x, y - 10, tone, 16 + formation.multiplier() * 8, 140 + formation.bonus() * 2, formation.ordinal()));
+        s.add(at, ScoringTrace.FORMATION_MS + 300, new Staging.Callout(formation.title(), value, above, tone));
         int fling = at + ScoringTrace.FORMATION_MS - ScoringTrace.CHIP_MS;
-        s.add(fling, ScoringTrace.CHIP_MS, new Staging.Chip(value, new Point2D.Double(x, y + 30),
+        s.add(fling, ScoringTrace.CHIP_MS, new Staging.Chip(value, new Point2D.Double(above.getX(), above.getY() - 14),
                 layout.pocket(own ? ScoreRail.Pocket.FORMATION : ScoreRail.Pocket.OPPONENT), tone, true));
         s.sound(fling + ScoringTrace.CHIP_MS, Kind.TALLY, step[0]++);
         tallies.add(new ScoreRail.Tally(fling + ScoringTrace.CHIP_MS, own ? ScoreRail.Pocket.FORMATION : ScoreRail.Pocket.OPPONENT, 0));
@@ -495,6 +484,12 @@ final class PlayAnimator {
         int landed = at + ScoringTrace.CHIP_MS;
         s.sound(landed, Kind.TALLY, step[0]++);
         tallies.add(new ScoreRail.Tally(landed, pocket, points));
+    }
+
+    /** The middle of the gap between the two rows, where notifications sit without covering cards. */
+    private static Point2D gap(Layout layout) {
+        Rectangle upper = layout.slot(TableZone.OPPONENT, 0), lower = layout.slot(TableZone.OWN, 0);
+        return new Point2D.Double(rowSpan(TableZone.OWN, layout).getCenterX(), (upper.getMaxY() + lower.y) / 2.0);
     }
 
     /** The whole of a Unit row, from its first space to its last. */
