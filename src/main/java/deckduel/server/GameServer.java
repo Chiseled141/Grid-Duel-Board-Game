@@ -18,7 +18,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-/** Local server for accounts, lobby, matchmaking and authoritative card matches. */
+/** Local server for accounts, hosted rooms, practice and authoritative card matches. */
 public final class GameServer {
     private static final Logger LOG = Logger.getLogger(GameServer.class.getName());
     private final ServerConfig config;
@@ -104,10 +104,7 @@ public final class GameServer {
 
     private boolean start(MatchSession session, List<Entrant> entrants) {
         if (!matches.bind(session, session.humanUsernames())) { session.close(); return false; }
-        for (Entrant entrant : entrants) {
-            lobby.removeHostedLobby(entrant.handler());
-            lobby.dequeue(entrant.handler());
-        }
+        for (Entrant entrant : entrants) lobby.removeHostedLobby(entrant.handler());
         session.start();
         return true;
     }

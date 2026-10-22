@@ -91,8 +91,9 @@ public final class Main {
         try (var database = new Database(folder.resolve("demo.db"))) {
             var server = newServer(database, new ServerConfig(0, 90, 8, 60, 0));
             int port = server.start();
-            try (var a = new CardBot("demo_north", "demo-pass", games);
-                 var b = new CardBot("demo_south", "demo-pass", games)) {
+            var room = new CompletableFuture<String>();
+            try (var a = new CardBot("demo_north", "demo-pass", games, true, room);
+                 var b = new CardBot("demo_south", "demo-pass", games, false, room)) {
                 var first = a.start("127.0.0.1", port);
                 b.start("127.0.0.1", port);
                 for (MatchUpdate result : first.get(2, TimeUnit.MINUTES)) LOG.info(describe(result));
@@ -102,17 +103,22 @@ public final class Main {
         }
     }
 
-    /** Starts {@code --count} bots against an existing server; returns whether every bot finished. */
+    /** Starts {@code --count} bots in host/joiner pairs against an existing server; returns whether every bot finished. */
     private static boolean bots(Map<String, String> options) throws Exception {
         String host = options.getOrDefault("host", "127.0.0.1");
         int port = Integer.parseInt(options.getOrDefault("port", "5555"));
         int count = Integer.parseInt(options.getOrDefault("count", "2"));
+        if (count % 2 != 0) throw new IllegalArgumentException("--count must be even: bots play in host/joiner pairs");
         int games = Integer.parseInt(options.getOrDefault("games", "1"));
         List<CardBot> bots = new ArrayList<>();
         List<CompletableFuture<List<MatchUpdate>>> runs = new ArrayList<>();
         try {
+            CompletableFuture<String> room = null;
             for (int i = 1; i <= count; i++) {
-                CardBot bot = new CardBot("bot_" + i, options.getOrDefault("password", "bot-pass"), games);
+                // Odd bots host a fresh room; each even bot joins the room of the bot before it.
+                boolean hosting = i % 2 == 1;
+                if (hosting) room = new CompletableFuture<>();
+                CardBot bot = new CardBot("bot_" + i, options.getOrDefault("password", "bot-pass"), games, hosting, room);
                 bots.add(bot);
                 runs.add(bot.start(host, port));
             }

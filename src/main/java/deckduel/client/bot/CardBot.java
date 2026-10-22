@@ -18,6 +18,8 @@ public final class CardBot implements AutoCloseable {
     private static final Logger LOG = Logger.getLogger(CardBot.class.getName());
     private final String username, password;
     private final int games;
+    private final boolean host;
+    private final CompletableFuture<String> room;
     private final DeckDuelClient client;
     private final CompletableFuture<List<MatchUpdate>> finished = new CompletableFuture<>();
     private final List<MatchUpdate> results = new ArrayList<>();
@@ -26,15 +28,21 @@ public final class CardBot implements AutoCloseable {
     private String finishedKey;
     private long requests = 1;
 
-    /** Creates a bot that will play {@code games} matchmaking games with the server's automatic deck. */
-    public CardBot(String username, String password, int games) {
+    /**
+     * Creates a bot that plays {@code games} games against one partner, then leaves. The host
+     * creates a room and publishes its code to {@code room}; the partner joins that code. Games
+     * after the first are rematches.
+     */
+    public CardBot(String username, String password, int games, boolean host, CompletableFuture<String> room) {
         this.username = username;
         this.password = password;
         this.games = games;
+        this.host = host;
+        this.room = room;
         client = new DeckDuelClient(this::receive, reason -> finished.completeExceptionally(new IOException(reason)));
     }
 
-    /** Connects, signs in (registering on first use) and starts searching; completes with each final view. */
+    /** Connects, signs in (registering on first use) and hosts or joins; completes with each final view. */
     public CompletableFuture<List<MatchUpdate>> start(String host, int port) throws IOException {
         client.ensureConnected(host, port);
         client.send(new RegisterRequest(username, password));
@@ -44,15 +52,19 @@ public final class CardBot implements AutoCloseable {
     // Runs on the client's reader thread; one message at a time.
     private synchronized void receive(Message message) {
         if (message instanceof LoginResponse response) signedIn(response);
+        else if (message instanceof MatchCreated created) room.complete(created.roomCode());
         else if (message instanceof MatchUpdate update) onUpdate(update);
-        else if (message instanceof MatchmakingStatus status && status.error() != null)
-            finished.completeExceptionally(new IllegalStateException(status.error()));
+        else if (message instanceof ErrorMessage error) finished.completeExceptionally(new IllegalStateException(error.text()));
         else if (message instanceof ActionRejected rejected) LOG.warning(() -> username + " move rejected: " + rejected.reason());
         else if (message instanceof Ping ping) client.send(new Pong(ping.timestamp()));
     }
 
     private void signedIn(LoginResponse response) {
-        if (response.ok()) { client.send(new FindMatchRequest(true)); return; }
+        if (response.ok()) {
+            if (host) client.send(new CreateMatchRequest());
+            else room.thenAccept(code -> client.send(new JoinMatchRequest(code)));
+            return;
+        }
         if (triedLogin) { finished.completeExceptionally(new IllegalStateException(response.errorText())); return; }
         triedLogin = true;
         client.send(new LoginRequest(username, password));
@@ -64,10 +76,10 @@ public final class CardBot implements AutoCloseable {
             if (key.equals(finishedKey)) return;
             finishedKey = key;
             results.add(update);
-            client.send(new LeaveMatchRequest());
             playedRevision = -1;
-            if (results.size() >= games) finished.complete(List.copyOf(results));
-            else client.send(new FindMatchRequest(true));
+            if (results.size() < games) { client.send(new RematchRequest()); return; }
+            client.send(new LeaveMatchRequest());
+            finished.complete(List.copyOf(results));
             return;
         }
         if (!update.view().yourTurn() || update.view().revision() == playedRevision) return;

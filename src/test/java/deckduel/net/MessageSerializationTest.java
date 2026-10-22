@@ -31,7 +31,6 @@ class MessageSerializationTest {
         return List.of(new RegisterRequest("alice", "secret"), new LoginRequest("alice", "secret"),
                 new LoginResponse(true, null, user), new LoginResponse(false, "Invalid login", null),
                 new CreateMatchRequest(), new MatchCreated("ABCDE"), new JoinMatchRequest("ABCDE"),
-                new FindMatchRequest(true), new MatchmakingStatus(false, "Matchmaking is unavailable"),
                 new PracticeRequest(true), new MoveRequest(3, 7, PlayCard.cast(4, 9L)), new MoveRequest(4, 7, new DrawCard()),
                 new MoveRequest(6, 8, new KeepCard(12)),
                 new MoveRequest(7, 9, new SkipTurn()),

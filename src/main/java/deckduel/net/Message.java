@@ -5,15 +5,15 @@ import java.io.Serializable;
 
 /** Closed account, lobby and card-match protocol; anything outside the allowlist is rejected. */
 public sealed interface Message extends Serializable permits ActionRejected,
-        CreateMatchRequest, ErrorMessage, FindMatchRequest, HistoryRequest, HistoryResponse,
+        CreateMatchRequest, ErrorMessage, HistoryRequest, HistoryResponse,
         JoinMatchRequest, LeaveMatchRequest, ListMatchesRequest, ListMatchesResponse, LoginRequest,
-        LoginResponse, MatchCreated, MatchUpdate, MatchmakingStatus, MoveRequest, Ping, Pong,
+        LoginResponse, MatchCreated, MatchUpdate, MoveRequest, Ping, Pong,
         PracticeRequest, ProfileUpdate, ProtocolHello, ProtocolReady, RegisterRequest, RematchRequest {
     /**
-     * Version 12 removes Landmarks (no PickLandmarks move, no Landmark areas or offers) and adds
-     * the row's {@code Formation} to each score. Older peers are rejected at the handshake.
+     * Version 13 removes the matchmaking queue (no FindMatchRequest or MatchmakingStatus); matches
+     * start only from hosted rooms or practice. Older peers are rejected at the handshake.
      */
-    int PROTOCOL_VERSION = 12;
+    int PROTOCOL_VERSION = 13;
     /** Greeting shared by both peers. */
     String GREETING = "DECK_DUEL_PROTOCOL:" + PROTOCOL_VERSION;
     /** Restricts deserialization to protocol records, card view contracts and bounded collections. */
@@ -22,7 +22,6 @@ public sealed interface Message extends Serializable permits ActionRejected,
                     + "deckduel.net.ActionRejected;"
                     + "deckduel.net.CreateMatchRequest;"
                     + "deckduel.net.ErrorMessage;"
-                    + "deckduel.net.FindMatchRequest;"
                     + "deckduel.net.JoinMatchRequest;"
                     + "deckduel.net.HistoryEntry;"
                     + "deckduel.net.HistoryEntry$Result;"
@@ -36,7 +35,6 @@ public sealed interface Message extends Serializable permits ActionRejected,
                     + "deckduel.net.MatchCreated;"
                     + "deckduel.net.MatchSummary;"
                     + "deckduel.net.MatchUpdate;"
-                    + "deckduel.net.MatchmakingStatus;"
                     + "deckduel.net.MoveRequest;"
                     + "deckduel.net.Ping;"
                     + "deckduel.net.Pong;"
