@@ -189,13 +189,9 @@ class CardMatchIntegrationTest {
         }
     }
 
-    @Test void matchmakingPairsSearchersAndRefusesBusyRequests() throws Exception {
+    @Test void aPlayerAlreadyInAMatchCannotHostAnotherRoom() throws Exception {
         try (var alice = new Peer("alice", true); var bob = new Peer("bob", true)) {
-            alice.send(new FindMatchRequest(true)); assertTrue(alice.expect(MatchmakingStatus.class, any -> true).searching());
-            alice.send(new FindMatchRequest(false)); assertFalse(alice.expect(MatchmakingStatus.class, any -> true).searching());
-            alice.send(new FindMatchRequest(true)); alice.expect(MatchmakingStatus.class, MatchmakingStatus::searching);
-            bob.send(new FindMatchRequest(true));
-            alice.update(any -> true); bob.update(any -> true);
+            hostAndJoin(alice, bob);
             bob.send(new CreateMatchRequest());
             assertEquals(ClientHandler.BUSY, bob.expect(ErrorMessage.class, any -> true).text());
         }

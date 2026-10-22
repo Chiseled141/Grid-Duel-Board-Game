@@ -18,7 +18,7 @@ seven-nation bonus and some edge cases are provisional (AGENTS.md lists them).
   (hard: plays out its known hand, holds disruption Spells; 254 wins to 146 against `GreedyBot`
   over 400 seeded matches on this catalog, 2026-10-21).
 - `cards/CatalogLoader`: parses `resources/cards/catalog.txt` into a validated `Catalog`.
-- `server`: `ClientHandler` dispatch, `LobbyManager` (rooms + queue), `MatchRegistry`
+- `server`: `ClientHandler` dispatch, `LobbyManager` (hosted rooms), `MatchRegistry`
   (one match per account), `MatchSession` (per-match executor, privacy, revisions, retries,
   grace, rematch, practice bot and recording), `MatchPersistence` (+ `match_rounds`,
   and per-account history reads for the Match history page).
@@ -45,14 +45,15 @@ In-match chat was removed entirely: no table controls, client history/callbacks,
 or chat protocol messages remain. Reconnect, errors/notices and rematch remain supported.
 
 The deck builder and Deck menu were removed at the user’s request. No client sends a deck
-(protocol 12 has no deck field, supports voluntary skips and carries formations); `MatchSession` builds the same 45-card deck for both seats every
+(protocol 13 has no deck field or matchmaking queue, supports voluntary skips and carries formations); `MatchSession` builds the same 45-card deck for both seats every
 game and shuffles each independently. Deck entries saved in `client.properties` by older clients
 are preserved unchanged and never read.
 
-Play → Find match / Create match / Join a game / Practice → Easy bot or Hard bot all start
-real matches. Home → History shows the account's recorded matches. The old leaderboard was
+Play → Create match / Join a game / Practice → Easy bot or Hard bot all start real matches;
+the matchmaking queue was removed at the user's request. Home → History shows the account's recorded matches. The old leaderboard was
 removed at the user's request. `demo` runs two bots against a throwaway local server and database; `bots` connects
-`--count` bots to a running server.
+an even `--count` of bots to a running server. Bots pair up through hosted rooms (one hosts, its
+partner joins by code) and play further games as rematches.
 
 ## Remaining work
 

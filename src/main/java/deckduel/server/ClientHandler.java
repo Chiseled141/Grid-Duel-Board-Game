@@ -68,7 +68,6 @@ public final class ClientHandler implements Runnable {
             else if (message instanceof HistoryRequest) send(new HistoryResponse(server.history().historyFor(username, HISTORY_LIMIT)));
             else if (message instanceof CreateMatchRequest) createRoom();
             else if (message instanceof JoinMatchRequest request) joinRoom(request.roomCode());
-            else if (message instanceof FindMatchRequest request) findMatch(request);
             else if (message instanceof PracticeRequest request) practice(request.hard());
             else if (message instanceof MoveRequest request) inMatch(session -> session.move(this, request));
             else if (message instanceof RematchRequest) inMatch(session -> session.rematch(this));
@@ -95,24 +94,22 @@ public final class ClientHandler implements Runnable {
         }
     }
 
-    /** Drops rooms, queue places and match seat held by this connection's current account. */
+    /** Drops rooms and match seat held by this connection's current account. */
     private void releaseAccount() {
         server.lobby().removeHostedLobby(this);
-        server.lobby().dequeue(this);
         MatchSession active = server.matches().sessionFor(username);
         if (active != null) active.detach(this);
         server.registry().detach(this);
     }
 
     private void createRoom() {
-        Entrant host = entrant(this::sendError);
+        Entrant host = entrant();
         if (host == null) return;
-        server.lobby().dequeue(this);
         send(new MatchCreated(server.lobby().createLobby(host)));
     }
 
     private void joinRoom(String roomCode) {
-        Entrant joiner = entrant(this::sendError);
+        Entrant joiner = entrant();
         if (joiner == null) return;
         String code = roomCode == null ? null : roomCode.trim().toUpperCase(Locale.ROOT);
         Entrant host = server.lobby().claim(code);
@@ -125,28 +122,14 @@ public final class ClientHandler implements Runnable {
         if (!server.startMatch(host, joiner)) sendError("That room's host is already playing.");
     }
 
-    private void findMatch(FindMatchRequest request) {
-        if (!request.searching()) {
-            server.lobby().dequeue(this);
-            send(new MatchmakingStatus(false, null));
-            return;
-        }
-        Entrant entrant = entrant(reason -> send(new MatchmakingStatus(false, reason)));
-        if (entrant == null) return;
-        server.lobby().removeHostedLobby(this);
-        Entrant opponent = server.lobby().enqueue(entrant);
-        if (opponent == null) send(new MatchmakingStatus(true, null));
-        else if (!server.startMatch(opponent, entrant)) send(new MatchmakingStatus(false, "Could not start the match. Please search again."));
-    }
-
     private void practice(boolean hard) {
-        Entrant entrant = entrant(this::sendError);
+        Entrant entrant = entrant();
         if (entrant != null && !server.startPractice(entrant, hard)) sendError(BUSY);
     }
 
-    /** This connection as a match entrant, unless its account is already playing ({@code refuse} says why). */
-    private Entrant entrant(Consumer<String> refuse) {
-        if (server.matches().sessionFor(username) != null) { refuse.accept(BUSY); return null; }
+    /** This connection as a match entrant, unless its account is already playing (it is told why). */
+    private Entrant entrant() {
+        if (server.matches().sessionFor(username) != null) { sendError(BUSY); return null; }
         return new Entrant(this);
     }
 

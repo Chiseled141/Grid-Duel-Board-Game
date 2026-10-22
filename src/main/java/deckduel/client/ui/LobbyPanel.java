@@ -52,11 +52,6 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
     private final JButton create = MenuSettingsOption.route("Create match", "Invite a friend with a room code.", this::createRoom);
     private final JButton practice = MenuSettingsOption.route("Practice", "Play against the practice bot.", () -> showPage("practice"));
     private final JButton browse = MenuSettingsOption.route("Join a game", "Enter a code or choose an open room.", () -> showPage("join"));
-    private final JButton find = MenuSettingsOption.route("Find match", "Search for another online player.", this::findMatch);
-    private final JLabel searchStatus = caption("Searching for an opponent…");
-    private final JLabel searchDetail = caption("You can cancel while you wait.");
-    private final JButton searchAgain = MenuSettingsOption.route("Search again", "Look for another online player.", this::findMatch);
-    private final JButton cancelSearch = MenuSettingsOption.route("Cancel search", "Stop looking for an opponent.", this::cancelFindMatch);
     private final JButton[] cardControls = new JButton[2];
     private final java.util.Map<String, JPanel> pages = new java.util.LinkedHashMap<>();
     private final java.util.Map<String, MenuNavigation> navigation = new java.util.HashMap<>();
@@ -110,7 +105,6 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
         pages.put("create", buildCreate());
         pages.put("join", buildJoin());
         pages.put("practice", buildPractice());
-        pages.put("find", buildFindMatch());
         pages.put("settings", buildSettings());
         for (String name : java.util.List.of("home", "play", "practice")) {
             JPanel menu = pages.get(name);
@@ -182,58 +176,11 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
 
     private JPanel buildPlay() {
         JPanel page = page("Play", "Choose your next match.", "home");
-        line(page, find);
-        page.add(Box.createVerticalStrut(8));
         line(page, create);
         page.add(Box.createVerticalStrut(8));
         line(page, browse);
         page.add(Box.createVerticalStrut(8));
         line(page, practice);
-        return page;
-    }
-
-    private void findMatch() {
-        showPage("find");
-        model.findMatch();
-    }
-
-    private void cancelFindMatch() {
-        model.cancelFindMatch();
-    }
-
-    private JPanel buildFindMatch() {
-        JPanel page = page("Find match", null, "play");
-        JPanel status = new JPanel() {
-            @Override protected void paintComponent(Graphics graphics) {
-                Graphics2D g = UiKit.nice(graphics);
-                UiKit.paintPlate(g, getWidth() - 4, getHeight() - 4);
-                g.dispose();
-            }
-        };
-        status.setName("matchSearchStatus");
-        status.setOpaque(false);
-        status.setLayout(new BoxLayout(status, BoxLayout.Y_AXIS));
-        status.setBorder(BorderFactory.createEmptyBorder(18, 20, 22, 22));
-        status.setPreferredSize(new Dimension(330, 154));
-        line(status, settingLabel("ONLINE MATCHMAKING"));
-        status.add(Box.createVerticalStrut(10));
-        searchStatus.setFont(Theme.bold(20f));
-        searchStatus.setForeground(Theme.CREAM);
-        searchDetail.setFont(Theme.normal(13f));
-        line(status, searchStatus);
-        status.add(Box.createVerticalStrut(5));
-        line(status, searchDetail);
-        JLabel serverHint = caption("Players on this server can join you.");
-        serverHint.setFont(Theme.normal(12f));
-        line(status, serverHint);
-        line(page, status);
-        page.add(Box.createVerticalStrut(12));
-        cancelSearch.setSelected(true);
-        cancelSearch.setFont(Theme.bold(17f));
-        searchAgain.setSelected(true);
-        searchAgain.setFont(Theme.bold(17f));
-        line(page, cancelSearch);
-        line(page, searchAgain);
         return page;
     }
 
@@ -505,8 +452,6 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
     }
 
     private void showPage(String name) {
-        if (currentPage.equals("find") && !name.equals("find") && model.isFindingMatch())
-            model.cancelFindMatch();
         currentPage = name;
         surface.removeAll();
         surface.add(pages.get(name), BorderLayout.CENTER);
@@ -549,17 +494,8 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
     }
 
     private void refreshAvailability() {
-        boolean searching = model.isFindingMatch();
-        find.setEnabled(!searching && !creatingRoom);
-        searchStatus.setText(searching ? "Searching for a player…" : "Search stopped");
-        searchDetail.setText(searching ? "You can cancel while you wait." : "Ready when you are.");
-        cancelSearch.setVisible(searching);
-        searchAgain.setVisible(!searching);
-        searchAgain.setEnabled(true);
-        create.setEnabled(!searching && !creatingRoom);
-        browse.setEnabled(!searching);
-        practice.setEnabled(!searching);
-        join.setEnabled(!searching && joinField.getText().trim().toUpperCase(java.util.Locale.ROOT).matches("[A-Z2-9]{5}"));
+        create.setEnabled(!creatingRoom);
+        join.setEnabled(joinField.getText().trim().toUpperCase(java.util.Locale.ROOT).matches("[A-Z2-9]{5}"));
         navigation.values().forEach(MenuNavigation::refresh);
     }
 

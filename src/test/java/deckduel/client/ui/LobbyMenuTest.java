@@ -152,30 +152,6 @@ class LobbyMenuTest {
         });
     }
 
-    @Test void findMatchCanBeCancelledAndBackNavigationLeavesTheQueue() throws Exception {
-        SwingUtilities.invokeAndWait(() -> {
-            var ui = ui(); button(ui, "Play").doClick();
-            button(ui, "Find match").doClick();
-            assertTrue(ui.model.isFindingMatch());
-            assertEquals(List.of(new FindMatchRequest(true)), ui.sent);
-            ui.model.handleMessage(new MatchmakingStatus(true, null));
-            button(ui, "Cancel search").doClick();
-            assertTrue(ui.model.isFindingMatch(), "wait for server cancellation acknowledgement");
-            assertEquals(new FindMatchRequest(false), ui.sent.get(1));
-            ui.model.handleMessage(new MatchmakingStatus(false, null));
-            assertFalse(ui.model.isFindingMatch());
-            button(ui, "Search again").doClick();
-            assertTrue(ui.model.isFindingMatch());
-            button(ui, "Back").doClick();
-            assertEquals(new FindMatchRequest(false), ui.sent.get(ui.sent.size() - 1));
-            assertFalse(button(ui, "Create match").isEnabled());
-            ui.model.handleMessage(new MatchmakingStatus(false, null));
-            assertTrue(button(ui, "Create match").isEnabled());
-            assertFalse(ui.model.isFindingMatch());
-        });
-    }
-
-
     private void menuKey(Ui ui, String pageName, String key) {
         JPanel page = find(ui.panel, JPanel.class).stream().filter(panel -> pageName.equals(panel.getName())).findFirst().orElseThrow();
         Object id = page.getInputMap(JComponent.WHEN_ANCESTOR_OF_FOCUSED_COMPONENT).get(KeyStroke.getKeyStroke(key));
@@ -202,22 +178,21 @@ class LobbyMenuTest {
             menuKey(ui, "menu-home", "S"); selected(ui, "Quit game");
             menuKey(ui, "menu-home", "W"); selected(ui, "Settings");
             menuKey(ui, "menu-home", "LEFT"); selected(ui, "Play");
-            menuKey(ui, "menu-home", "ENTER"); selected(ui, "Find match");
-            assertFalse(button(ui, "Find match").isSelected(), "Find match has no permanent highlight");
-            JButton highlighted = button(ui, "Find match"); highlighted.setSize(330, 56);
+            menuKey(ui, "menu-home", "ENTER"); selected(ui, "Create match");
+            assertFalse(button(ui, "Create match").isSelected(), "Create match has no permanent highlight");
+            JButton highlighted = button(ui, "Create match"); highlighted.setSize(330, 56);
             var painted = new java.awt.image.BufferedImage(330, 56, java.awt.image.BufferedImage.TYPE_INT_RGB);
             var graphics = painted.createGraphics(); highlighted.paint(graphics); graphics.dispose();
             int readableDetail = 0;
             for (int y = 31; y < 45; y++) for (int x = 14; x < 270; x++)
                 if (new Color(painted.getRGB(x, y)).getRed() < 140) readableDetail++;
             assertTrue(readableDetail > 30, "description must use dark text on the gold selection");
-            menuKey(ui, "menu-play", "DOWN"); selected(ui, "Create match");
             menuKey(ui, "menu-play", "D"); selected(ui, "Join a game");
             menuKey(ui, "menu-play", "RIGHT"); selected(ui, "Practice");
             menuKey(ui, "menu-play", "ENTER"); selected(ui, "Easy bot");
             menuKey(ui, "menu-practice", "DOWN"); selected(ui, "Hard bot");
             menuKey(ui, "menu-practice", "A"); selected(ui, "Easy bot");
-            menuKey(ui, "menu-practice", "ESCAPE"); selected(ui, "Find match");
+            menuKey(ui, "menu-practice", "ESCAPE"); selected(ui, "Create match");
             menuKey(ui, "menu-play", "ESCAPE"); selected(ui, "Play");
             menuKey(ui, "menu-home", "UP"); selected(ui, "Quit game"); // hidden Resume is skipped
             menuKey(ui, "menu-home", "DOWN"); menuKey(ui, "menu-home", "ENTER");
@@ -229,11 +204,12 @@ class LobbyMenuTest {
 
     @Test void navigationSkipsDisabledActionsAndNeverCapturesRoomCodeTyping() throws Exception {
         SwingUtilities.invokeAndWait(() -> {
-            var ui = ui(); button(ui, "Play").doClick(); button(ui, "Find match").doClick();
-            button(ui, "Back").doClick(); // Cancellation still awaiting its acknowledgement.
-            selected(ui, "Back"); menuKey(ui, "menu-play", "DOWN"); selected(ui, "Back");
-            ui.model.handleMessage(new MatchmakingStatus(false, null));
-            menuKey(ui, "menu-play", "S"); selected(ui, "Find match");
+            var ui = ui(); button(ui, "Play").doClick(); button(ui, "Create match").doClick();
+            button(ui, "Back").doClick(); // The room is still being created.
+            selected(ui, "Back"); menuKey(ui, "menu-play", "DOWN"); selected(ui, "Join a game");
+            menuKey(ui, "menu-play", "UP"); selected(ui, "Back");
+            ui.model.handleMessage(new ErrorMessage("Room creation failed"));
+            menuKey(ui, "menu-play", "S"); selected(ui, "Create match");
             button(ui, "Join a game").doClick();
             JPanel joinPage = find(ui.panel, JPanel.class).stream().filter(panel -> "menu-join-a-game".equals(panel.getName())).findFirst().orElseThrow();
             assertNull(joinPage.getInputMap(JComponent.WHEN_ANCESTOR_OF_FOCUSED_COMPONENT).get(KeyStroke.getKeyStroke("W")));
@@ -248,7 +224,7 @@ class LobbyMenuTest {
             button(ui, "Create match").doClick();
             ui.model.handleMessage(new MatchCreated("ABCDE"));
             menuKey(ui, "menu-create-match", "BACK_SPACE");
-            assertNotNull(button(ui, "Find match"));
+            assertNotNull(button(ui, "Create match"));
             button(ui, "Join a game").doClick();
             var field = find(ui.panel, JTextField.class).get(0);
             field.setText("ABCDE"); field.setCaretPosition(5);

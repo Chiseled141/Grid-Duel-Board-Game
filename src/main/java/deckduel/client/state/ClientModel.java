@@ -29,7 +29,7 @@ public final class ClientModel {
     private List<MatchSummary> openMatches = List.of();
     private List<HistoryEntry> history = List.of();
     private String pendingRoomCode;
-    private boolean findingMatch, reducedMotion, reconnecting;
+    private boolean reducedMotion, reconnecting;
     private MatchUpdate match;
     private String leftMatchId;
     private long nextRequestId = 1;
@@ -63,19 +63,6 @@ public final class ClientModel {
         worker.setDaemon(true);
         worker.start();
     }
-    /** Requests match search with an automatic server deck. */
-    public void findMatch() {
-        if (findingMatch) return;
-        if (me == null || screen != Screen.LOBBY || !connection.isConnected()) {
-            fire(listener -> listener.onError("Connect to the server first."));
-            return;
-        }
-        findingMatch = true;
-        fire(ClientModelListener::onLobbyChanged);
-        connection.send(new FindMatchRequest(true));
-    }
-    /** Waits for authoritative cancellation rather than assuming it succeeded. */
-    public void cancelFindMatch() { if (findingMatch) connection.send(new FindMatchRequest(false)); }
     /** Requests a hosted room with an automatic server deck. */
     public void createMatch() { connection.send(new CreateMatchRequest()); }
     /** Requests admission to a hosted room. */
@@ -116,7 +103,6 @@ public final class ClientModel {
             if (!response.ok()) { fire(listener -> listener.onLoginFailed(response.errorText())); return; }
             me = response.profile();
             pendingRoomCode = null;
-            findingMatch = false;
             if (reconnecting) {
                 // The server follows with the held match view; stay on the table meanwhile.
                 reconnecting = false;
@@ -143,10 +129,6 @@ public final class ClientModel {
         } else if (message instanceof HistoryResponse response) {
             history = List.copyOf(response.matches());
             fire(ClientModelListener::onHistoryChanged);
-        } else if (message instanceof MatchmakingStatus status) {
-            findingMatch = status.searching() && screen == Screen.LOBBY;
-            fire(ClientModelListener::onLobbyChanged);
-            if (status.error() != null) fire(listener -> listener.onError(status.error()));
         } else if (message instanceof ErrorMessage error) {
             fire(listener -> listener.onError(error.text()));
         } else if (message instanceof Ping ping) connection.send(new Pong(ping.timestamp()));
@@ -157,7 +139,6 @@ public final class ClientModel {
         if (update.matchId().equals(leftMatchId)) return;
         match = update;
         awaitingAnswer = false;
-        findingMatch = false;
         pendingRoomCode = null;
         if (screen != Screen.TABLE) setScreen(Screen.TABLE);
         fire(ClientModelListener::onMatchChanged);
@@ -176,7 +157,7 @@ public final class ClientModel {
 
     private void endSession() {
         reconnecting = false;
-        me = null; pendingRoomCode = null; findingMatch = false; match = null;
+        me = null; pendingRoomCode = null; match = null;
         openMatches = List.of(); history = List.of();
         setScreen(Screen.LOGIN);
         fire(ClientModelListener::onConnectionLost);
@@ -222,8 +203,6 @@ public final class ClientModel {
     public List<HistoryEntry> history() { return history; }
     /** Room hosted by this connection, if any. */
     public String pendingRoomCode() { return pendingRoomCode; }
-    /** Whether a search response is pending. */
-    public boolean isFindingMatch() { return findingMatch; }
     /** The latest authoritative match update, or null outside a match. */
     public MatchUpdate match() { return match; }
     /** Whether the connection dropped mid-match and a reconnect is in progress. */

@@ -79,7 +79,7 @@ class AccountLobbyIntegrationTest {
     @Test void authenticationIsRequiredForLobbyMatchAndHistoryRequests() throws Exception {
         try (var peer = new Peer(true)) {
             for (Object request : java.util.List.of(new CreateMatchRequest(), new ListMatchesRequest(),
-                    new HistoryRequest(), new JoinMatchRequest("ABCDE"), new FindMatchRequest(true),
+                    new HistoryRequest(), new JoinMatchRequest("ABCDE"),
                     new PracticeRequest(false), new LeaveMatchRequest(), new RematchRequest())) {
                 peer.send(request); assertTrue(peer.expect(ErrorMessage.class).text().contains("log in"));
             }
