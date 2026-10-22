@@ -28,7 +28,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import javafx.animation.AnimationTimer;
-import javafx.application.Platform;
 import javafx.geometry.Point2D;
 import javafx.geometry.Pos;
 import javafx.scene.AccessibleRole;
@@ -197,7 +196,6 @@ final class CardTableView extends Pane {
         getChildren().add(cardDetails);
         installMouse();
         addEventHandler(KeyEvent.KEY_PRESSED, this::keyPressed);
-        CardImages.shared().onLoaded(() -> Platform.runLater(this::redraw));
     }
 
     // ---------------------------------------------------------------- state

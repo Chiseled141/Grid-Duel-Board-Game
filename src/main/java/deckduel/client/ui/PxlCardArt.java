@@ -4,7 +4,7 @@ import java.awt.Color;
 import java.awt.Graphics2D;
 import java.util.Map;
 
-/** Generated from art/cards/pxl/spells.px.js by tools/export-pxl-cards.mjs. Do not hand-edit. */
+/** Pixel art for the ten neutral Spells and the shared card back, as run-length rows per design. */
 final class PxlCardArt {
     private PxlCardArt() { }
 

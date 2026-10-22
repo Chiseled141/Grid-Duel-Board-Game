@@ -4,7 +4,6 @@ import deckduel.client.ClientSettings;
 import deckduel.client.MenuMusic;
 import deckduel.client.DeckDuelClient;
 import deckduel.client.state.*;
-import deckduel.cards.CatalogLoader;
 import java.awt.CardLayout;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
@@ -36,10 +35,6 @@ public final class ClientFrame extends JFrame {
                 reason -> SwingUtilities.invokeLater(this::connectionLost));
         model = new ClientModel(client);
         model.setReducedMotion(settings.reducedMotion());
-        var catalog = CatalogLoader.loadBundled();
-        // Code-drawn pixel faces never read a JPEG, so only cards still on painted art are decoded.
-        CardImages.shared().preload(catalog.cards().stream().filter(card -> !PixelCardFace.supports(card))
-                .map(deckduel.core.card.CardDef::id).toList());
         content.add(new LoginPanel(model, settings), Screen.LOGIN.name());
         content.add(new LobbyPanel(model, settings, this::closeAndSave), Screen.LOBBY.name());
         scoringSounds = new deckduel.client.ScoringSounds(settings::gameSounds);

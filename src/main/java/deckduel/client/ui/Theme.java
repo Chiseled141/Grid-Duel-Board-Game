@@ -23,12 +23,8 @@ public final class Theme {
     public static final Color INK = new Color(0x382A20);
     /** Highlight: primary buttons, selection, turn banner ("gold"). */
     public static final Color AMBER = new Color(0xF4BF60);
-    /** Muted blue accent. */
-    public static final Color SKY = new Color(0x8AB1CB);
     /** Muted red accent. */
     public static final Color CORAL = new Color(0xDA9B8A);
-    /** Tile outlines. */
-    public static final Color OUTLINE = new Color(0x382A20);
     /** Hard offset shadow fill (never blurred). */
     public static final Color SHADOW = new Color(0x241E19);
     /** Muted text on dark surfaces. */
@@ -40,18 +36,12 @@ public final class Theme {
     public static final Color GOLD_INK = new Color(0x87551A);
     /** Pine-jade secondary buttons. */
     public static final Color JADE = new Color(0x5D6447);
-    /** Soft celadon inspector surface. */
-    public static final Color MIST = new Color(0xE9DFC7);
     /** Warm red destructive buttons, with ivory text. */
     public static final Color VERMILION = new Color(0xAA4438);
 
     // --- extended accents ---
-    /** Success, victory, connection-ready ("brand green"). */
-    public static final Color GREEN = new Color(0x0BA95B);
     /** Muted sage disabled controls. */
     public static final Color DISABLED = new Color(0xB3AB98);
-    /** Table grid lines on the dark surface. */
-    public static final Color GRID_LINE = new Color(0x756650);
 
     /** Warm paper for login input fields. */
     public static final Color INPUT_PAPER = new Color(0xF8EDCF);
@@ -59,14 +49,8 @@ public final class Theme {
     public static final Color FOCUS_WASH = new Color(0xDAE5EB);
 
     // --- shape tokens ---
-    /** Medium radius (cards, headings). */
-    public static final int RADIUS_MD = 12;
     /** Hard shadow offset in px. */
     public static final int SHADOW_OFFSET = 4;
-    /** The 8px base unit every panel inset and gap snaps to. */
-    public static final int GRID = 8;
-    /** Standard outer padding for a screen-filling panel. */
-    public static final int PANEL_PAD = 16;
 
 
 

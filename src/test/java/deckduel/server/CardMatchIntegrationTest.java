@@ -4,7 +4,6 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import deckduel.cards.CatalogLoader;
 import deckduel.core.card.Catalog;
-import deckduel.core.card.DrawCard;
 import deckduel.core.card.GreedyBot;
 import deckduel.core.card.MatchPhase;
 import deckduel.core.card.PlayCard;

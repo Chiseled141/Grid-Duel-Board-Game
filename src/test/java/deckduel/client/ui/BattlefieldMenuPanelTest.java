@@ -77,18 +77,15 @@ class BattlefieldMenuPanelTest {
     }
 
     @Test
-    void theRemainingMedievalSceneLoadsAndNullPreferenceKeepsIt() throws Exception {
+    void theRemainingMedievalSceneLoadsOnAWorker() throws Exception {
         var settings = new ClientSettings();
         var reference = new java.util.concurrent.atomic.AtomicReference<BattlefieldMenuPanel>();
         SwingUtilities.invokeAndWait(() -> {
             var panel = new BattlefieldMenuPanel(model(), Screen.LOGIN, settings) { };
             panel.setSize(640, 400); reference.set(panel);
         });
-        var first = awaitBackground(reference.get());
-        SwingUtilities.invokeAndWait(() -> settings.setMenuTheme(null));
-        var restored = awaitBackground(reference.get());
+        awaitBackground(reference.get());
         assertEquals(MenuTheme.GOLDEN_FIELDS, settings.menuTheme());
-        assertEquals(first.getRGB(320, 200), restored.getRGB(320, 200));
     }
 
     private BufferedImage awaitBackground(BattlefieldMenuPanel panel) throws Exception {

@@ -171,8 +171,4 @@ public final class ClientSettings {
     /** Preferred scene shared by login and the main menu. */
     public MenuTheme menuTheme() { return menuTheme; }
 
-    /** Selects a scene; null safely restores the Golden fields. */
-    public void setMenuTheme(MenuTheme theme) {
-        menuTheme = theme == null ? MenuTheme.GOLDEN_FIELDS : theme;
-    }
 }

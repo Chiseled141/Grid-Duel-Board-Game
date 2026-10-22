@@ -8,15 +8,14 @@ import java.awt.Color;
 import java.awt.FontMetrics;
 import java.awt.Graphics2D;
 import java.awt.Rectangle;
-import java.awt.geom.RoundRectangle2D;
 import java.awt.image.BufferedImage;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
 /**
- * Paints card faces and backs. Cards with artwork show it with the game data the art leaves out
- * (points, tags, a short effect) laid over it; cards without art get a procedural face.
+ * Paints card faces and backs: catalog cards from their pixel designs, and any card without one
+ * as a procedural face with its points, tags or effect.
  */
 final class CardFace {
     private static final Color UNIT = new Color(0xE6D3A8), SPELL = new Color(0x4B3346);
@@ -47,8 +46,7 @@ final class CardFace {
     /** A card face, shadow included, rendered once for this size at {@code scale} pixels per unit. */
     static BufferedImage sprite(CardDef card, List<Suppression> suppressed, int width, int height, boolean emphasized, double scale) {
         boolean pixel = PixelCardFace.supports(card);
-        boolean art = !pixel && CardImages.shared().face(card.id()) != null;
-        String key = card.id() + "|" + width + "x" + height + "|" + emphasized + "|" + suppressed + "|" + scale + "|" + art
+        String key = card.id() + "|" + width + "x" + height + "|" + emphasized + "|" + suppressed + "|" + scale
                 + (pixel ? "|pixel|" + card.points() : "");
         return cached(key, () -> render(width + SHADOW_X, height + SHADOW_Y, scale,
                 g -> renderFace(g, card, new Rectangle(0, 0, width, height), emphasized, suppressed)));
@@ -87,9 +85,7 @@ final class CardFace {
             paintPixel(g, card, r, emphasized, suppressed);
             return;
         }
-        BufferedImage art = CardImages.shared().face(card.id());
-        if (art != null) paintArtwork(g, art, r, emphasized, suppressed);
-        else paintProcedural(g, card, r, emphasized, suppressed);
+        paintProcedural(g, card, r, emphasized, suppressed);
     }
 
     private static void paintPixel(Graphics2D g, CardDef card, Rectangle r,
@@ -105,24 +101,6 @@ final class CardFace {
             g.drawRoundRect(r.x, r.y, r.width, r.height, 9, 9);
         }
         if (!suppressed.isEmpty()) paintSuppressed(g, r, suppressed, Math.max(.62f, Math.min(1.25f, r.width / 104f)));
-    }
-
-    /**
-     * The painted card. Unit and Spell art already prints its points, nation, class or rules
-     * text, so only what the art lacks is added: the selection outline and any disable markers.
-     * Full rules stay in the detail line.
-     */
-    private static void paintArtwork(Graphics2D g, BufferedImage art, Rectangle r,
-                                     boolean emphasized, List<Suppression> suppressed) {
-        Graphics2D clipped = (Graphics2D) g.create();
-        clipped.clip(new RoundRectangle2D.Float(r.x, r.y, r.width, r.height, 9, 9));
-        clipped.drawImage(art, r.x, r.y, r.width, r.height, null);
-        clipped.dispose();
-        float scale = Math.max(.62f, Math.min(1.25f, r.width / 104f));
-        g.setStroke(new BasicStroke(emphasized ? 2.5f : 1f));
-        g.setColor(emphasized ? Theme.AMBER : new Color(0, 0, 0, 120));
-        g.drawRoundRect(r.x, r.y, r.width, r.height, 9, 9);
-        if (!suppressed.isEmpty()) paintSuppressed(g, r, suppressed, scale);
     }
 
     private static void paintProcedural(Graphics2D g, CardDef card, Rectangle r, boolean emphasized, List<Suppression> suppressed) {

@@ -23,8 +23,7 @@ Axemen (4 points) replaced Battering Ram (6) in every nation on 2026-10-21; Batt
 replaced Footmen (1) on 2026-10-20. Matches recorded under `cards-neutral-1` used Footmen and
 under `-2`/`-3` Battering Ram. Riders and Axemen both print 4 but are different classes: pairs
 and formations compare class tags, never points. Unit faces are drawn in Java (see Artwork).
-Painted Spell art is in `art/cards/spells/` (1024×1536 sources, outside the jar);
-`tools/ResizeArt.java` writes the 480×720 runtime copies in `assets/cards/runtime/`.
+The game draws every card from code.
 
 Chaplain and Envoy, and the earlier Infantry/Cavalry/Archer/Clergy/Noble tags, are retired.
 
@@ -86,18 +85,14 @@ points and 18 pair points (three Hungarian pairs, one Polish pair, two class pai
 
 Card faces are chosen in `CardFace`:
 
-1. **Java pixel art** (`PixelCardFace`, 80×120; see `CARD_RENDERING_GUIDE.md`) covers all
-   **35 Units** and the Draw Two and Spy Spells. Every Unit uses the same class silhouette
+1. **Java pixel art** (`PixelCardFace`, 80×120) covers all
+   **35 Units** and all ten Spells (the Spells and back from `PxlCardArt`). Every Unit uses the same class silhouette
    across seven nation palettes, matching cloth/shield colours and seven distinct stylized
    crests. Points, names and labels come from the catalog. Transylvania uses two header lines.
    Native art is created from Java drawing instructions and cached for JavaFX display;
    exported PNGs are verification artifacts, not runtime inputs.
-2. **Painted art** from `art/cards/spells/` (runtime JPEG copies) covers the other eight Spells.
-3. The **card back** keeps its existing procedural face.
+2. Cards outside the catalog fall back to a procedural face.
 
-No Unit image ships in the jar: the old painted Unit runtime JPEGs (and the retired Battering
-Ram copies) were removed on 2026-10-21, so `assets/cards/runtime/` holds only the ten Spell
-JPEGs. Old painted Unit sources remain in `art/cards/units/` for reference only. All Riders
+No card image ships in the jar: the painted Unit and Spell runtime JPEGs were removed. All Riders
 display their catalog value 4 through the pixel renderer.
-Evidence: `docs/verification/2026-10-21-all-unit-pixel/`.
 The menu and match-room background artwork are retained. The Atlas section is removed.

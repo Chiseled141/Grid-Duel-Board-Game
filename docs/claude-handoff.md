@@ -63,36 +63,13 @@ removed at the user's request. `demo` runs two bots against a throwaway local se
 - Card-specific combo interactions beyond the base pair rule need new `Effect` types.
 - Card artwork: all 45 card faces and the shared back now render from Java drawing data.
   The 35 Unit figures, nation palettes and crests remain in `PixelCardFace`. All ten neutral
-  Spells and the back are authored with claude-pxl in `art/cards/pxl/spells.px.js`; regenerate
-  `PxlCardArt.java` using `tools/export-pxl-cards.mjs`. `PixelSpellArt` composes catalog names
+  Spells and the back are pixel drawing data in `PxlCardArt.java`. `PixelSpellArt` composes catalog names
   and effect captions; full rules remain in the inspector/details. The pxl designs supersede
   Draw Two/Spy's original illustrations and the other eight Spells' painted faces. Legacy
-  Spell JPEGs remain as fallback resources. No runtime Node, PNG decoding or asset I/O is
-  required for the current catalog. Evidence: `docs/verification/2026-10-21-pxl-spells/`.
-  Bowmen/Riders were subsequently redesigned for small-card readability (drawn longbow and
-  arrow; horizontal horse and distinct mounted rider), across all seven nations. Latest
-  screenshots and before/after evidence: `docs/verification/2026-10-21-bowmen-riders/`.
-  Latest Bowmen correction adds full nation-coloured sleeves, cuffs/gloves and a one-pixel
-  arrow with a small head, replacing the bare-arm/thick-shaft appearance. Evidence:
-  `docs/verification/2026-10-21-bowmen-clothed/` (Riders unchanged by this correction).
-  Final user selection: integrate the Pikemen, Bowmen and Riders from
-  `art/cards/drafts/knight-style-v1/` for all seven nations, preserving the original
-  Knights and original Axemen. The diagonal-axe draft was rejected. Current figures:
-  kettle-helmet Pikemen with tall shield, hooded Bowmen with upright bow, and a mounted
-  Riders portrait with large horse head. Final evidence:
-  `docs/verification/2026-10-21-approved-unit-art/`.
-  Unit borders now also use the nation cloth palette, with bevelled bright/dark edges
-  and matching separators over the same cream face. All 35 figures remain unchanged;
-  Spells stay neutral. Latest evidence: `docs/verification/2026-10-21-nation-card-borders/`.
-  The user then requested slightly thicker borders: the coloured band is now four
-  native pixels instead of three, with the header crest shifted left by one pixel
-  to retain cream padding. Figures are unchanged. Current evidence:
-  `docs/verification/2026-10-21-thicker-nation-borders/`.
-  Axemen arms were subsequently corrected across seven nations: covered coloured
-  sleeves, bent elbows, steel bracers and two distinct gauntlet grips on the existing
-  vertical haft. Preserve this correction when keeping the original Axemen design.
-  Head, axe, body, legs and four-pixel borders retain the selected design. Evidence:
-  `docs/verification/2026-10-21-axemen-arms/`.
+  No card JPEG ships any more. No runtime Node, PNG decoding or asset I/O is
+  required for the current catalog.
+  Unit figures are the hand-pixel v2 character maps (Axemen with a one-handed axe and round
+  shield) inside four-pixel nation borders; earlier iterations are in git history.
 - The hard bot cannot see the opponent's hand, so it does not anticipate replies; a sampling
   or search bot over the opponent's possible cards would be the next step.
 - The first opening deal of a session can pause up to about 0.2 s while card faces render for
