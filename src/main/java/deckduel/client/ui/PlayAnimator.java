@@ -320,11 +320,11 @@ final class PlayAnimator {
     /** An eye opens over the enemy hand and looks it over; only the caster's view lists what it saw. */
     private static int eye(Cast c) {
         Rectangle hand = c.mine() ? c.layout().opponentHand() : handArea(c.before(), c.layout());
-        double width = c.layout().stage().width * 1.1;
+        double width = c.layout().stage().width * 1.3;
         double y = c.mine() ? hand.getMaxY() + width * .32 : hand.y - width * .3;
         c.spent(c.launch());
         c.s().sound(c.launch() + 200, Kind.GLINT);
-        c.s().add(c.launch(), EYE, new Staging.Eye(hand.getCenterX(), y, width));
+        c.s().add(c.launch(), EYE, new Staging.Eye(hand.getCenterX(), y, width, hand));
         return c.launch() + 300;
     }
 

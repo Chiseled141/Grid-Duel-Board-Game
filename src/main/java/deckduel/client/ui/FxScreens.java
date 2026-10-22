@@ -53,7 +53,7 @@ final class FxScreens {
         this.musicOn = musicOn;
         this.close = close;
         FxKit.start();
-        PaintedCardArt.preload(CatalogLoader.loadBundled().units());
+        PaintedCardArt.preload(CatalogLoader.loadBundled().cards());
         boolean music = musicOn.getAsBoolean();
         Platform.runLater(() -> build(settings, sounds, music));
         model.addListener(new ClientModelListener() {

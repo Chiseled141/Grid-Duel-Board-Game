@@ -134,8 +134,10 @@ final class Staging {
     record Peek(Rectangle pile, int count) implements Effect {
         Peek { pile = new Rectangle(pile); }
     }
-    /** An eye that opens over a hand, looks it over and closes (Spy). */
-    record Eye(double x, double y, double width) implements Effect { }
+    /** An eye that opens beside the spied {@code hand}, looks it over and closes (Spy). */
+    record Eye(double x, double y, double width, Rectangle hand) implements Effect {
+        Eye { hand = new Rectangle(hand); }
+    }
     /** Light sweeping across a card as its disables are cleared. */
     record Shine(Rectangle at) implements Effect {
         Shine { at = new Rectangle(at); }

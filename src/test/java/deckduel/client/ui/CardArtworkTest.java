@@ -10,10 +10,8 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 
 class CardArtworkTest {
-    @Test void everyCatalogCardHasArtUnitsPaintedAndSpellsInPixels() {
-        var catalog = CatalogLoader.loadBundled();
-        assertTrue(catalog.cards().stream().allMatch(card -> PaintedCardArt.supports(card) != PixelSpellArt.supports(card)),
-                "each of the 45 cards has exactly one kind of art");
+    @Test void everyCatalogCardIsPainted() {
+        assertTrue(CatalogLoader.loadBundled().cards().stream().allMatch(PaintedCardArt::supports), "all 45 cards are painted");
     }
 
     @Test void everyCatalogCardRendersAnOpaqueFace() throws Exception {

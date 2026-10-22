@@ -391,6 +391,21 @@ class CardTableViewTest {
         });
     }
 
+    @Test void aPointerLeftOnAKeptReconnaissanceCardDoesNotBreakTheTable() throws Exception {
+        PlayerView looking = reconnoitring();
+        PlayerView kept = new PlayerView(looking.seat(), looking.revision() + 1, looking.phase(), looking.round(), looking.turn(),
+                looking.you(), looking.opponent(), looking.hand(), looking.rounds(), looking.events(), looking.outcome(),
+                looking.lastPlay(), List.of(), looking.revealed());
+        FxTesting.run(() -> {
+            var t = table(new ClientSettings(), true);
+            t.view.show(shown(looking, true));
+            t.view.moveTo(centre(t.view.lookBounds(1, looking.looking().size())));
+            assertNotNull(t.view.detailText(), "the pointer rests on the second choice");
+            t.view.show(shown(kept, true));
+            assertNull(t.view.detailText(), "the remembered pointer outlives the emptied choice without failing");
+        });
+    }
+
     @Test void spiedCardsCanBeEnlargedAndDisappearFromTheInspectorWhenTheyLeaveTheEnemyHand() throws Exception {
         MatchState spied = null;
         for (long seed = 1; seed <= 100 && spied == null; seed++) {

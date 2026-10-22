@@ -78,7 +78,6 @@ final class CardDetails extends StackPane {
         buff.setText(card.def().text());
         contribution.setText("Your Spy revealed this card. It remains in the opponent's hand.");
         duration.setText("Visible until it leaves that hand or the round ends. Spy does not steal or discard it.");
-        art.setSmooth(!PixelSpellArt.supports(card.def()));
         art.setImage(FxKit.face(card.def(), List.of(), 170, 255, false, 2));
         setAccessibleText(owner.getText() + ". " + name.getText() + ". " + buff.getText() + " " + contribution.getText());
         setVisible(true);

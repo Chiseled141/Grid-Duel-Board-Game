@@ -93,9 +93,12 @@ Card faces are chosen in `CardFace`:
    otherwise it falls back to the procedural face. Paintings are centre-cropped to the table's
    2:3 card shape (a few pixels of ribbon at each side are trimmed), given rounded corners and
    scaled down in halving steps. The client decodes them on a background thread at start-up.
-2. **Pixel Spells** (`PixelSpellArt`, 80×120): the ten neutral Spells from the drawing data in
-   `PxlCardArt`, with catalog names and effect captions, scaled without smoothing.
+2. **Painted Spells** (`PaintedCardArt`): `src/main/resources/assets/cards/<id>.jpg`, one per
+   Spell (delivered 2026-10-23), each printing its name and effect text. A Spell uses its
+   painting only while its catalog effect matches the printed one (count and target included).
+   They are fitted to the card like the Units. The Clear Disable and Reconnaissance files have a
+   thin black band along their top edge (25 and 17 rows), which shows on the table.
 3. Any other card falls back to a procedural face (`CardArt`).
 
-The paintings add about 28 MB to the jar.
+The Unit paintings add about 28 MB to the jar and the Spell paintings about 4 MB.
 The menu and match-room background artwork are retained. The Atlas section is removed.

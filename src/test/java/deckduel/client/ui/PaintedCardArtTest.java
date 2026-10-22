@@ -3,18 +3,22 @@ package deckduel.client.ui;
 import static org.junit.jupiter.api.Assertions.*;
 import deckduel.cards.CatalogLoader;
 import deckduel.core.card.CardDef;
+import deckduel.core.card.Effect;
 import deckduel.core.card.Suppression;
+import deckduel.core.card.TargetSide;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
 class PaintedCardArtTest {
     private static final CardDef CARD = CatalogLoader.loadBundled().card("nerath-knight");
 
-    @Test void everyCatalogUnitHasAPaintingAndNoSpellDoes() {
+    @Test void everyCatalogCardHasAPainting() {
         var catalog = CatalogLoader.loadBundled();
-        assertEquals(catalog.units(), catalog.cards().stream().filter(PaintedCardArt::supports).toList());
+        assertEquals(catalog.cards(), catalog.cards().stream().filter(PaintedCardArt::supports).toList());
         for (CardDef unit : catalog.units())
             assertNotNull(PaintedCardArtTest.class.getResource("/assets/cards/" + unit.id() + ".png"), unit.id());
+        for (CardDef spell : catalog.spells())
+            assertNotNull(PaintedCardArtTest.class.getResource("/assets/cards/" + spell.id() + ".jpg"), spell.id());
         assertNotNull(PaintedCardArtTest.class.getResource("/assets/cards/card-back.png"));
         assertFalse(PaintedCardArt.supports(null), "face-down cards never expose a painting");
     }
@@ -29,6 +33,26 @@ class PaintedCardArtTest {
         var drawn = CardFace.sprite(new CardDef(CARD.id(), CARD.name(), CARD.kind(), 6, CARD.regions(), CARD.classes(), null),
                 List.of(), 104, 156, false, 1);
         assertNotSame(CardFace.sprite(CARD, List.of(), 104, 156, false, 1), drawn, "changed points get their own face");
+    }
+
+    @Test void aSpellPaintingIsNotUsedForAChangedCountOrTarget() {
+        var catalog = CatalogLoader.loadBundled();
+        var changes = java.util.Map.of(
+                "draw-two", new Effect.Draw(3),
+                "spy", new Effect.Spy(1),
+                "reconnaissance", new Effect.Reconnaissance(2),
+                "exchange", new Effect.Exchange(1, 3),
+                "random-discard", new Effect.RandomDiscard(2),
+                "random-steal", new Effect.RandomSteal(2),
+                "destroy-unit", new Effect.Destroy(TargetSide.OWN),
+                "disable-tags", new Effect.Disable(TargetSide.OWN, Suppression.TAGS),
+                "disable-points", new Effect.Disable(TargetSide.OPPONENT, Suppression.TAGS));
+        changes.forEach((id, effect) -> {
+            var original = catalog.card(id);
+            var changed = new CardDef(id, original.name(), original.kind(), 0, List.of(), List.of(), effect);
+            assertTrue(PaintedCardArt.supports(original), id);
+            assertFalse(PaintedCardArt.supports(changed), id + " must not show a painting of a different effect");
+        });
     }
 
     @Test void facesFillTheCardWithRoundedCornersAndKeepTheDisableOverlay() {
