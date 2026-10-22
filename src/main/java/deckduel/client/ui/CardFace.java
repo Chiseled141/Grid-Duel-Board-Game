@@ -14,8 +14,8 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * Paints card faces and backs: Units and the back from their paintings, Spells from their pixel
- * designs, and any card without art as a procedural face with its points, tags or effect.
+ * Paints card faces and backs: catalog cards and the back from their paintings, and any card
+ * without one as a procedural face with its points, tags or effect.
  */
 final class CardFace {
     private static final Color UNIT = new Color(0xE6D3A8), SPELL = new Color(0x4B3346);
@@ -36,16 +36,12 @@ final class CardFace {
     /** Paints one face; suppressed parts are labeled on the card itself. */
     static void paint(Graphics2D g, CardDef card, Rectangle r, boolean emphasized, List<Suppression> suppressed) {
         BufferedImage sprite = sprite(card, suppressed, r.width, r.height, emphasized, pixelScale(g));
-        Graphics2D local = (Graphics2D) g.create();
-        if (PixelSpellArt.supports(card)) local.setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION,
-                java.awt.RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
-        local.drawImage(sprite, r.x, r.y, r.width + SHADOW_X, r.height + SHADOW_Y, null);
-        local.dispose();
+        g.drawImage(sprite, r.x, r.y, r.width + SHADOW_X, r.height + SHADOW_Y, null);
     }
 
     /** A card face, shadow included, rendered once for this size at {@code scale} pixels per unit. */
     static BufferedImage sprite(CardDef card, List<Suppression> suppressed, int width, int height, boolean emphasized, double scale) {
-        String art = PaintedCardArt.supports(card) ? "painted" : PixelSpellArt.supports(card) ? "pixel" : "drawn";
+        String art = PaintedCardArt.supports(card) ? "painted" : "drawn";
         String key = card.id() + "|" + card.points() + "|" + art + "|" + width + "x" + height + "|" + emphasized
                 + "|" + suppressed + "|" + scale;
         return cached(key, () -> render(width + SHADOW_X, height + SHADOW_Y, scale,
@@ -83,13 +79,6 @@ final class CardFace {
         g.fillRoundRect(r.x + 3, r.y + 5, r.width, r.height, 9, 9);
         if (PaintedCardArt.supports(card)) {
             PaintedCardArt.paint(g, card.id(), r);
-            paintMarks(g, r, emphasized, suppressed);
-        } else if (PixelSpellArt.supports(card)) {
-            Graphics2D local = (Graphics2D) g.create();
-            local.setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION,
-                    java.awt.RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
-            local.drawImage(PixelSpellArt.render(card), r.x, r.y, r.width, r.height, null);
-            local.dispose();
             paintMarks(g, r, emphasized, suppressed);
         } else paintProcedural(g, card, r, emphasized, suppressed);
     }

@@ -63,11 +63,11 @@ partner joins by code) and play further games as rematches.
   kept, own-turn manual draws, and the Spy/Reconnaissance/Exchange edge cases.
 - An eleventh Spell to fill Sabotage's slot is still to be designed.
 - Card-specific combo interactions beyond the base pair rule need new `Effect` types.
-- Card artwork: the 35 Units and the shared back are paintings
-  (`src/main/resources/assets/cards/<id>.png`, drawn by `PaintedCardArt`); the earlier
-  code-drawn Unit figures and pixel back are in git history. The ten neutral Spells are still
-  pixel drawing data in `PxlCardArt.java`, composed with catalog names and effect captions by
-  `PixelSpellArt`, so Spells and Units now differ in style until painted Spell art exists.
+- Card artwork: all 45 cards and the shared back are paintings
+  (`src/main/resources/assets/cards/`, PNG for Units and the back, JPEG for Spells, drawn by
+  `PaintedCardArt`); the earlier code-drawn Unit figures, pixel Spell faces (`PixelSpellArt`,
+  `PxlCardArt`) and pixel back are in git history. The Clear Disable and Reconnaissance
+  paintings have a thin black band along their top edge that the artist may want to fix.
   The Spell effects' props (chain links, axe, flame, hook, smoke, Spy eye, binding seal, vortex)
   are paintings in `src/main/resources/assets/vfx/` (2026-10-23), trimmed and scaled from the
   generated originals; light, sparks and motion stay in code (`VfxKit`, `TableEffects`).

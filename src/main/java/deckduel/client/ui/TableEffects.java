@@ -227,9 +227,7 @@ final class TableEffects {
     }
 
     private CardNode card(CardDef face, List<Suppression> marks, Rectangle size) {
-        CardNode node = new CardNode(image(face, marks, size), size.width, size.height);
-        node.view.setSmooth(!PixelSpellArt.supports(face));
-        return node;
+        return new CardNode(image(face, marks, size), size.width, size.height);
     }
 
     /** A soft shadow cast on the table by a lifted card. */
@@ -571,7 +569,6 @@ final class TableEffects {
         Group[] halves = new Group[2];
         for (int k = 0; k < 2; k++) {
             ImageView face = new ImageView(image);
-            face.setSmooth(!PixelSpellArt.supports(s.card()));
             face.setFitWidth(at.width);
             face.setFitHeight(at.height);
             face.setX(at.x);
@@ -1379,52 +1376,52 @@ final class TableEffects {
         };
     }
 
-    /** An eye of light opening over a hand; its cone of sight sweeps along the cards, then it closes. */
+    /**
+     * The painted eye of light opens beside the spied hand as if a lid were lifting, breathes, and
+     * sweeps a soft beam of sight back and forth across the cards, lighting where it lands; then
+     * it closes.
+     */
     private Live eye(Staging.Eye e) {
-        double w = e.width(), h = w * .44;
-
-        javafx.scene.shape.QuadCurveTo upper = new javafx.scene.shape.QuadCurveTo(0, 0, w / 2, 0);
-        javafx.scene.shape.QuadCurveTo lower = new javafx.scene.shape.QuadCurveTo(0, 0, -w / 2, 0);
-        javafx.scene.shape.QuadCurveTo clipUpper = new javafx.scene.shape.QuadCurveTo(0, 0, w / 2, 0);
-        javafx.scene.shape.QuadCurveTo clipLower = new javafx.scene.shape.QuadCurveTo(0, 0, -w / 2, 0);
-        javafx.scene.shape.Path lids = new javafx.scene.shape.Path(new javafx.scene.shape.MoveTo(-w / 2, 0), upper, lower,
-                new javafx.scene.shape.ClosePath());
-        // The painted eye of light over a dark smoky well, both showing only between the lids.
-        Color sight = colour(Tone.TEAL, 1);
-        lids.setFill(new RadialGradient(0, 0, .5, .5, .6, true, CycleMethod.NO_CYCLE,
-                new Stop(0, Color.rgb(6, 14, 14, .75)), new Stop(1, Color.rgb(4, 8, 8, .9))));
-        lids.setEffect(new DropShadow(BlurType.GAUSSIAN, sight, 16, .45, 0, 0));
-        javafx.scene.shape.Path clip = new javafx.scene.shape.Path(new javafx.scene.shape.MoveTo(-w / 2, 0), clipUpper, clipLower,
-                new javafx.scene.shape.ClosePath());
-        // A clip uses the shape's fill, which a Path lacks by default.
-        clip.setFill(Color.BLACK);
-        ImageView ball = VfxSprites.spyEye(w);
-        ball.setClip(clip);
-        Ellipse halo = new Ellipse(0, 0, w * .75, h * .9);
+        double w = e.width(), ex = e.x(), ey = e.y();
+        Rectangle hand = e.hand();
+        // Toward the hand, which is above the eye when you spy and below it when you are spied on.
+        double handY = ey < hand.getCenterY() ? hand.y + hand.height * .3 : hand.getMaxY() - hand.height * .3;
+        Color sight = colour(Tone.TEAL, 1).interpolate(CANDLE, .35);
+        ImageView eye = VfxSprites.spyEye(w);
+        Ellipse halo = new Ellipse(0, 0, w * .62, w * .3);
         halo.setFill(new RadialGradient(0, 0, .5, .5, .5, true, CycleMethod.NO_CYCLE,
-                new Stop(0, sight.deriveColor(0, 1, 1, .35)), new Stop(1, sight.deriveColor(0, 1, 1, 0))));
-        halo.setBlendMode(BlendMode.ADD);
-        // Its gaze is a pale cone of light sweeping down over the hand.
-        Polygon gazeCone = new Polygon(-h * .15, 0, h * .15, 0, w * .32, h * 2.4, -w * .32, h * 2.4);
-        gazeCone.setFill(new LinearGradient(0, 0, 0, 1, true, CycleMethod.NO_CYCLE,
                 new Stop(0, sight.deriveColor(0, 1, 1, .4)), new Stop(1, sight.deriveColor(0, 1, 1, 0))));
-        gazeCone.setBlendMode(BlendMode.ADD);
-        Group whole = new Group(gazeCone, halo, lids, ball);
-        whole.setTranslateX(e.x());
-        whole.setTranslateY(e.y());
+        halo.setBlendMode(BlendMode.ADD);
+        Group lookout = new Group(halo, eye);
+        lookout.setTranslateX(ex);
+        lookout.setTranslateY(ey);
+        Polygon beam = new Polygon();
+        beam.setFill(new LinearGradient(0, ey, 0, handY, false, CycleMethod.NO_CYCLE,
+                new Stop(0, sight.deriveColor(0, 1, 1, .5)), new Stop(1, sight.deriveColor(0, 1, 1, .08))));
+        beam.setBlendMode(BlendMode.ADD);
+        beam.setEffect(new GaussianBlur(8));
+        double poolW = Math.min(hand.width * .2, w * .5), poolH = hand.height * .5;
+        Ellipse pool = new Ellipse(0, handY, poolW, poolH);
+        pool.setFill(new RadialGradient(0, 0, .5, .5, .5, true, CycleMethod.NO_CYCLE,
+                new Stop(0, sight.deriveColor(0, 1, 1, .35)), new Stop(1, sight.deriveColor(0, 1, 1, 0))));
+        pool.setBlendMode(BlendMode.ADD);
         return new Live() {
-            { node.getChildren().add(whole); }
+            { node.getChildren().addAll(beam, pool, lookout); }
             @Override void update(double p) {
-                double open = p < .2 ? easeOutCubic(p / .2) : p > .82 ? 1 - easeInOutCubic((p - .82) / .18) : 1;
-                double lift = h * open;
-                for (javafx.scene.shape.QuadCurveTo top : new javafx.scene.shape.QuadCurveTo[]{upper, clipUpper}) top.setControlY(-lift);
-                for (javafx.scene.shape.QuadCurveTo bottom : new javafx.scene.shape.QuadCurveTo[]{lower, clipLower}) bottom.setControlY(lift);
-                // The gaze runs along the hand and back, and settles.
-                double gaze = Math.sin(Math.max(0, p - .15) / .7 * Math.PI * 2) * w * .2 * (p < .85 ? 1 : 0);
-                gazeCone.setTranslateX(gaze * 1.6);
-                gazeCone.setOpacity(open);
-                halo.setOpacity(open);
-                whole.setOpacity(Math.min(1, p / .08));
+                double open = p < .18 ? Math.max(0, easeOutBack(p / .18)) : p > .84 ? 1 - easeInOutCubic((p - .84) / .16) : 1;
+                double breathe = Math.sin(p * Math.PI * 6);
+                eye.setScaleY(Math.max(.02, open));
+                eye.setScaleX(1 + .025 * breathe);
+                halo.setOpacity(open * (.75 + .25 * breathe));
+                lookout.setOpacity(Math.min(1, p / .05));
+                // The gaze crosses the hand and back while the eye is open, then returns to the middle.
+                double look = p < .2 || p > .82 ? 0 : Math.sin((p - .2) / .62 * Math.PI * 2);
+                double tx = hand.getCenterX() + look * hand.width * .4, near = w * .05;
+                beam.getPoints().setAll(ex - near, ey, ex + near, ey, tx + poolW * .7, handY, tx - poolW * .7, handY);
+                double shine = Math.max(0, Math.min(1, (p - .14) / .1)) * (p > .84 ? 1 - (p - .84) / .16 : 1);
+                beam.setOpacity(shine);
+                pool.setTranslateX(tx);
+                pool.setOpacity(shine);
             }
         };
     }

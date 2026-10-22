@@ -119,15 +119,11 @@ final class FxKit {
         return convert(CardFace.sprite(card, marks, width, height, emphasized, scale));
     }
 
-    /** Draws a face without smoothing away a pixel Spell's native grid. */
+    /** Draws a face with its shadow. */
     static void drawFace(GraphicsContext g, CardDef card, List<Suppression> marks, int width, int height,
                          boolean emphasized, double scale, double x, double y) {
-        boolean smoothing = g.isImageSmoothing();
-        try {
-            if (PixelSpellArt.supports(card)) g.setImageSmoothing(false);
-            g.drawImage(face(card, marks, width, height, emphasized, scale), x, y,
-                    width + CardFace.SHADOW_X, height + CardFace.SHADOW_Y);
-        } finally { g.setImageSmoothing(smoothing); }
+        g.drawImage(face(card, marks, width, height, emphasized, scale), x, y,
+                width + CardFace.SHADOW_X, height + CardFace.SHADOW_Y);
     }
 
     /** The shared card back. */

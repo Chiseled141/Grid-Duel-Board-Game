@@ -2,6 +2,9 @@ package deckduel.client.ui;
 
 import deckduel.core.card.CardDef;
 import deckduel.core.card.CardKind;
+import deckduel.core.card.Effect;
+import deckduel.core.card.Suppression;
+import deckduel.core.card.TargetSide;
 import java.awt.AlphaComposite;
 import java.awt.Graphics2D;
 import java.awt.Rectangle;
@@ -15,15 +18,18 @@ import java.lang.ref.SoftReference;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.stream.Stream;
 import javax.imageio.ImageIO;
 
 /**
- * Painted Unit faces and the shared card back, read from {@code /assets/cards/<id>.png} in the
- * jar. The paintings print nation, class and points, so a Unit uses its painting only while the
- * catalog agrees with what is printed; any other card falls back to a drawn face.
+ * Painted card faces and the shared card back, read from {@code /assets/cards/<id>.png} (Units)
+ * or {@code .jpg} (Spells) in the jar. The paintings print nation, class and points, or a Spell's
+ * effect, so a card uses its painting only while the catalog agrees with what is printed; any
+ * other card falls back to a drawn face.
  */
 final class PaintedCardArt {
     static final String BACK = "card-back";
@@ -31,22 +37,39 @@ final class PaintedCardArt {
     /** Points printed in every nation's painting of each class (art delivered 2026-10-22). */
     private static final Map<String, Integer> PRINTED = Map.of(
             "Assassin", 2, "Bowman", 3, "Guardman", 4, "Knight", 5, "Wizard", 6);
-    private static final Map<String, Boolean> PRESENT = new ConcurrentHashMap<>();
+    /** The effect each Spell painting prints (art delivered 2026-10-23). */
+    private static final Map<String, Effect> EFFECTS = Map.of(
+            "disable-tags", new Effect.Disable(TargetSide.OPPONENT, Suppression.TAGS),
+            "disable-points", new Effect.Disable(TargetSide.OPPONENT, Suppression.POINTS),
+            "destroy-unit", new Effect.Destroy(TargetSide.OPPONENT),
+            "random-discard", new Effect.RandomDiscard(1),
+            "random-steal", new Effect.RandomSteal(1),
+            "draw-two", new Effect.Draw(2),
+            "exchange", new Effect.Exchange(1, 2),
+            "reconnaissance", new Effect.Reconnaissance(3),
+            "spy", new Effect.Spy(3),
+            "clear-disable", new Effect.ClearDisable());
+    // Each painting's resource path, or empty when the jar has none.
+    private static final Map<String, Optional<String>> PATHS = new ConcurrentHashMap<>();
     // Decoded paintings are about 3 MB each; soft references let the JVM reclaim them under memory
     // pressure, while the finished card sizes stay in CardFace's sprite cache.
     private static final Map<String, SoftReference<BufferedImage>> PAINTINGS = new ConcurrentHashMap<>();
 
     private PaintedCardArt() { }
 
-    /** Whether {@code card} is a Unit whose painting exists and prints its catalog identity and points. */
+    /** Whether {@code card}'s painting exists and prints its catalog identity, points or effect. */
     static boolean supports(CardDef card) {
-        if (card == null || card.kind() != CardKind.UNIT) return false;
-        String id = (card.nation() + "-" + card.unitClass()).toLowerCase(Locale.ROOT);
-        return card.id().equals(id) && PRINTED.getOrDefault(card.unitClass(), -1) == card.points() && present(id);
+        if (card == null) return false;
+        boolean printed = card.kind() == CardKind.UNIT
+                ? card.id().equals((card.nation() + "-" + card.unitClass()).toLowerCase(Locale.ROOT))
+                        && PRINTED.getOrDefault(card.unitClass(), -1) == card.points()
+                : card.effect().equals(EFFECTS.get(card.id()));
+        return printed && resource(card.id()).isPresent();
     }
 
-    private static boolean present(String id) {
-        return PRESENT.computeIfAbsent(id, key -> PaintedCardArt.class.getResource(path(key)) != null);
+    private static Optional<String> resource(String id) {
+        return PATHS.computeIfAbsent(id, key -> Stream.of(".png", ".jpg").map(type -> "/assets/cards/" + key + type)
+                .filter(path -> PaintedCardArt.class.getResource(path) != null).findFirst());
     }
 
     /**
@@ -108,15 +131,14 @@ final class PaintedCardArt {
         SoftReference<BufferedImage> held = PAINTINGS.get(id);
         BufferedImage image = held == null ? null : held.get();
         if (image != null) return image;
-        try (InputStream in = PaintedCardArt.class.getResourceAsStream(path(id))) {
+        String path = resource(id).orElseThrow(() -> new IllegalStateException("Missing card art " + id));
+        try (InputStream in = PaintedCardArt.class.getResourceAsStream(path)) {
             image = in == null ? null : ImageIO.read(in);
         } catch (IOException e) {
             throw new UncheckedIOException("Could not read card art " + id, e);
         }
-        if (image == null) throw new IllegalStateException("Missing card art " + path(id));
+        if (image == null) throw new IllegalStateException("Unreadable card art " + path);
         PAINTINGS.put(id, new SoftReference<>(image));
         return image;
     }
-
-    private static String path(String id) { return "/assets/cards/" + id + ".png"; }
 }

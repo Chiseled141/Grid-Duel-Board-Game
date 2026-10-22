@@ -4,7 +4,7 @@ A two-player card duel being built around Gwent-inspired turns and Balatro-style
 
 Start directly from **Play**: everyone plays the same automatic 45-card deck (all 35 Units and one of each of the 10 Spells), dealt as the match opens. Then find an online opponent, host or join a room, or practise against an easy or hard bot. **History** lists your recorded matches. Matches run on an authoritative local server with privacy-filtered views, reconnect and rematch; recorded matches update win/loss records.
 
-The cards are listed in [the catalog notes](docs/card-catalog.md): seven nations (Ashkar, Asterion, Dravorn, Nerath, Solmara, Sylvaren, Vaelora) × Assassin 2, Bowman 3, Guardman 4, Knight 5 and Wizard 6 points. Each row's best Balatro-style formation (such as Full Muster, +20 ×2) adds points and a multiplier. The Unit library and deck are approved; formation values and a few edge cases are provisional. The 35 Units and the shared card back use painted art (`src/main/resources/assets/cards/`); the ten neutral Spells are pixel art drawn from Java code (`PxlCardArt`).
+The cards are listed in [the catalog notes](docs/card-catalog.md): seven nations (Ashkar, Asterion, Dravorn, Nerath, Solmara, Sylvaren, Vaelora) × Assassin 2, Bowman 3, Guardman 4, Knight 5 and Wizard 6 points. Each row's best Balatro-style formation (such as Full Muster, +20 ×2) adds points and a multiplier. The Unit library and deck are approved; formation values and a few edge cases are provisional. All 45 cards and the shared card back use painted art (`src/main/resources/assets/cards/`).
 
 ## Build and run
 

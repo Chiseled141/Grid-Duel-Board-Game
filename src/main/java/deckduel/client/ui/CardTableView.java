@@ -512,7 +512,7 @@ final class CardTableView extends Pane {
     private Long targetAt(Hit hit) {
         switch (hit.zone()) {
             case OWN, OPPONENT -> { RowCard card = row(hit.zone()).at(hit.index()); return card == null ? null : card.card().id(); }
-            case HAND -> { return hand().get(hit.index()).id(); }
+            case HAND -> { CardInstance card = item(hand(), hit.index()); return card == null ? null : card.id(); }
             default -> { return null; }
         }
     }
@@ -1041,13 +1041,22 @@ final class CardTableView extends Pane {
     private CardDef cardAt(Hit hit) {
         if (hit == null || shown == null) return null;
         PlayerView view = shown.view();
-        return switch (hit.zone()) {
-            case HAND -> hand().get(hit.index()).def();
-            case OWN, OPPONENT -> { RowCard card = row(hit.zone()).at(hit.index()); yield card == null ? null : card.def(); }
-            case LOOK -> view.looking().get(hit.index()).def();
-            case REVEALED -> view.revealed().get(hit.index()).def();
+        CardInstance card = switch (hit.zone()) {
+            case HAND -> item(hand(), hit.index());
+            case OWN, OPPONENT -> { RowCard placed = row(hit.zone()).at(hit.index()); yield placed == null ? null : placed.card(); }
+            case LOOK -> item(view.looking(), hit.index());
+            case REVEALED -> item(view.revealed(), hit.index());
             default -> null;
         };
+        return card == null ? null : card.def();
+    }
+
+    /**
+     * The card at {@code index}, or null once a newer view has fewer cards: the remembered hover
+     * can point past a hand or Reconnaissance choice that an update just emptied.
+     */
+    private static CardInstance item(List<CardInstance> cards, int index) {
+        return index >= 0 && index < cards.size() ? cards.get(index) : null;
     }
 
     // ---------------------------------------------------------------- drawing
