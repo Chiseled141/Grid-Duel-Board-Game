@@ -65,6 +65,9 @@ class PracticeMatchSystemTest {
                 assertEquals(MatchPhase.IN_PROGRESS, model[0].match().view().phase(), "no setup step before round one");
                 waitFor(() -> { try { return FxTesting.call(screens[0]::stageShowing); } catch (Exception e) { return false; } }, "the table shows");
                 waitFor(() -> model[0].match().view().yourTurn(), "the player's turn");
+                // A bot that moved first is shown only after the opening deal, so wait for the table too.
+                waitFor(() -> { try { return FxTesting.call(() -> screens[0].table().shownRevision()) == model[0].match().view().revision(); }
+                                catch (Exception e) { return false; } }, "the table shows the player's turn");
                 Thread.sleep(500);
                 FxTesting.run(() -> {
                     CardTableView table = screens[0].table();

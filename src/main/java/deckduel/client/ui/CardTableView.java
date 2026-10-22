@@ -7,7 +7,6 @@ import deckduel.core.card.CardInstance;
 import deckduel.core.card.DrawCard;
 import deckduel.core.card.Effect;
 import deckduel.core.card.KeepCard;
-import deckduel.core.card.MatchEvent;
 import deckduel.core.card.MatchPhase;
 import deckduel.core.card.Move;
 import deckduel.core.card.PairBonus;
@@ -149,6 +148,8 @@ final class CardTableView extends Pane {
 
     private State state = new State(null, false, false);
     private MatchUpdate shown;
+    // The opponent's moves that arrived while a play was still being shown, oldest first.
+    private final java.util.ArrayDeque<State> held = new java.util.ArrayDeque<>();
     private Long selected, pressed;
     // The player's own arrangement, for easier reading only: the hand's order by card id, and which
     // real row space each of the seven places on their row shows. Nothing of it reaches the server.
@@ -203,10 +204,33 @@ final class CardTableView extends Pane {
     // ---------------------------------------------------------------- state
 
     /**
-     * Shows the model's latest match. Its play is staged alongside anything still in motion, so a
-     * quick reply never cuts an animation short; a new game or reduced motion clears them.
+     * Shows the model's latest match. The opponent's move waits while a play is still being shown,
+     * so a quick reply, such as the practice bot's, follows the Spell and its effects instead of
+     * playing over them; your own moves show at once. A new game or reduced motion clears them.
      */
     void show(State next) {
+        if (holds(next)) {
+            held.add(next);
+            return;
+        }
+        held.clear();
+        present(next);
+    }
+
+    /**
+     * Whether {@code next} must wait for the table's animations: the opponent's change in the game
+     * on screen while a play is still staged, or anything queued behind one.
+     */
+    private boolean holds(State next) {
+        MatchUpdate update = next.match();
+        if (update == null || shown == null || next.reducedMotion() || !onScreen) return false;
+        if (!update.matchId().equals(shown.matchId()) || update.game() != shown.game()) return false;
+        if (!held.isEmpty()) return true;
+        return staged && update.view().revision() > shown.view().revision() && !shown.view().yourTurn();
+    }
+
+    /** Puts {@code next} on the table and stages the change that produced it. */
+    private void present(State next) {
         state = next;
         MatchUpdate update = next.match();
         if (update == null) {
@@ -295,6 +319,7 @@ final class CardTableView extends Pane {
     /** Called when another screen replaces the table. */
     void hidden() {
         onScreen = false;
+        while (!held.isEmpty()) present(held.poll());
         settle.stop();
         confirm.setVisible(false);
         cardDetails.close();
@@ -320,7 +345,7 @@ final class CardTableView extends Pane {
         if (deal) return PlayAnimator.opening(next.view(), layout);
         if (next.view().revision() != shown.view().revision() + 1) return null;
         // A manual draw or a kept Reconnaissance card has no play record; only the hands changed.
-        return next.view().lastPlay() != null ? PlayAnimator.play(shown.view(), next.view(), next.opponentName(), layout)
+        return next.view().lastPlay() != null ? PlayAnimator.play(shown.view(), next.view(), layout)
                 : PlayAnimator.handChanges(shown.view(), next.view(), layout);
     }
 
@@ -356,7 +381,7 @@ final class CardTableView extends Pane {
         SideView you = view.you();
         var formation = you.score().formation();
         return new ScoreRail.Display(you.score().total(), view.opponent().score().total(), you.score().units(),
-                you.score().combos(), you.matchTotal(), you.playsRemaining(), view.round(), formation == null ? null
+                you.score().combos(), you.matchTotal(), you.playsRemaining(), view.opponent().playsRemaining(), view.round(), formation == null ? null
                 : formation.title() + "  +" + formation.bonus() + "  ×" + formation.multiplier());
     }
 
@@ -373,6 +398,8 @@ final class CardTableView extends Pane {
             sounds.play(trace.beats.get(beatsPlayed++).cue());
         if (trace != null && elapsed > trace.finishAt + GAIN_MILLIS) trace = null;
         if (staged && !effects.tick(now)) staged = false;
+        // The opponent's held move plays once the one before it has finished.
+        if (!staged && !held.isEmpty()) present(held.poll());
         // A heavy blow shakes the cards and effects, never the room behind them.
         double[] shake = staged ? effects.shake() : new double[2];
         for (Node shaken : List.of(board, effectsScene)) { shaken.setTranslateX(shake[0]); shaken.setTranslateY(shake[1]); }
@@ -827,11 +854,13 @@ final class CardTableView extends Pane {
         resultTitle.setText(verdict);
         result.getStyleClass().removeAll("victory", "defeat", "draw");
         result.getStyleClass().add(verdict.toLowerCase(Locale.ROOT));
-        String how = outcome.forfeit() ? (outcome.winner() == view.seat() ? shown.opponentName() + " forfeited." : "You forfeited.") + "\n" : "";
+        String how = outcome.forfeit() ? (outcome.winner() == view.seat() ? shown.opponentName() + " forfeited." : "You forfeited.") : "";
         yourTotal.setText(String.valueOf(view.you().matchTotal()));
         theirTotal.setText(String.valueOf(view.opponent().matchTotal()));
         theirName.setText(shown.opponentName().toUpperCase(Locale.ROOT));
-        resultDetail.setText(how + roundHistory(view));
+        resultDetail.setText(how);
+        resultDetail.setVisible(outcome.forfeit());
+        resultDetail.setManaged(outcome.forfeit());
         rematch.setDisable(shown.opponentLeft() || shown.rematchRequested());
         rematch.setText((shown.opponentLeft() ? "Opponent left" : shown.rematchRequested() ? "Waiting for opponent…"
                 : shown.opponentWantsRematch() ? "Accept rematch" : "Rematch").toUpperCase(Locale.ROOT));
@@ -964,6 +993,9 @@ final class CardTableView extends Pane {
     /** Whether a play is still being staged; for tests. */
     boolean animating() { return staged; }
 
+    /** The revision of the match on the table, which may trail a held move; for tests. */
+    int shownRevision() { return shown == null ? -1 : shown.view().revision(); }
+
     ScoreRail rail() { return rail; }
     Button rematchButton() { return rematch; }
     Button backButton() { return backToMenu; }
@@ -1093,7 +1125,7 @@ final class CardTableView extends Pane {
 
     private void drawRow(GraphicsContext g, TableZone zone, SideView side, String title) {
         int top = zone == TableZone.OWN ? ownTop : opponentTop;
-        text(g, title + "  ·  " + side.score().total() + " pts  ·  " + side.playsRemaining() + " plays left", rowLeft, top - 12,
+        text(g, title, rowLeft, top - 12,
                 FxKit.bold(12), FxKit.CREAM, true);
         if (trace != null) drawGain(g, zone == TableZone.OWN ? trace.ownGain : trace.opponentGain, top);
         Long active = dragging ? pressed : selected;
@@ -1282,15 +1314,14 @@ final class CardTableView extends Pane {
         return "Choose a target for " + card.def().name();
     }
 
-    /** Hover details, then a labeled preview of the hovered destination, then the last public event. */
+    /** Hover details or a labeled preview of the hovered destination. */
     String detailText() {
         CardInstance card = handCard(dragging ? pressed : selected);
         PlayCard preview = card == null ? null : playAt(card.id(), hover);
         if (preview != null) return previewText(card, preview);
         CardDef hovered = cardAt(hover);
         if (hovered != null) return CardFace.details(hovered);
-        List<MatchEvent> events = shown.view().events();
-        return events.isEmpty() ? null : describe(events.get(events.size() - 1));
+        return null;
     }
 
     private String previewText(CardInstance card, PlayCard play) {
@@ -1302,11 +1333,6 @@ final class CardTableView extends Pane {
     }
 
     private static String signed(long value) { return (value >= 0 ? "+" : "−") + Math.abs(value); }
-
-    private String describe(MatchEvent event) {
-        if (event.actor() == null) return event.text();
-        return (event.actor() == shown.view().seat() ? "You " : shown.opponentName() + " ") + event.text() + ".";
-    }
 
     private void drawHand(GraphicsContext g) {
         // A hand still waiting to be dealt stays in the deck; showing it first would spoil the deal.

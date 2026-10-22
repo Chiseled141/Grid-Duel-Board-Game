@@ -228,7 +228,7 @@ final class TableEffects {
 
     private CardNode card(CardDef face, List<Suppression> marks, Rectangle size) {
         CardNode node = new CardNode(image(face, marks, size), size.width, size.height);
-        node.view.setSmooth(face != null && !PixelCardFace.supports(face));
+        node.view.setSmooth(!PixelSpellArt.supports(face));
         return node;
     }
 
@@ -377,9 +377,8 @@ final class TableEffects {
     }
 
     /**
-     * A Spell held aloft and charging: the table dims, a thin sigil in the Spell's colour draws
-     * itself around it and turns, motes of light are drawn in toward the card, and a warm glow
-     * swells behind it: the anticipation before its effect.
+     * A Spell held aloft and charging: the table dims, motes of light in the Spell's colour are
+     * drawn in toward the card, and a warm glow swells behind it: the anticipation before its effect.
      */
     private Live charge(Staging.Charge c) {
         Color colour = colour(c.tone(), 1);
@@ -389,9 +388,6 @@ final class TableEffects {
         dim.setFill(Color.rgb(8, 5, 2, .38));
         Circle halo = new Circle(cx, cy, radius * 1.3);
         halo.setBlendMode(BlendMode.ADD);
-        VfxKit.Sigil sigil = new VfxKit.Sigil(radius, colour, c.spell().id().hashCode());
-        sigil.setTranslateX(cx);
-        sigil.setTranslateY(cy);
         Random random = new Random(c.spell().id().hashCode());
         double[][] motes = new double[26][3];
         Group drawn = new Group();
@@ -404,13 +400,11 @@ final class TableEffects {
                 c.at().width, c.at().height);
         card.setEffect(new DropShadow(BlurType.GAUSSIAN, colour.deriveColor(0, 1, 1.1, .85), 26, .25, 0, 0));
         return new Live() {
-            { node.getChildren().addAll(dim, halo, sigil, drawn, card); }
+            { node.getChildren().addAll(dim, halo, drawn, card); }
             @Override void update(double p) {
                 double pulse = .5 + .5 * Math.sin(p * Math.PI * 5);
                 halo.setFill(new RadialGradient(0, 0, cx, cy, radius * 1.3, false, CycleMethod.NO_CYCLE,
                         new Stop(0, colour(c.tone(), .3 + .15 * pulse)), new Stop(1, colour(c.tone(), 0))));
-                sigil.draw(Math.min(1, p / .55));
-                sigil.setRotate(40 * p);
                 for (int i = 0; i < motes.length; i++) {
                     // Each mote spirals in toward the card and vanishes into it.
                     double age = (p + motes[i][2]) % 1, r = motes[i][1] * (1 - age), a = motes[i][0] + age * 1.4;
@@ -446,12 +440,12 @@ final class TableEffects {
         Group arm = new Group(blade);
         arm.getTransforms().setAll(new javafx.scene.transform.Translate(gx, gy), swing);
         arm.setEffect(new DropShadow(BlurType.GAUSSIAN, Color.rgb(0, 0, 0, .65), 12, .2, 5, 10));
-        Color steel = Color.web("#FF8A3D");
-        VfxKit.Smear smear = new VfxKit.Smear(gx, gy, reach * .9, reach * .32, steel);
+        Color heat = colour(Tone.EMBER, 1);
+        VfxKit.Smear smear = new VfxKit.Smear(gx, gy, reach * .9, reach * .32, heat);
         double heading = impact - 90 * side;
-        VfxKit.Flash flash = new VfxKit.Flash(cx, cy, at.width * .7, steel, 6, heading);
-        VfxKit.Shockwave wave = new VfxKit.Shockwave(cx, cy, at.width * 1.4, .45, steel);
-        VfxKit.Sparks sparks = new VfxKit.Sparks(cx, cy, heading, 70, 26, at.width * 1.6, steel, Math.round(cx));
+        VfxKit.Flash flash = new VfxKit.Flash(cx, cy, at.width * .7, heat, 6, heading);
+        VfxKit.Shockwave wave = new VfxKit.Shockwave(cx, cy, at.width * 1.4, .45, heat);
+        VfxKit.Sparks sparks = new VfxKit.Sparks(cx, cy, heading, 70, 26, at.width * 1.6, heat, Math.round(cx));
         return new Live() {
             { node.getChildren().addAll(smear, arm, wave, flash, sparks); }
             @Override void update(double p) {
@@ -577,7 +571,7 @@ final class TableEffects {
         Group[] halves = new Group[2];
         for (int k = 0; k < 2; k++) {
             ImageView face = new ImageView(image);
-            face.setSmooth(!PixelCardFace.supports(s.card()));
+            face.setSmooth(!PixelSpellArt.supports(s.card()));
             face.setFitWidth(at.width);
             face.setFitHeight(at.height);
             face.setX(at.x);
@@ -926,41 +920,38 @@ final class TableEffects {
         label.setOpacity(p < .7 ? 1 : 1 - (p - .7) / .3);
     }
 
-    /** A large centred title, sweeping in and out: round changes and combo call-outs. */
-    /** A round banner, drawn as a modern toast in the gap between the rows. */
+    /** A round heading on a small plaque in the gap between the rows. */
     private Live banner(Staging.Banner b) {
-        return toast(toast(b.title(), b.subtitle(), null, b.tone(), Math.min(26, b.size() * .56)), b.x(), b.y());
+        return toast(toast(b.title(), null, b.tone(), Math.min(26, b.size() * .56)), b.x(), b.y());
     }
 
     /** A new formation, as the same toast with its bonus and multiplier in a badge, above its row. */
     private Live callout(Staging.Callout c) {
-        Group card = toast(c.title(), null, c.value(), c.tone(), 17);
+        Group card = toast(c.title(), c.value(), c.tone(), 17);
         // The callout's anchor is its bottom edge, so it rests on the row's top edge.
         return toast(card, c.at().getX(), c.at().getY() - card.getLayoutBounds().getHeight() / 2);
     }
 
     /**
      * A notice in the table's object language ({@link TablePlaque}): a small iron plaque with
-     * clipped corners and a brass inlay, the title in cream, an optional faded subtitle, and an
+     * clipped corners and a brass inlay, the title in cream, and an
      * optional value on a cloth ribbon tag. Centred on (0, 0).
      */
-    private static Group toast(String title, String subtitle, String badge, Tone tone, double size) {
-        javafx.scene.text.Font heading = FxKit.display(size), detail = FxKit.normal(13), value = FxKit.bold(size * .82);
+    private static Group toast(String title, String badge, Tone tone, double size) {
+        javafx.scene.text.Font heading = FxKit.display(size), value = FxKit.bold(size * .82);
         double pad = 22, gap = 14, headingWidth = FxKit.width(title, heading);
-        double textWidth = Math.max(headingWidth, subtitle == null ? 0 : FxKit.width(subtitle, detail));
         double badgeWidth = badge == null ? 0 : FxKit.width(badge, value) + 20;
-        double height = size * 1.3 + (subtitle == null ? 18 : 36);
+        double height = size * 1.3 + 18;
         // The ribbon's folded tails need room inside the plaque on both sides of the tag.
         double tail = size * 1.25 * .6;
-        double width = pad + textWidth + (badge == null ? 0 : gap + tail + badgeWidth + tail) + pad;
+        double width = pad + headingWidth + (badge == null ? 0 : gap + tail + badgeWidth + tail) + pad;
         var canvas = new javafx.scene.canvas.Canvas(width + 4, height + 4);
         var g = canvas.getGraphicsContext2D();
         TablePlaque.board(g, 2, 2, width, height, 8);
-        double baseline = subtitle == null ? height / 2 + size * .36 + 2 : 14 + size;
+        double baseline = height / 2 + size * .36 + 2;
         g.setFont(heading);
         g.setFill(TablePlaque.CREAM);
         g.fillText(title, 2 + pad, baseline);
-        if (subtitle != null) TablePlaque.engraved(g, subtitle, 2 + pad, baseline + 21, detail, TablePlaque.FADED, false);
         if (badge != null) {
             double tagX = 2 + pad + headingWidth + gap + tail, tagH = size * 1.25, tagY = 2 + (height - tagH) / 2 - 2;
             // Gold-toned moments (a multiplier) get the blood-red ribbon; quieter ones a dark iron one.
@@ -1052,16 +1043,16 @@ final class TableEffects {
     }
 
     /**
-     * A sigil of binding draws itself in violet light over the card, turning and closing in, then
+     * A painted seal of binding fades in over the card in violet light, turning and closing in, then
      * slams down onto it: a burst of light, a shockwave and sparks; the card shudders and its colour
-     * drains for a moment as its new disable marks appear, and the sigil burns into it and fades.
+     * drains for a moment as its new disable marks appear, and the seal burns into it and fades.
      */
     private Live sigil(Staging.Sigil g) {
         Rectangle at = g.at();
         double cx = at.getCenterX(), cy = at.getCenterY(), stampAt = g.stamp() / (double) PlayAnimator.SEAL;
         CardNode was = card(g.card(), g.was(), at), now = card(g.card(), g.marks(), at);
         Color colour = colour(Tone.ARCANE, 1);
-        VfxKit.Sigil seal = new VfxKit.Sigil(at.width * .55, colour, g.card().id().hashCode());
+        ImageView seal = VfxSprites.bindingSigil(at.width * 1.1);
         seal.setTranslateX(cx);
         seal.setTranslateY(cy);
         VfxKit.Flash flash = new VfxKit.Flash(cx, cy, at.width * .6, colour, 8, 0);
@@ -1079,7 +1070,6 @@ final class TableEffects {
                 // The colour drains at the stamp and returns, so the real card takes over without a jump.
                 now.shade.setSaturation(-.75 * Math.sin(Math.PI * since));
                 double fall = Math.min(1, p / stampAt);
-                seal.draw(Math.min(1, fall * 1.4));
                 double size = stamped ? 1 : 1.7 - .7 * fall * fall * fall;
                 seal.setScaleX(size);
                 seal.setScaleY(size);
@@ -1208,13 +1198,13 @@ final class TableEffects {
     }
 
     /**
-     * A brass wire arcs out to a hand and hooks a card with a glinting rivet; then it snaps taut and
-     * fades as the stolen card is pulled across.
+     * A brass wire with a hook on its end arcs out to a hand and hooks a card with a glint; then it
+     * snaps taut and fades as the stolen card is pulled across.
      */
     private Live tether(Staging.Tether t) {
         double hookAt = PlayAnimator.HOOK / (double) PlayAnimator.TETHER;
         double ax = t.from().getX(), ay = t.from().getY(), bx = t.hook().getX(), by = t.hook().getY();
-        // A brass wire over a dark groove; a rivet glints where it hooks the card.
+        // A brass wire over a dark groove; a glint flashes where its hook bites the card.
         Polyline groove = new Polyline(), thread = new Polyline();
         groove.setStroke(Color.rgb(15, 13, 12, .75));
         groove.setStrokeWidth(5);
@@ -1224,12 +1214,16 @@ final class TableEffects {
         thread.setEffect(new DropShadow(BlurType.GAUSSIAN, TablePlaque.BRASS.deriveColor(0, 1, 1, .6), 8, .3, 0, 0));
         Line across = new Line(-16, 0, 16, 0), down = new Line(0, -16, 0, 16);
         for (Line arm : List.of(across, down)) { arm.setStroke(CANDLE); arm.setStrokeWidth(2); arm.setBlendMode(BlendMode.ADD); }
-        Group glint = new Group(across, down, VfxSprites.rivet(10));
+        Group glint = new Group(across, down);
         glint.setEffect(new DropShadow(BlurType.GAUSSIAN, TablePlaque.BRASS, 12, .4, 0, 0));
         glint.setTranslateX(bx);
         glint.setTranslateY(by);
+        Group tip = new Group(VfxSprites.hook(36));
+        tip.setEffect(new DropShadow(BlurType.GAUSSIAN, Color.rgb(0, 0, 0, .6), 6, 0, 0, 2));
+        Rotate heading = new Rotate();
+        tip.getTransforms().add(heading);
         return new Live() {
-            { node.getChildren().addAll(groove, thread, glint); }
+            { node.getChildren().addAll(groove, thread, tip, glint); }
             @Override void update(double p) {
                 boolean hooked = p >= hookAt;
                 double reach = hooked ? 1 : easeOutCubic(p / hookAt), since = hooked ? (p - hookAt) / (1 - hookAt) : 0;
@@ -1244,9 +1238,15 @@ final class TableEffects {
                 }
                 thread.getPoints().setAll(points);
                 groove.getPoints().setAll(points);
+                // The hook rides the wire's tip, pointing the way the wire runs there.
+                double dx = 2 * (1 - reach) * (cx - ax) + 2 * reach * (bx - cx), dy = 2 * (1 - reach) * (cy - ay) + 2 * reach * (by - cy);
+                tip.setTranslateX(points.get(points.size() - 2));
+                tip.setTranslateY(points.get(points.size() - 1));
+                heading.setAngle(Math.toDegrees(Math.atan2(dy, dx)) - 90);
                 double fade = since < .5 ? 1 : 1 - (since - .5) / .5;
                 thread.setOpacity(fade);
                 groove.setOpacity(fade);
+                tip.setOpacity(fade);
                 glint.setVisible(hooked && since < .45);
                 double size = .4 + 1.2 * Math.sin(Math.PI * Math.min(1, since / .45));
                 glint.setScaleX(size);
@@ -1300,7 +1300,7 @@ final class TableEffects {
     }
 
     /**
-     * A vortex of light: streaks spiral inward round a dark well under a turning sigil, faster as it
+     * A vortex of light: a painted swirl turns round a dark well under a turning sigil, faster as it
      * closes, as cards are swallowed and given back.
      */
     private Live vortex(Staging.Vortex v) {
@@ -1313,17 +1313,11 @@ final class TableEffects {
         VfxKit.Sigil ring = new VfxKit.Sigil(radius, colour, 11);
         ring.setTranslateX(cx);
         ring.setTranslateY(cy);
-        Random random = new Random(7);
-        double[][] streams = new double[44][3];
-        Group swirl = new Group();
-        swirl.setBlendMode(BlendMode.ADD);
-        for (double[] st : streams) {
-            st[0] = random.nextDouble() * Math.PI * 2; st[1] = random.nextDouble(); st[2] = .6 + random.nextDouble() * .6;
-            Line streak = new Line();
-            streak.setStrokeLineCap(StrokeLineCap.ROUND);
-            streak.setStroke(VfxKit.HOT.interpolate(colour, .2 + random.nextDouble() * .6));
-            swirl.getChildren().add(streak);
-        }
+        // Faint, so the painted swirl leads.
+        ring.setOpacity(.4);
+        ImageView swirl = VfxSprites.vortex(radius * 2.1);
+        swirl.setTranslateX(cx);
+        swirl.setTranslateY(cy);
         return new Live() {
             { node.getChildren().addAll(core, ring, swirl); }
             @Override void update(double p) {
@@ -1334,18 +1328,11 @@ final class TableEffects {
                 ring.setScaleY(Math.max(.01, open));
                 core.setScaleX(Math.max(.01, open));
                 core.setScaleY(Math.max(.01, open));
-                for (int i = 0; i < streams.length; i++) {
-                    // Each streak circles inward on a tightening spiral, faster near the middle.
-                    double age = (p * 1.6 * streams[i][2] + streams[i][1]) % 1;
-                    double r = radius * 1.05 * (1 - age) * open, a = streams[i][0] + age * 5, lag = .35 + age * .5;
-                    Line streak = (Line) swirl.getChildren().get(i);
-                    streak.setStartX(cx + Math.cos(a - lag) * r * 1.08);
-                    streak.setStartY(cy + Math.sin(a - lag) * r * 1.08);
-                    streak.setEndX(cx + Math.cos(a) * r);
-                    streak.setEndY(cy + Math.sin(a) * r);
-                    streak.setStrokeWidth(.6 + 1.8 * (1 - age));
-                    streak.setOpacity(Math.sin(Math.PI * age) * Math.min(1, open));
-                }
+                // The swirl turns faster as it closes, drawing the cards in.
+                swirl.setRotate(220 * p + 300 * p * p);
+                swirl.setScaleX(Math.max(.01, open));
+                swirl.setScaleY(Math.max(.01, open));
+                swirl.setOpacity(Math.min(1, open));
             }
         };
     }
@@ -1392,7 +1379,7 @@ final class TableEffects {
         };
     }
 
-    /** An eye of light opening over a hand: its rune-ringed iris and a cone of sight sweep along the cards, then it closes. */
+    /** An eye of light opening over a hand; its cone of sight sweeps along the cards, then it closes. */
     private Live eye(Staging.Eye e) {
         double w = e.width(), h = w * .44;
 
@@ -1402,27 +1389,16 @@ final class TableEffects {
         javafx.scene.shape.QuadCurveTo clipLower = new javafx.scene.shape.QuadCurveTo(0, 0, -w / 2, 0);
         javafx.scene.shape.Path lids = new javafx.scene.shape.Path(new javafx.scene.shape.MoveTo(-w / 2, 0), upper, lower,
                 new javafx.scene.shape.ClosePath());
-        // An eye of light: a dark smoky well rimmed in a thin bright line, its iris ringed with runes.
+        // The painted eye of light over a dark smoky well, both showing only between the lids.
         Color sight = colour(Tone.TEAL, 1);
         lids.setFill(new RadialGradient(0, 0, .5, .5, .6, true, CycleMethod.NO_CYCLE,
                 new Stop(0, Color.rgb(6, 14, 14, .75)), new Stop(1, Color.rgb(4, 8, 8, .9))));
-        lids.setStroke(VfxKit.HOT.interpolate(sight, .35));
-        lids.setStrokeWidth(1.8);
         lids.setEffect(new DropShadow(BlurType.GAUSSIAN, sight, 16, .45, 0, 0));
         javafx.scene.shape.Path clip = new javafx.scene.shape.Path(new javafx.scene.shape.MoveTo(-w / 2, 0), clipUpper, clipLower,
                 new javafx.scene.shape.ClosePath());
         // A clip uses the shape's fill, which a Path lacks by default.
         clip.setFill(Color.BLACK);
-        Circle iris = new Circle(0, 0, h * .34);
-        iris.setFill(new RadialGradient(0, 0, .5, .5, .5, true, CycleMethod.NO_CYCLE,
-                new Stop(0, VfxKit.HOT), new Stop(.35, sight.brighter()), new Stop(.8, sight.darker()), new Stop(1, Color.rgb(4, 20, 20, 0))));
-        VfxKit.Sigil runes = new VfxKit.Sigil(h * .42, sight, 5);
-        runes.draw(1);
-        // A slit pupil, like a cat's in the dark.
-        Ellipse pupil = new Ellipse(0, 0, h * .05, h * .26);
-        pupil.setFill(Color.rgb(2, 6, 6));
-        Circle gleam = new Circle(-h * .1, -h * .12, h * .045, VfxKit.HOT);
-        Group ball = new Group(iris, runes, pupil, gleam);
+        ImageView ball = VfxSprites.spyEye(w);
         ball.setClip(clip);
         Ellipse halo = new Ellipse(0, 0, w * .75, h * .9);
         halo.setFill(new RadialGradient(0, 0, .5, .5, .5, true, CycleMethod.NO_CYCLE,
@@ -1445,11 +1421,8 @@ final class TableEffects {
                 for (javafx.scene.shape.QuadCurveTo bottom : new javafx.scene.shape.QuadCurveTo[]{lower, clipLower}) bottom.setControlY(lift);
                 // The gaze runs along the hand and back, and settles.
                 double gaze = Math.sin(Math.max(0, p - .15) / .7 * Math.PI * 2) * w * .2 * (p < .85 ? 1 : 0);
-                ball.setTranslateX(gaze);
-                clip.setTranslateX(-gaze);
                 gazeCone.setTranslateX(gaze * 1.6);
                 gazeCone.setOpacity(open);
-                runes.setRotate(90 * p);
                 halo.setOpacity(open);
                 whole.setOpacity(Math.min(1, p / .08));
             }

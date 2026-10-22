@@ -7,7 +7,7 @@ import org.junit.jupiter.api.Test;
 
 class ScoreRailTest {
     private static ScoreRail.Display score(long score, int round) {
-        return new ScoreRail.Display(score, 18, 9, 27, 0, 7, round, null);
+        return new ScoreRail.Display(score, 18, 9, 27, 0, 7, 6, round, null);
     }
 
     @Test void acceptedScoreIsImmediatelyAccessibleEvenDuringFeedback() throws Exception {
@@ -43,18 +43,19 @@ class ScoreRailTest {
         FxTesting.run(() -> {
             var rail = new ScoreRail();
             new Scene(rail);
-            rail.update(new ScoreRail.Display(63, 18, 9, 27, 40, 3, 2, "FULL MUSTER  +20  ×2"), true, 0);
+            rail.update(new ScoreRail.Display(63, 18, 9, 27, 40, 3, 4, 2, "FULL MUSTER  +20  ×2"), true, 0);
             assertTrue(rail.description().contains("Your score 63."));
             assertTrue(rail.description().contains("Unit points 9, combo points 27. Formation FULL MUSTER  +20  ×2."));
-            assertTrue(rail.description().contains("Plays remaining 3. Match total 40"));
+            assertTrue(rail.description().contains("Plays remaining 3. Opponent plays remaining 4. Match total 40"));
             for (int width : new int[]{196, 260, 360}) {
                 rail.resize(width, 550);
                 rail.layout();
                 assertNotNull(rail.snapshot(null, null), "the rail draws at width " + width);
             }
-            rail.update(new ScoreRail.Display(Long.MAX_VALUE, 0, 9, 27, 0, 0, 3, null), true, 0);
+            rail.update(new ScoreRail.Display(Long.MAX_VALUE, 0, 9, 27, 0, 0, 0, 3, null), true, 0);
             assertTrue(rail.description().contains(String.valueOf(Long.MAX_VALUE)));
-            assertThrows(IllegalArgumentException.class, () -> new ScoreRail.Display(0, 0, 0, 0, 0, 11, 1, null));
+            assertThrows(IllegalArgumentException.class, () -> new ScoreRail.Display(0, 0, 0, 0, 0, 11, 0, 1, null));
+            assertThrows(IllegalArgumentException.class, () -> new ScoreRail.Display(0, 0, 0, 0, 0, 0, 11, 1, null));
         });
     }
 }

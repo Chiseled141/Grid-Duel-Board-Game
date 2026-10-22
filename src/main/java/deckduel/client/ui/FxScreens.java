@@ -1,5 +1,6 @@
 package deckduel.client.ui;
 
+import deckduel.cards.CatalogLoader;
 import deckduel.client.ClientSettings;
 import deckduel.client.ScoringSounds;
 import deckduel.client.state.ClientModel;
@@ -52,6 +53,7 @@ final class FxScreens {
         this.musicOn = musicOn;
         this.close = close;
         FxKit.start();
+        PaintedCardArt.preload(CatalogLoader.loadBundled().units());
         boolean music = musicOn.getAsBoolean();
         Platform.runLater(() -> build(settings, sounds, music));
         model.addListener(new ClientModelListener() {
@@ -62,6 +64,7 @@ final class FxScreens {
     }
 
     private void build(ClientSettings settings, ScoringSounds sounds, boolean musicOn) {
+        VfxSprites.preload();
         table = new CardTableView(new CardTableView.Actions() {
             @Override public void move(Move move) { SwingUtilities.invokeLater(() -> model.move(move)); }
             @Override public void rematch() { SwingUtilities.invokeLater(model::requestRematch); }

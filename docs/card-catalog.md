@@ -1,29 +1,30 @@
-# Card catalog — `cards-neutral-4`
+# Card catalog — `cards-neutral-5`
 
 The game reads one file, `src/main/resources/cards/catalog.txt`; no code names a card. Its
-version, `cards-neutral-4`, is recorded with every match result. `CatalogLoader` validates it
+version, `cards-neutral-5`, is recorded with every match result. `CatalogLoader` validates it
 at startup: every nation has exactly one Unit of each class, a class prints the same points in
 every nation, and Spells are neutral. Landmarks and the Sabotage Spell were removed on
 2026-10-21; matches recorded under `cards-neutral-2` and earlier had them.
 
-## Units — approved initial playtest values
+## Units — from the painted card art
 
-Seven nations (Hungary, Poland, Bohemia, Austria, Styria, Croatia, Transylvania) × five
-classes = 35 Units. Each Unit has exactly one nation, one class and no ability.
+Seven nations (Ashkar, Asterion, Dravorn, Nerath, Solmara, Sylvaren, Vaelora) × five classes =
+35 Units. Each Unit has exactly one nation, one class and no ability. Its id is
+`<nation>-<class>` in lower case (for example `nerath-knight`), which also names its art file.
 
 | Class | Printed points |
 | --- | --- |
-| Pikemen | 2 |
-| Bowmen | 3 |
-| Riders | 4 |
-| Knights | 5 |
-| Axemen | 4 |
+| Assassin | 2 |
+| Bowman | 3 |
+| Guardman | 4 |
+| Knight | 5 |
+| Wizard | 6 |
 
-Axemen (4 points) replaced Battering Ram (6) in every nation on 2026-10-21; Battering Ram had
-replaced Footmen (1) on 2026-10-20. Matches recorded under `cards-neutral-1` used Footmen and
-under `-2`/`-3` Battering Ram. Riders and Axemen both print 4 but are different classes: pairs
-and formations compare class tags, never points. Unit faces are drawn in Java (see Artwork).
-The game draws every card from code.
+The nations, classes and points are those printed on the painted card art, adopted at the
+user's request on 2026-10-22 (`cards-neutral-5`). They replaced Hungary, Poland, Bohemia,
+Austria, Styria, Croatia and Transylvania with Pikemen 2, Bowmen 3, Riders 4, Knights 5 and
+Axemen 4 (`cards-neutral-4`). Earlier versions: `cards-neutral-1` used Footmen, `-2`/`-3`
+Battering Ram. Pairs and formations compare class tags, never points.
 
 Chaplain and Envoy, and the earlier Infantry/Cavalry/Archer/Clergy/Noble tags, are retired.
 
@@ -76,23 +77,25 @@ Units with disabled tags do not count toward a formation. Values are in `core/ca
 Row total = (printed points + pair bonuses + formation bonus) × formation multiplier, then the
 all-seven-nations combo (+15, `Scoring.ALL_NATIONS_BONUS`, provisional) is added unmultiplied.
 A Unit with disabled tags makes no pairs, does not count toward a formation and does not count
-toward the seven nations; disabled points remove its printed points. Example: Hungary's
-Pikemen, Bowmen and Riders with Poland's Pikemen and Bowmen make a Full Muster: 14 printed
-points and 18 pair points (three Hungarian pairs, one Polish pair, two class pairs) score
+toward the seven nations; disabled points remove its printed points. Example: Ashkar's
+Assassin, Bowman and Guardman with Nerath's Assassin and Bowman make a Full Muster: 14 printed
+points and 18 pair points (three Ashkar pairs, one Nerath pair, two class pairs) score
 (14 + 18 + 20) × 2 = 104.
 
 ## Artwork
 
 Card faces are chosen in `CardFace`:
 
-1. **Java pixel art** (`PixelCardFace`, 80×120) covers all
-   **35 Units** and all ten Spells (the Spells and back from `PxlCardArt`). Every Unit uses the same class silhouette
-   across seven nation palettes, matching cloth/shield colours and seven distinct stylized
-   crests. Points, names and labels come from the catalog. Transylvania uses two header lines.
-   Native art is created from Java drawing instructions and cached for JavaFX display;
-   exported PNGs are verification artifacts, not runtime inputs.
-2. Cards outside the catalog fall back to a procedural face.
+1. **Painted Units** (`PaintedCardArt`): `src/main/resources/assets/cards/<id>.png`, 744×1039,
+   one per Unit, plus `card-back.png` for the shared back. Each nation has its own cloth colour,
+   ribbon and crest; each class has its own figure. The painting prints the nation, class and
+   points, so a Unit uses it only while its id, class and points match what is printed;
+   otherwise it falls back to the procedural face. Paintings are centre-cropped to the table's
+   2:3 card shape (a few pixels of ribbon at each side are trimmed), given rounded corners and
+   scaled down in halving steps. The client decodes them on a background thread at start-up.
+2. **Pixel Spells** (`PixelSpellArt`, 80×120): the ten neutral Spells from the drawing data in
+   `PxlCardArt`, with catalog names and effect captions, scaled without smoothing.
+3. Any other card falls back to a procedural face (`CardArt`).
 
-No card image ships in the jar: the painted Unit and Spell runtime JPEGs were removed. All Riders
-display their catalog value 4 through the pixel renderer.
+The paintings add about 28 MB to the jar.
 The menu and match-room background artwork are retained. The Atlas section is removed.

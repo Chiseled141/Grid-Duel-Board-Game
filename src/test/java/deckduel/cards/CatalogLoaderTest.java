@@ -16,10 +16,10 @@ class CatalogLoaderTest {
     private final Catalog catalog = CatalogLoader.loadBundled();
 
     @Test void theUnitLibraryIsSevenNationsTimesFiveClassesWithFixedPoints() {
-        assertEquals("cards-neutral-4", catalog.version());
-        assertEquals(List.of("Hungary", "Poland", "Bohemia", "Austria", "Styria", "Croatia", "Transylvania"), catalog.regions());
+        assertEquals("cards-neutral-5", catalog.version());
+        assertEquals(List.of("Ashkar", "Asterion", "Dravorn", "Nerath", "Solmara", "Sylvaren", "Vaelora"), catalog.regions());
         assertEquals(35, catalog.units().size());
-        Map<String, Integer> points = Map.of("Pikemen", 2, "Bowmen", 3, "Riders", 4, "Knights", 5, "Axemen", 4);
+        Map<String, Integer> points = Map.of("Assassin", 2, "Bowman", 3, "Guardman", 4, "Knight", 5, "Wizard", 6);
         for (CardDef unit : catalog.units()) {
             assertEquals(points.get(unit.unitClass()), unit.points(), unit.id());
             assertEquals(1, unit.regions().size());
@@ -27,11 +27,8 @@ class CatalogLoaderTest {
         }
         for (String nation : catalog.regions())
             assertEquals(points.keySet(), catalog.units(nation).stream().map(CardDef::unitClass).collect(Collectors.toSet()), nation);
-        assertTrue(catalog.cards().stream().noneMatch(card -> card.name().contains("Chaplain") || card.name().contains("Envoy")),
-                "Chaplain and Envoy are retired");
-        assertTrue(catalog.units().stream().noneMatch(unit -> unit.unitClass().equals("Footmen")
-                || unit.unitClass().equals("Battering Ram")), "Footmen and Battering Ram are retired");
-        assertEquals(7, catalog.units().stream().filter(unit -> unit.unitClass().equals("Axemen")).count(), "one Axemen per nation");
+        assertTrue(catalog.units().stream().allMatch(unit -> unit.id().equals(
+                (unit.nation() + "-" + unit.unitClass()).toLowerCase(java.util.Locale.ROOT))), "ids name the art files");
     }
 
     @Test void theTenSpellsAreNeutralAndLandmarksAndSabotageAreGone() {

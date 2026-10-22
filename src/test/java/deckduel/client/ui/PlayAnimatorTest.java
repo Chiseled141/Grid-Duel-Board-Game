@@ -83,7 +83,7 @@ class PlayAnimatorTest {
         MatchState[] step = find((before, after) -> after.round() == before.round()
                 && after.view(Seat.FIRST).lastPlay().actor() == Seat.FIRST && after.view(Seat.FIRST).lastPlay().card().def().occupiesSpace());
         PlayRecord play = step[1].view(Seat.FIRST).lastPlay();
-        var plan = PlayAnimator.play(step[0].view(Seat.FIRST), step[1].view(Seat.FIRST), "bob", LAYOUT);
+        var plan = PlayAnimator.play(step[0].view(Seat.FIRST), step[1].view(Seat.FIRST), LAYOUT);
         assertEquals(PlayAnimator.FLIGHT, plan.scoringDelay(), "scoring waits for the landing");
         assertTrue(plan.staging().hiddenOnRow(play.card().id(), 0));
         assertTrue(plan.staging().hiddenOnRow(play.card().id(), PlayAnimator.FLIGHT + PlayAnimator.LAND - 1));
@@ -98,7 +98,7 @@ class PlayAnimatorTest {
     @Test void aRemovalWaitsForTheAxeToBiteBeforeScoring() throws Exception {
         MatchState[] step = find((before, after) -> after.round() == before.round()
                 && after.view(Seat.FIRST).lastPlay().removed() != null);
-        var plan = PlayAnimator.play(step[0].view(Seat.FIRST), step[1].view(Seat.FIRST), "bob", LAYOUT);
+        var plan = PlayAnimator.play(step[0].view(Seat.FIRST), step[1].view(Seat.FIRST), LAYOUT);
         int hit = PlayAnimator.RISE + PlayAnimator.CHARGE + PlayAnimator.CHOP_HIT;
         assertTrue(plan.scoringDelay() > hit, "the score changes only after the impact and a short hit-stop");
         assertTrue(plan.staging().steps().stream().anyMatch(s -> s.effect() instanceof Staging.Shatter && s.at() == hit));
@@ -152,7 +152,7 @@ class PlayAnimatorTest {
             });
             // Staged for the caster and for the opponent watching it.
             for (Seat viewer : Seat.values()) {
-                var plan = PlayAnimator.play(step[0].view(viewer), step[1].view(viewer), "bob", LAYOUT);
+                var plan = PlayAnimator.play(step[0].view(viewer), step[1].view(viewer), LAYOUT);
                 var steps = plan.staging().steps();
                 assertTrue(steps.stream().anyMatch(s -> signature.effect().isInstance(s.effect())), signature.spell() + " shows its signature");
                 assertEquals(signature.spell().equals("destroy-unit"), steps.stream().anyMatch(s -> s.effect() instanceof Staging.Chop),
@@ -171,7 +171,7 @@ class PlayAnimatorTest {
                 && after.view(Seat.FIRST).lastPlay().replaced() != null);
         PlayRecord play = step[1].view(Seat.FIRST).lastPlay();
         for (Seat seat : Seat.values()) {
-            var staging = PlayAnimator.play(step[0].view(seat), step[1].view(seat), "bob", LAYOUT).staging();
+            var staging = PlayAnimator.play(step[0].view(seat), step[1].view(seat), LAYOUT).staging();
             var steps = staging.steps();
             assertTrue(steps.stream().anyMatch(s -> s.effect() instanceof Staging.Tear t && t.card() == play.replaced().def()),
                     "both players see the replaced Unit torn");
@@ -186,13 +186,13 @@ class PlayAnimatorTest {
                 && after.view(Seat.FIRST).lastPlay().card().def().id().equals("exchange") && after.view(Seat.FIRST).lastPlay().handCard() != null);
         PlayRecord play = step[1].view(Seat.FIRST).lastPlay();
         Seat caster = play.actor(), watcher = caster.other();
-        var own = PlayAnimator.play(step[0].view(caster), step[1].view(caster), "bob", LAYOUT).staging().steps();
+        var own = PlayAnimator.play(step[0].view(caster), step[1].view(caster), LAYOUT).staging().steps();
         assertTrue(own.stream().anyMatch(s -> s.effect() instanceof Staging.Spiral sp && sp.card() == play.handCard().def()));
         assertTrue(own.stream().noneMatch(s -> s.effect() instanceof Staging.Eject e && e.card() == play.handCard().def()),
                 "the given-up card goes into the vortex, not to the discard pile");
         assertTrue(own.stream().anyMatch(s -> s.effect() instanceof Staging.Flight f && f.glide() && f.from().equals(LAYOUT.stage())),
                 "the new cards come out of the vortex");
-        var seen = PlayAnimator.play(step[0].view(watcher), step[1].view(watcher), "bob", LAYOUT).staging().steps();
+        var seen = PlayAnimator.play(step[0].view(watcher), step[1].view(watcher), LAYOUT).staging().steps();
         long arrivals = seen.stream().filter(s -> s.effect() instanceof Staging.Flight f && f.face() == null).count();
         assertEquals(play.drawn(), arrivals, "the watcher sees each drawn card arrive face down");
     }
@@ -235,7 +235,7 @@ class PlayAnimatorTest {
     @Test void theRoundEndingPlaySweepsTheTableAndDealsTheNewHand() throws Exception {
         MatchState[] step = find((before, after) -> after.round() != before.round());
         var view = step[1].view(Seat.FIRST);
-        var plan = PlayAnimator.play(step[0].view(Seat.FIRST), view, "bob", LAYOUT);
+        var plan = PlayAnimator.play(step[0].view(Seat.FIRST), view, LAYOUT);
         assertEquals(10, view.hand().size());
         assertTrue(view.hand().stream().allMatch(card -> plan.staging().hiddenInHand(card.id(), 0)), "the new hand arrives card by card");
         assertTrue(plan.staging().steps().stream().anyMatch(s -> s.effect() instanceof Staging.Banner), "the next round is announced");

@@ -34,10 +34,11 @@ public final class ScoreRail extends Region {
      * names your row's formation with its bonus and multiplier, or is null without one.
      */
     public record Display(long score, long opponentScore, long unitPoints, long comboPoints,
-                   long matchTotal, int playsRemaining, int round, String formation) {
+                   long matchTotal, int playsRemaining, int opponentPlaysRemaining, int round, String formation) {
         /** Rejects invalid counters before replacing the displayed snapshot. */
         public Display {
-            if (playsRemaining < 0 || playsRemaining > 10 || round < 1 || round > 3)
+            if (playsRemaining < 0 || playsRemaining > 10 || opponentPlaysRemaining < 0
+                    || opponentPlaysRemaining > 10 || round < 1 || round > 3)
                 throw new IllegalArgumentException("Invalid round or remaining plays");
         }
     }
@@ -102,7 +103,8 @@ public final class ScoreRail extends Region {
                 + ". Opponent " + next.opponentScore() + ". Unit points " + next.unitPoints()
                 + ", combo points " + next.comboPoints()
                 + (next.formation() == null ? "" : ". Formation " + next.formation())
-                + ". Plays remaining " + next.playsRemaining() + ". Match total " + next.matchTotal();
+                + ". Plays remaining " + next.playsRemaining() + ". Opponent plays remaining "
+                + next.opponentPlaysRemaining() + ". Match total " + next.matchTotal();
         setAccessibleText(description);
         draw();
     }
@@ -252,7 +254,7 @@ public final class ScoreRail extends Region {
         row(g, 282, "Combos", TablePlaque.COMBOS, display == null ? "—" : number(shown(Pocket.COMBOS, now)), hit(Pocket.COMBOS, now));
         drawFormation(g, now);
         TablePlaque.groove(g, 22, 392, 212);
-        stat(g, 30, 404, "PLAYS LEFT", display == null ? "—" : String.valueOf(display.playsRemaining()));
+        stat(g, 30, 404, "PLAYS: YOU / FOE", display == null ? "—" : display.playsRemaining() + " / " + display.opponentPlaysRemaining());
         stat(g, 146, 404, "ROUND", display == null ? "—" : display.round() + " of 3");
         TablePlaque.slot(g, 22, 470, 212, 44, TablePlaque.GOLD, 0);
         TablePlaque.engraved(g, "MATCH TOTAL", 34, 497, TablePlaque.label(), TablePlaque.FADED, false);

@@ -7,10 +7,16 @@ import deckduel.core.card.Suppression;
 import deckduel.core.card.TargetSide;
 import java.awt.Color;
 import java.awt.Graphics2D;
+import java.awt.RenderingHints;
+import java.awt.image.BufferedImage;
 import java.util.Locale;
 
-/** Composes the ten neutral pxl illustrations with catalog names and concise effect labels. */
+/**
+ * Pixel Spell faces drawn in code on an 80×120 grid, no image files: the ten neutral pxl
+ * illustrations composed with catalog names and concise effect labels.
+ */
 final class PixelSpellArt {
+    static final int WIDTH = 80, HEIGHT = 120;
     private static final Color PAPER = new Color(0xF4E9CE), PALE = new Color(0xB6A1C7);
     // Text rows sit between the frame ornaments (y 5-7, 112-114) and the art window (y 17-91).
     private static final int TITLE_Y = 8, CAPTION_Y = 96, DETAIL_Y = 103;
@@ -48,7 +54,19 @@ final class PixelSpellArt {
         };
     }
 
-    static void paint(Graphics2D g, CardDef card) {
+    /** The face at native resolution; callers scale it up without smoothing. */
+    static BufferedImage render(CardDef card) {
+        if (!supports(card)) throw new IllegalArgumentException("No pixel design for " + card.id());
+        BufferedImage image = new BufferedImage(WIDTH, HEIGHT, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g = image.createGraphics();
+        try {
+            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_OFF);
+            paint(g, card);
+        } finally { g.dispose(); }
+        return image;
+    }
+
+    private static void paint(Graphics2D g, CardDef card) {
         PxlCardArt.paint(g, card.id());
         centered(g, card.name(), TITLE_Y, PAPER);
         String[] caption = caption(card.effect());
@@ -77,7 +95,7 @@ final class PixelSpellArt {
 
     private static void centered(Graphics2D g, String text, int y, Color color) {
         String value = text.toUpperCase(Locale.ROOT);
-        int left = (PixelCardFace.WIDTH - (value.length() * 4 - 1)) / 2;
+        int left = (WIDTH - (value.length() * 4 - 1)) / 2;
         g.setColor(color);
         for (int i = 0; i < value.length(); i++) {
             int glyphIndex = ALPHABET.indexOf(value.charAt(i));
