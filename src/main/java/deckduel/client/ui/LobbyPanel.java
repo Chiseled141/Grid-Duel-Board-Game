@@ -32,16 +32,13 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
     private final JTextField joinField = new JTextField() {
         @Override protected void paintComponent(Graphics graphics) {
             Graphics2D g = UiKit.nice(graphics);
-            g.setColor(new Color(20, 27, 26, 240));
-            g.fillRoundRect(0, 0, getWidth(), getHeight(), 8, 8);
-            g.setColor(isFocusOwner() ? new Color(255, 211, 133) : new Color(235, 228, 211, 120));
-            g.drawLine(12, getHeight() - 2, getWidth() - 12, getHeight() - 2);
+            UiKit.paintSlot(g, getWidth(), getHeight(), isFocusOwner());
             g.dispose();
             super.paintComponent(graphics);
             if (getText().isEmpty() && !isFocusOwner()) {
                 g = UiKit.nice(graphics);
                 g.setFont(Theme.normal(14f));
-                g.setColor(new Color(255, 238, 200));
+                g.setColor(Theme.FADED);
                 g.drawString("Enter room code", 13, (getHeight() - g.getFontMetrics().getHeight()) / 2
                         + g.getFontMetrics().getAscent());
                 g.dispose();
@@ -209,22 +206,19 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
         JPanel status = new JPanel() {
             @Override protected void paintComponent(Graphics graphics) {
                 Graphics2D g = UiKit.nice(graphics);
-                g.setColor(new Color(20, 27, 26, 235));
-                g.fillRoundRect(0, 0, getWidth(), getHeight(), 10, 10);
-                g.setColor(new Color(255, 238, 200, 95));
-                g.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 10, 10);
+                UiKit.paintPlate(g, getWidth() - 4, getHeight() - 4);
                 g.dispose();
             }
         };
         status.setName("matchSearchStatus");
         status.setOpaque(false);
         status.setLayout(new BoxLayout(status, BoxLayout.Y_AXIS));
-        status.setBorder(BorderFactory.createEmptyBorder(18, 18, 18, 18));
+        status.setBorder(BorderFactory.createEmptyBorder(18, 20, 22, 22));
         status.setPreferredSize(new Dimension(330, 154));
         line(status, settingLabel("ONLINE MATCHMAKING"));
         status.add(Box.createVerticalStrut(10));
         searchStatus.setFont(Theme.bold(20f));
-        searchStatus.setForeground(new Color(255, 246, 224));
+        searchStatus.setForeground(Theme.CREAM);
         searchDetail.setFont(Theme.normal(13f));
         line(status, searchStatus);
         status.add(Box.createVerticalStrut(5));
@@ -247,21 +241,20 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
         JPanel panel = new JPanel() {
             @Override protected void paintComponent(Graphics graphics) {
                 var g = UiKit.nice(graphics);
-                g.setColor(new Color(20, 27, 26, 235));
-                g.fillRoundRect(0, 0, getWidth(), getHeight(), 10, 10);
-                g.setColor(new Color(255, 238, 200, 95));
-                g.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 10, 10);
+                UiKit.paintPlate(g, getWidth() - 4, getHeight() - 4);
                 g.dispose();
             }
         };
         panel.setOpaque(false);
-        panel.setBorder(BorderFactory.createEmptyBorder(16, 18, 16, 18));
+        // The extra right and bottom room holds the plate's shadow.
+        panel.setBorder(BorderFactory.createEmptyBorder(16, 20, 20, 22));
         return panel;
     }
 
     private JPanel buildCreate() {
         JPanel page = page("Create match", "Share your room code with a friend.", "play");
         roomCode.setFont(Theme.display(34f));
+        roomCode.setForeground(Theme.BRASS_LIGHT);
         roomCode.setHorizontalAlignment(SwingConstants.CENTER);
         roomCode.setPreferredSize(new Dimension(280, 64));
         JPanel codePanel = roomSurface();
@@ -289,8 +282,8 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
         joinField.setName("joinCode");
         joinField.setOpaque(false);
         joinField.setForeground(Theme.CREAM);
-        joinField.setCaretColor(Theme.AMBER);
-        joinField.setSelectionColor(new Color(111, 94, 53));
+        joinField.setCaretColor(Theme.BRASS_LIGHT);
+        joinField.setSelectionColor(Theme.BRASS_DARK);
         joinField.setSelectedTextColor(Theme.CREAM);
         joinField.setFont(Theme.bold(20f));
         joinField.setBorder(BorderFactory.createEmptyBorder(12, 13, 12, 13));
@@ -319,8 +312,10 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
         rooms.setCellRenderer(new DefaultListCellRenderer() {
             @Override protected void paintComponent(Graphics graphics) {
                 Graphics2D g = UiKit.nice(graphics);
-                g.setColor(getBackground());
-                g.fillRoundRect(0, 2, getWidth(), getHeight() - 4, 7, 7);
+                Graphics2D tile = (Graphics2D) g.create();
+                tile.translate(0, 2);
+                UiKit.paintTile(tile, getWidth(), getHeight() - 4, false, Boolean.TRUE.equals(getClientProperty("room.selected")));
+                tile.dispose();
                 g.setFont(getFont());
                 drawMenuText(g, getText(), 12, (getHeight() - g.getFontMetrics().getHeight()) / 2
                         + g.getFontMetrics().getAscent(), getForeground());
@@ -333,8 +328,8 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
                 MatchSummary room = (MatchSummary) value;
                 setText(room.roomCode() + "  ·  " + room.hostUsername());
                 setOpaque(false);
-                setForeground(selected || focus ? new Color(255, 211, 133) : Theme.CREAM);
-                setBackground(selected ? new Color(99, 77, 39, 240) : new Color(29, 36, 33, 245));
+                setForeground(selected || focus ? Theme.BRASS_LIGHT : Theme.CREAM);
+                putClientProperty("room.selected", selected);
                 setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
                 return this;
             }
@@ -357,8 +352,8 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
         roomScroll.getVerticalScrollBar().setPreferredSize(new Dimension(6, 0));
         roomScroll.getVerticalScrollBar().setUI(new javax.swing.plaf.basic.BasicScrollBarUI() {
             @Override protected void configureScrollBarColors() {
-                thumbColor = new Color(213, 182, 123);
-                trackColor = new Color(25, 34, 35);
+                thumbColor = Theme.BRASS;
+                trackColor = Theme.SLOT;
             }
             @Override protected JButton createDecreaseButton(int orientation) { return hiddenArrow(); }
             @Override protected JButton createIncreaseButton(int orientation) { return hiddenArrow(); }
@@ -438,8 +433,8 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
 
     private static JLabel settingLabel(String text) {
         JLabel label = caption(text);
-        label.setFont(Theme.normal(11f));
-        label.setForeground(new Color(240, 219, 180));
+        label.setFont(Theme.bold(11f));
+        label.setForeground(Theme.BRASS_LIGHT);
         return label;
     }
 
@@ -636,6 +631,25 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
     }
 
     private static final class MenuAction extends JButton {
+        /**
+         * The selected home entry, lettered in brass with a dark iron edge like the title, over a
+         * fine gold rule that fades to the right (the table plates' groove).
+         */
+        private void paintBrass(Graphics2D g, int x, int y, FontMetrics metrics) {
+            Shape text = new java.awt.font.TextLayout(getText(), g.getFont(), g.getFontRenderContext())
+                    .getOutline(java.awt.geom.AffineTransform.getTranslateInstance(x, y));
+            Rectangle box = text.getBounds();
+            g.translate(0, 2); g.setColor(new Color(0, 0, 0, 120)); g.fill(text); g.translate(0, -2);
+            g.setStroke(new BasicStroke(2.6f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+            g.setColor(Theme.WOOD_LINE); g.draw(text);
+            g.setPaint(new LinearGradientPaint(0, box.y, 0, box.y + box.height, new float[] {0f, .5f, 1f},
+                    new Color[] {new Color(0xF4DE9E), Theme.BRASS_LIGHT, Theme.BRASS}));
+            g.fill(text);
+            int rule = y + metrics.getDescent() + 2;
+            g.setPaint(new GradientPaint(x, 0, Theme.BRASS_LIGHT, x + box.width + 60, 0, new Color(217, 181, 106, 0)));
+            g.fillRect(x, rule, box.width + 60, 2);
+        }
+
         MenuAction(String text, Runnable action, boolean primary) {
             super(text);
             setPreferredSize(new Dimension(330, primary ? 65 : 53));
@@ -657,20 +671,16 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
                 boolean highlight = isEnabled() && (managed
                         ? Boolean.TRUE.equals(getClientProperty(MenuNavigation.ACTIVE))
                         : getModel().isRollover() || isFocusOwner() || isSelected());
-                if (Boolean.TRUE.equals(getClientProperty("menu.compactBack"))) {
-                    g.setColor(new Color(25, 30, 27, highlight ? 170 : 115));
-                    g.fillRoundRect(1, 1, getWidth() - 3, getHeight() - 3, 8, 8);
-                    g.setColor(highlight ? new Color(255, 216, 143, 220) : new Color(255, 238, 200, 85));
-                    g.setStroke(new BasicStroke(1.2f));
-                    g.drawRoundRect(1, 1, getWidth() - 3, getHeight() - 3, 8, 8);
-                }
+                if (Boolean.TRUE.equals(getClientProperty("menu.compactBack")))
+                    UiKit.paintTile(g, getWidth(), getHeight(), false, highlight);
                 g.setFont(highlight && !managed ? Theme.bold(getFont().getSize2D()) : getFont());
                 FontMetrics metrics = g.getFontMetrics();
                 int x = getInsets().left;
                 int y = (getHeight() - metrics.getHeight()) / 2 + metrics.getAscent();
-                Color color = !isEnabled() ? new Color(173, 175, 169)
-                        : highlight ? new Color(255, 216, 143) : new Color(255, 248, 232);
-                drawMenuText(g, getText(), x, y, color);
+                boolean home = Boolean.TRUE.equals(getClientProperty(MenuNavigation.HOME));
+                if (home && highlight) paintBrass(g, x, y, metrics);
+                else drawMenuText(g, getText(), x, y, !isEnabled() ? new Color(173, 175, 169)
+                        : highlight ? Theme.BRASS_LIGHT : new Color(255, 248, 232));
             } finally { g.dispose(); }
         }
     }

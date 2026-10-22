@@ -12,8 +12,6 @@ import javax.swing.table.DefaultTableModel;
 
 /** The account's recorded matches, newest first, over the animated main-menu scenery. */
 public final class HistoryPanel extends BattlefieldMenuPanel {
-    private static final Color IVORY = new Color(255, 238, 200);
-    private static final Color DARK = new Color(25, 31, 29);
     private final ClientModel model;
     private final JPanel ledger;
     private final JLabel summary = menuLabel("", 13, false);
@@ -21,10 +19,7 @@ public final class HistoryPanel extends BattlefieldMenuPanel {
     private final JPanel views = new JPanel(new CardLayout()) {
         @Override protected void paintComponent(Graphics graphics) {
             var g = UiKit.nice(graphics);
-            g.setColor(new Color(20, 27, 26, 235));
-            g.fillRoundRect(0, 0, getWidth(), getHeight(), 10, 10);
-            g.setColor(new Color(255, 238, 200, 80));
-            g.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 10, 10);
+            UiKit.paintPlate(g, getWidth() - 4, getHeight() - 4);
             g.dispose();
         }
     };
@@ -53,16 +48,18 @@ public final class HistoryPanel extends BattlefieldMenuPanel {
         JTable table = new JTable(rows);
         table.setName("historyTable");
         table.setRowHeight(48); table.setFont(Theme.normal(15));
-        table.setForeground(IVORY); table.setBackground(DARK); table.setOpaque(false);
+        table.setForeground(Theme.CREAM); table.setBackground(Theme.IRON_DARK); table.setOpaque(false);
         table.setShowGrid(false); table.setIntercellSpacing(new Dimension(0, 2));
         table.setFillsViewportHeight(false);
         table.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
         table.getTableHeader().setReorderingAllowed(false);
         table.getTableHeader().setPreferredSize(new Dimension(0, 36));
+        // The header is see-through, so its gold labels sit straight on the iron plate.
+        table.getTableHeader().setOpaque(false);
         table.getTableHeader().setDefaultRenderer((t, value, selected, focus, row, column) -> {
             JLabel label = new JLabel(String.valueOf(value), column == 1 || column == 4 ? SwingConstants.LEFT : SwingConstants.CENTER);
-            label.setFont(Theme.bold(11)); label.setForeground(new Color(219, 204, 173));
-            label.setOpaque(true); label.setBackground(DARK);
+            label.setFont(Theme.bold(11)); label.setForeground(Theme.BRASS_LIGHT);
+            label.setOpaque(false);
             label.setBorder(BorderFactory.createEmptyBorder(8, column == 1 ? 14 : 0, 8, 0));
             return label;
         });
@@ -72,8 +69,9 @@ public final class HistoryPanel extends BattlefieldMenuPanel {
                 super.getTableCellRendererComponent(t, value, selected, focus, row, column);
                 putClientProperty("html.disable", Boolean.TRUE);
                 setOpaque(true);
-                setBackground(selected ? IVORY : row % 2 == 0 ? new Color(36, 43, 39) : new Color(29, 36, 33));
-                setForeground(selected ? new Color(25, 26, 23) : column == 2 ? resultColor(String.valueOf(value)) : IVORY);
+                // Rows alternate two iron tones; the selected row is aged gold, like the menu's selected tile.
+                setBackground(selected ? Theme.BRASS : row % 2 == 0 ? new Color(0x342F2C) : new Color(0x262220));
+                setForeground(selected ? Theme.INK : column == 2 ? resultColor(String.valueOf(value)) : Theme.CREAM);
                 setFont(column == 2 || column == 3 ? Theme.bold(14) : Theme.normal(14));
                 boolean left = column == 1 || column == 4;
                 setHorizontalAlignment(left ? SwingConstants.LEFT : SwingConstants.CENTER);
@@ -95,12 +93,12 @@ public final class HistoryPanel extends BattlefieldMenuPanel {
         scroll.getVerticalScrollBar().setUnitIncrement(48);
         scroll.getVerticalScrollBar().setPreferredSize(new Dimension(7, 0));
         scroll.getVerticalScrollBar().setUI(new javax.swing.plaf.basic.BasicScrollBarUI() {
-            @Override protected void configureScrollBarColors() { thumbColor = new Color(187, 168, 130); trackColor = DARK; }
+            @Override protected void configureScrollBarColors() { thumbColor = Theme.BRASS; trackColor = Theme.IRON_DARK; }
             @Override protected JButton createDecreaseButton(int orientation) { return hiddenArrow(); }
             @Override protected JButton createIncreaseButton(int orientation) { return hiddenArrow(); }
             private JButton hiddenArrow() { var button = new JButton(); button.setPreferredSize(new Dimension(0, 0)); return button; }
         });
-        JPanel corner = new JPanel(); corner.setBackground(DARK);
+        JPanel corner = new JPanel(); corner.setOpaque(false);
         scroll.setCorner(ScrollPaneConstants.UPPER_RIGHT_CORNER, corner);
         JPanel empty = new JPanel(new GridBagLayout()); empty.setOpaque(false);
         JPanel emptyCopy = new JPanel(); emptyCopy.setOpaque(false);
@@ -109,7 +107,9 @@ public final class HistoryPanel extends BattlefieldMenuPanel {
         emptyCopy.add(Box.createVerticalStrut(8));
         emptyCopy.add(menuLabel("Online matches appear here; practice is not recorded.", 13, false));
         empty.add(emptyCopy);
-        views.setOpaque(false); views.setBorder(BorderFactory.createEmptyBorder(1, 1, 1, 1));
+        views.setOpaque(false);
+        // Room inside the plate's trim and studs, and for its shadow on the right and bottom.
+        views.setBorder(BorderFactory.createEmptyBorder(16, 16, 20, 20));
         views.add(scroll, "table"); views.add(empty, "empty");
         ledger.add(views, BorderLayout.CENTER);
         JPanel footer = new JPanel(new BorderLayout(16, 0)); footer.setOpaque(false);
@@ -139,7 +139,7 @@ public final class HistoryPanel extends BattlefieldMenuPanel {
         };
         label.putClientProperty("html.disable", Boolean.TRUE);
         label.setBorder(BorderFactory.createEmptyBorder(2, 0, 4, 8));
-        label.setFont(display ? Theme.display(size) : Theme.normal(size)); label.setForeground(IVORY);
+        label.setFont(display ? Theme.display(size) : Theme.normal(size)); label.setForeground(Theme.CREAM);
         return label;
     }
 
@@ -170,7 +170,7 @@ public final class HistoryPanel extends BattlefieldMenuPanel {
     }
 
     private static Color resultColor(String result) {
-        return result.startsWith("Win") ? new Color(245, 209, 139) : result.startsWith("Loss") ? Theme.CORAL : IVORY;
+        return result.startsWith("Win") ? Theme.BRASS_LIGHT : result.startsWith("Loss") ? Theme.CORAL : Theme.CREAM;
     }
 
     /** ISO timestamps from the database, shown to the minute. */

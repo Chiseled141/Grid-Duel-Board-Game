@@ -3,15 +3,13 @@ package deckduel.client.ui;
 import java.awt.*;
 import javax.swing.*;
 
-/** Compact settings controls that keep previews and selection visible over the scenery. */
+/** Menu rows on iron tiles, matched to the match table's plates; the selected row is aged gold. */
 final class MenuSettingsOption extends JButton {
     private enum Kind { CHOICE, TOGGLE, ACTION }
     private final Kind kind;
     private final String detail;
     // Fixed caption of a toggle; its button text carries the On/Off state.
     private final String label;
-    private static final Color IVORY = new Color(255, 238, 200);
-    private static final Color DARK = new Color(25, 26, 23);
 
     private MenuSettingsOption(String title, String detail, Kind kind, Runnable action) {
         super(title);
@@ -46,42 +44,47 @@ final class MenuSettingsOption extends JButton {
             boolean selected = managed ? Boolean.TRUE.equals(getClientProperty(MenuNavigation.ACTIVE))
                     : isSelected() && kind != Kind.TOGGLE;
             boolean hover = isEnabled() && (managed ? selected : getModel().isRollover() || isFocusOwner());
-            Color fill = managed ? new Color(255, 216, 143) : IVORY;
-            if (!isEnabled()) g.setComposite(AlphaComposite.SrcOver.derive(.75f));
-            int width = getWidth(), height = getHeight();
-            g.setColor(selected ? fill : new Color(22, 28, 27, hover ? 190 : 145));
-            g.fillRoundRect(1, 1, width - 2, height - 2, 8, 8);
-            g.setColor(selected && isFocusOwner() ? DARK
-                    : selected || hover ? IVORY : new Color(255, 238, 200, 75));
-            g.setStroke(new BasicStroke(isFocusOwner() ? 2f : 1f));
-            g.drawRoundRect(1, 1, width - 3, height - 3, 8, 8);
-            g.setColor(selected ? DARK : IVORY);
-            if (kind == Kind.TOGGLE) paintToggle(g);
-            else paintChoice(g, selected);
+            if (!isEnabled()) g.setComposite(AlphaComposite.SrcOver.derive(.6f));
+            // The selected or keyboard-active row is an aged-gold plate; the rest are iron.
+            UiKit.paintTile(g, getWidth(), getHeight(), selected, hover);
+            if (kind == Kind.TOGGLE) paintToggle(g, hover);
+            else paintChoice(g, selected, hover);
         } finally { g.dispose(); }
     }
 
-    private void paintChoice(Graphics2D g, boolean selected) {
-        int x = kind == Kind.ACTION ? 14 : 38;
-        g.setStroke(new BasicStroke(1.3f));
+    private void paintChoice(Graphics2D g, boolean selected, boolean hover) {
+        int x = kind == Kind.ACTION ? 16 : 40;
         if (kind != Kind.ACTION) {
-            g.drawOval(13, 21, 13, 13);
-            if (selected) g.fillOval(17, 25, 5, 5);
+            g.setStroke(new BasicStroke(1.5f));
+            g.setColor(selected ? Theme.INK : Theme.BRASS);
+            g.drawOval(14, 21, 13, 13);
+            if (selected) g.fillOval(18, 25, 5, 5);
         }
-        g.setFont(getFont()); g.drawString(getText(), x, 24);
-        g.setFont(Theme.normal(11f)); g.setColor(selected ? new Color(85, 78, 62) : new Color(224, 215, 194));
+        g.setFont(getFont());
+        g.setColor(selected ? Theme.INK : hover ? Theme.BRASS_LIGHT : Theme.CREAM);
+        g.drawString(getText(), x, 25);
+        g.setFont(Theme.normal(11f));
+        g.setColor(selected ? new Color(0x4A3418) : Theme.FADED);
         g.drawString(detail, x, 42);
     }
 
-    private void paintToggle(Graphics2D g) {
-        g.setFont(getFont()); g.drawString(label, 13, 24);
-        g.setFont(Theme.normal(11f)); g.setColor(new Color(224, 215, 194));
-        g.drawString(detail, 13, 42);
-        int x = getWidth() - 55;
-        g.setColor(isSelected() ? IVORY : new Color(255, 238, 200, 80));
-        g.fillRoundRect(x, 17, 41, 22, 22, 22);
-        g.setColor(isSelected() ? DARK : IVORY);
-        g.fillOval(x + (isSelected() ? 22 : 3), 20, 16, 16);
+    /** The caption, its detail, and a switch on the right: lit gold when on, a dark slot when off. */
+    private void paintToggle(Graphics2D g, boolean hover) {
+        g.setFont(getFont());
+        g.setColor(hover ? Theme.BRASS_LIGHT : Theme.CREAM);
+        g.drawString(label, 16, 25);
+        g.setFont(Theme.normal(11f));
+        g.setColor(Theme.FADED);
+        g.drawString(detail, 16, 42);
+        Graphics2D track = (Graphics2D) g.create();
+        try {
+            track.translate(getWidth() - 58, 17);
+            if (isSelected()) UiKit.paintTile(track, 42, 22, true, false);
+            else UiKit.paintSlot(track, 42, 22, hover);
+            track.setPaint(new GradientPaint(0, 3, isSelected() ? Theme.CREAM : Theme.FADED, 0, 19,
+                    isSelected() ? Theme.BRASS : new Color(0x5A524B)));
+            track.fill(UiKit.chamfer(isSelected() ? 23 : 3, 3, 16, 16, 3));
+        } finally { track.dispose(); }
     }
 
 }

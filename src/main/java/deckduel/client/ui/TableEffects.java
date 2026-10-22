@@ -42,12 +42,15 @@ import javafx.scene.transform.Scale;
  * update plays alongside any sequence still running, and only a new game clears them. Used on the JavaFX Application Thread only.
  */
 final class TableEffects {
-    private static final Color WHITE = Color.rgb(255, 250, 235);
+    /** Warm candlelight, ember orange and table dust: the light sources of a room lit by fire. */
+    private static final Color CANDLE = Color.web("#FFE7A8"), EMBER = Color.web("#FFB347"), DUST = Color.web("#E2CEA8");
 
     private final Pane layer;
     private final ScoringSounds sounds;
     private final List<Run> runs = new ArrayList<>();
     private double pixelScale = 1;
+    /** This frame's table shake, summed from every shake step playing; see {@link #shake}. */
+    private double shakeX, shakeY;
 
     /** One step on screen: its nodes, posed from progress 0–1. */
     private abstract static class Live {
@@ -149,8 +152,13 @@ final class TableEffects {
         return runs.stream().anyMatch(run -> run.staging.hiddenInHand(cardId, run.elapsed(now)));
     }
 
+    /** How far to shake the table's cards and effects this frame, in pixels: {x, y}. */
+    double[] shake() { return new double[] {shakeX, shakeY}; }
+
     /** Advances every sequence to {@code now} and plays the cues that have come due; false once all have finished. */
     boolean tick(long now) {
+        shakeX = 0;
+        shakeY = 0;
         for (var it = runs.iterator(); it.hasNext();) {
             Run run = it.next();
             if (run.tick(now)) continue;
@@ -281,7 +289,8 @@ final class TableEffects {
         if (effect instanceof Staging.Eject e) return travel(e.card(), e.marks(), e.from(), e.pile(), duration, true,
                 t -> CardMotion.travel(e.from(), e.pile(), t, duration, false));
         if (effect instanceof Staging.Charge c) return charge(c);
-        if (effect instanceof Staging.Bolt b) return bolt(b);
+        if (effect instanceof Staging.Chop c) return chop(c);
+        if (effect instanceof Staging.Shake k) return shake(k);
         if (effect instanceof Staging.Dissolve d) return dissolve(d);
         if (effect instanceof Staging.Ring r) return ring(r);
         if (effect instanceof Staging.Burst b) return burst(b);
@@ -367,66 +376,118 @@ final class TableEffects {
         };
     }
 
-    /** A Spell held aloft and charging: the table dims, a halo pulses and a ring of runes turns. */
+    /**
+     * A Spell held aloft and charging: the table dims, a thin sigil in the Spell's colour draws
+     * itself around it and turns, motes of light are drawn in toward the card, and a warm glow
+     * swells behind it: the anticipation before its effect.
+     */
     private Live charge(Staging.Charge c) {
         Color colour = colour(c.tone(), 1);
         double cx = c.at().getCenterX(), cy = c.at().getCenterY();
+        double radius = Math.max(c.at().width, c.at().height) * .68;
         var dim = new javafx.scene.shape.Rectangle(-40, -40, layer.getWidth() + 80, layer.getHeight() + 80);
-        dim.setFill(Color.rgb(10, 6, 2, .31));
-        Circle halo = new Circle(cx, cy, 1);
+        dim.setFill(Color.rgb(8, 5, 2, .38));
+        Circle halo = new Circle(cx, cy, radius * 1.3);
         halo.setBlendMode(BlendMode.ADD);
-        Circle runes = new Circle(cx, cy, 1);
-        runes.setFill(null);
-        runes.setStroke(colour.brighter().deriveColor(0, 1, 1, .8));
-        runes.setStrokeWidth(2);
-        runes.setStrokeLineCap(StrokeLineCap.ROUND);
-        runes.getStrokeDashArray().setAll(9.0, 7.0);
+        VfxKit.Sigil sigil = new VfxKit.Sigil(radius, colour, c.spell().id().hashCode());
+        sigil.setTranslateX(cx);
+        sigil.setTranslateY(cy);
+        Random random = new Random(c.spell().id().hashCode());
+        double[][] motes = new double[26][3];
+        Group drawn = new Group();
+        drawn.setBlendMode(BlendMode.ADD);
+        for (double[] m : motes) {
+            m[0] = random.nextDouble() * Math.PI * 2; m[1] = radius * (1.2 + random.nextDouble() * .7); m[2] = random.nextDouble() * .5;
+            drawn.getChildren().add(new Circle(1.2 + random.nextDouble() * 1.6, VfxKit.HOT.interpolate(colour, .5)));
+        }
         CardNode card = new CardNode(FxKit.face(c.spell(), List.of(), c.at().width, c.at().height, true, pixelScale),
                 c.at().width, c.at().height);
-        card.setEffect(new DropShadow(BlurType.GAUSSIAN, colour, 34, .32, 0, 0));
+        card.setEffect(new DropShadow(BlurType.GAUSSIAN, colour.deriveColor(0, 1, 1.1, .85), 26, .25, 0, 0));
         return new Live() {
-            { node.getChildren().addAll(dim, halo, runes, card); }
+            { node.getChildren().addAll(dim, halo, sigil, drawn, card); }
             @Override void update(double p) {
                 double pulse = .5 + .5 * Math.sin(p * Math.PI * 5);
-                double radius = Math.max(c.at().width, c.at().height) * (.62 + .05 * pulse);
-                halo.setRadius(radius * 1.3);
                 halo.setFill(new RadialGradient(0, 0, cx, cy, radius * 1.3, false, CycleMethod.NO_CYCLE,
-                        new Stop(0, colour(c.tone(), (120 + 60 * pulse) / 255)), new Stop(1, colour(c.tone(), 0))));
-                runes.setRadius(radius);
-                runes.setStrokeDashOffset(-p * 120);
+                        new Stop(0, colour(c.tone(), .3 + .15 * pulse)), new Stop(1, colour(c.tone(), 0))));
+                sigil.draw(Math.min(1, p / .55));
+                sigil.setRotate(40 * p);
+                for (int i = 0; i < motes.length; i++) {
+                    // Each mote spirals in toward the card and vanishes into it.
+                    double age = (p + motes[i][2]) % 1, r = motes[i][1] * (1 - age), a = motes[i][0] + age * 1.4;
+                    Node mote = drawn.getChildren().get(i);
+                    mote.setTranslateX(cx + Math.cos(a) * r);
+                    mote.setTranslateY(cy + Math.sin(a) * r);
+                    mote.setOpacity(Math.sin(Math.PI * age));
+                }
                 card.pose(cx, cy - 4 * Math.sin(p * Math.PI * 2), Math.sin(p * Math.PI * 2) * .03, 1, 0);
             }
         };
     }
 
-    /** A glowing bolt with a fading trail, arcing from a Spell to its target. */
-    private Live bolt(Staging.Bolt b) {
-        Circle[] trail = new Circle[7];
-        Circle glow = new Circle(22, colour(b.tone(), .55));
-        glow.setEffect(new GaussianBlur(18));
+    /**
+     * A war axe chops the card. It appears beside it and winds back, then swings down fast with a
+     * hard smear of light behind its blade, bites and holds for a beat (the hit-stop) under a burst
+     * of light, a shockwave and a spray of sparks thrown along the swing, recoils, rests and fades.
+     * It comes from whichever side has more room, so it never swings in from off the table.
+     */
+    private Live chop(Staging.Chop c) {
+        Rectangle at = c.at();
+        double hitAt = PlayAnimator.CHOP_HIT / (double) PlayAnimator.CHOP, stop = .07;
+        double cx = at.getCenterX(), cy = at.getCenterY(), reach = at.height * 1.05;
+        int side = cx > layer.getWidth() * .6 ? -1 : 1;
+        // The grip sits beside the card; the blade bites the card's middle.
+        double from = side > 0 ? 20 : 160, impact = from + 180, raised = impact + 100 * side, back = raised + 25 * side;
+        double gx = cx + Math.cos(Math.toRadians(from)) * reach, gy = cy + Math.sin(Math.toRadians(from)) * reach;
+        ImageView axe = VfxSprites.axe(reach);
+        Group blade = new Group(axe);
+        // Swinging the other way, the blade is turned over so its edge still leads.
+        blade.getTransforms().add(new Scale(1, side, 0, 0));
+        Rotate swing = new Rotate(raised, 0, 0);
+        Group arm = new Group(blade);
+        arm.getTransforms().setAll(new javafx.scene.transform.Translate(gx, gy), swing);
+        arm.setEffect(new DropShadow(BlurType.GAUSSIAN, Color.rgb(0, 0, 0, .65), 12, .2, 5, 10));
+        Color steel = Color.web("#FF8A3D");
+        VfxKit.Smear smear = new VfxKit.Smear(gx, gy, reach * .9, reach * .32, steel);
+        double heading = impact - 90 * side;
+        VfxKit.Flash flash = new VfxKit.Flash(cx, cy, at.width * .7, steel, 6, heading);
+        VfxKit.Shockwave wave = new VfxKit.Shockwave(cx, cy, at.width * 1.4, .45, steel);
+        VfxKit.Sparks sparks = new VfxKit.Sparks(cx, cy, heading, 70, 26, at.width * 1.6, steel, Math.round(cx));
         return new Live() {
-            {
-                node.setBlendMode(BlendMode.ADD);
-                node.getChildren().add(glow);
-                for (int i = trail.length - 1; i >= 0; i--) {
-                    trail[i] = new Circle(11 - i * 1.3, i == 0 ? Color.WHITE : colour(b.tone(), (220 - i * 28) / 255.0));
-                    node.getChildren().add(trail[i]);
-                }
-            }
+            { node.getChildren().addAll(smear, arm, wave, flash, sparks); }
             @Override void update(double p) {
-                double e = p * p * p;
-                for (int i = 0; i < trail.length; i++) {
-                    double q = Math.max(0, e - i * .045);
-                    trail[i].setCenterX(b.from().getX() + (b.to().getX() - b.from().getX()) * q);
-                    trail[i].setCenterY(b.from().getY() + (b.to().getY() - b.from().getY()) * q - Math.sin(Math.PI * q) * 30);
-                }
-                glow.setCenterX(trail[0].getCenterX());
-                glow.setCenterY(trail[0].getCenterY());
+                double windUp = hitAt * .6, angle;
+                if (p < windUp) angle = raised + (back - raised) * easeOutCubic(p / windUp);
+                else if (p < hitAt) { double q = (p - windUp) / (hitAt - windUp); angle = back + (impact - back) * q * q * q; }
+                else if (p < hitAt + stop) angle = impact;
+                else angle = impact + 7 * side * Math.sin(Math.min(1, (p - hitAt - stop) / .12) * Math.PI);
+                swing.setAngle(angle);
+                arm.setOpacity(p < .06 ? p / .06 : p > .82 ? 1 - (p - .82) / .18 : 1);
+                // The smear trails the blade through the fast part of the swing and burns out after the bite.
+                boolean swinging = p >= windUp;
+                smear.setVisible(swinging && p < hitAt + stop + .1);
+                if (swinging) smear.sweep(Math.min(back, angle + 70 * side * Math.min(1, (p - windUp) / (hitAt - windUp))) , angle);
+                smear.setOpacity(p < hitAt + stop ? 1 : 1 - (p - hitAt - stop) / .1);
+                double since = Math.max(0, (p - hitAt) / (1 - hitAt));
+                for (Node light : List.of(flash, wave, sparks)) light.setVisible(p >= hitAt);
+                flash.at(Math.min(1, since * 2.2));
+                wave.at(Math.min(1, since * 1.8));
+                sparks.at(Math.min(1, since * 1.4));
             }
         };
     }
 
-    /** A Spell spent: the card fades and rises as embers drift off it. */
+    /** The table shaken for a heavy blow: a fast, fading tremor added to every shake playing. */
+    private Live shake(Staging.Shake k) {
+        return new Live() {
+            @Override void update(double p) {
+                double amplitude = k.strength() * Math.pow(1 - p, 2);
+                shakeX += amplitude * Math.sin(p * 95);
+                shakeY += amplitude * .7 * Math.cos(p * 77);
+            }
+        };
+    }
+
+    /** A Spell spent: the card chars, fades and rises as embers drift off it. */
     private Live dissolve(Staging.Dissolve d) {
         Random random = new Random(d.seed());
         CardNode card = card(d.spell(), List.of(), d.at());
@@ -435,13 +496,14 @@ final class TableEffects {
         double[][] motion = new double[22][3];
         for (double[] m : motion) {
             m[0] = random.nextDouble(); m[1] = random.nextDouble(); m[2] = .5 + random.nextDouble();
-            embers.getChildren().add(new Circle(1, colour(d.tone(), 1).brighter()));
+            embers.getChildren().add(new Circle(1, m[2] > 1 ? EMBER : colour(d.tone(), 1).interpolate(EMBER, .5)));
         }
         return new Live() {
             { node.getChildren().addAll(card, embers); }
             @Override void update(double p) {
                 card.pose(d.at().getCenterX(), d.at().getCenterY() - 18 * p, 0, 1 - .1 * p, 0);
                 card.setOpacity(1 - p);
+                card.shade.setBrightness(-.45 * p);
                 for (int i = 0; i < motion.length; i++) {
                     Circle ember = (Circle) embers.getChildren().get(i);
                     ember.setCenterX(d.at().x + motion[i][0] * d.at().width);
@@ -457,7 +519,8 @@ final class TableEffects {
     private Live ring(Staging.Ring r) {
         Ellipse ring = new Ellipse(r.x(), r.y(), 1, 1);
         ring.setFill(null);
-        ring.setStroke(colour(r.tone(), 1));
+        // A shockwave of dust tinted by the Spell, not a neon hoop.
+        ring.setStroke(colour(r.tone(), 1).interpolate(DUST, .45));
         ring.setStrokeWidth(3);
         ring.setEffect(new DropShadow(BlurType.GAUSSIAN, colour(r.tone(), .8), 12, .3, 0, 0));
         return new Live() {
@@ -475,7 +538,8 @@ final class TableEffects {
     private Live burst(Staging.Burst b) {
         Random random = new Random(b.seed());
         double[][] sparks = new double[b.count()][3];
-        Color colour = colour(b.tone(), 1);
+        // Sparks burn ember-hot, only tinted by the Spell's colour.
+        Color colour = colour(b.tone(), 1).interpolate(EMBER, .45);
         return new Live() {
             {
                 node.setBlendMode(BlendMode.ADD);
@@ -498,46 +562,51 @@ final class TableEffects {
         };
     }
 
-    /** A card blown apart: its face cut into shards that fly outward and fall, after a soft flash. */
+    /**
+     * A chopped card falls apart: it splits in two along a slanting cut whose edges glow like hot
+     * iron, the halves slide apart along the cut, tumble and fall, and embers drift off the cut.
+     */
     private Live shatter(Staging.Shatter s) {
         Rectangle at = s.at();
         Image image = FxKit.face(s.card(), s.marks(), at.width, at.height, false, 2);
-        int cols = 3, rows = 4;
-        double w = at.width / (double) cols, h = at.height / (double) rows;
-        Random random = new Random(s.seed());
-        double[][] motion = new double[cols * rows][3];
-        ImageView[] shards = new ImageView[cols * rows];
-        for (int c = 0; c < cols; c++)
-            for (int r = 0; r < rows; r++) {
-                double[] m = motion[c * rows + r];
-                m[0] = random.nextDouble() * 2 - 1; m[1] = -random.nextDouble(); m[2] = random.nextDouble() * 2 - 1;
-                ImageView shard = new ImageView(image);
-                shard.setSmooth(!PixelCardFace.supports(s.card()));
-                shard.setViewport(new Rectangle2D(c * w * 2, r * h * 2, w * 2, h * 2));
-                shard.setFitWidth(w);
-                shard.setFitHeight(h);
-                shard.setLayoutX(-w / 2);
-                shard.setLayoutY(-h / 2);
-                shards[c * rows + r] = shard;
-            }
-        var flash = new javafx.scene.shape.Rectangle(at.x - 4, at.y - 4, at.width + 8, at.height + 8);
-        flash.setArcWidth(12);
-        flash.setArcHeight(12);
-        flash.setFill(WHITE);
-        flash.setBlendMode(BlendMode.ADD);
+        double cx = at.getCenterX(), cy = at.getCenterY();
+        // The cut slants one way or the other, through the card's middle.
+        double slant = Math.toRadians(s.seed() % 2 == 0 ? 62 : 118), ux = Math.cos(slant), uy = Math.sin(slant);
+        double far = Math.hypot(at.width, at.height);
+        double ax = cx - ux * far, ay = cy - uy * far, bx = cx + ux * far, by = cy + uy * far;
+        Group[] halves = new Group[2];
+        for (int k = 0; k < 2; k++) {
+            ImageView face = new ImageView(image);
+            face.setSmooth(!PixelCardFace.supports(s.card()));
+            face.setFitWidth(at.width);
+            face.setFitHeight(at.height);
+            face.setX(at.x);
+            face.setY(at.y);
+            double nx = -uy * far * (k == 0 ? 1 : -1), ny = ux * far * (k == 0 ? 1 : -1);
+            face.setClip(new Polygon(ax, ay, bx, by, bx + nx, by + ny, ax + nx, ay + ny));
+            halves[k] = new Group(face);
+            halves[k].setEffect(new DropShadow(BlurType.GAUSSIAN, Color.rgb(0, 0, 0, .5), 10, 0, 0, 5));
+        }
+        Line cut = new Line(cx - ux * at.height * .6, cy - uy * at.height * .6, cx + ux * at.height * .6, cy + uy * at.height * .6);
+        cut.setStroke(VfxKit.HOT);
+        cut.setStrokeWidth(3);
+        cut.setEffect(new DropShadow(BlurType.GAUSSIAN, Color.web("#FF8A3D"), 14, .6, 0, 0));
+        cut.setBlendMode(BlendMode.ADD);
+        VfxKit.Sparks embers = new VfxKit.Sparks(cx, cy, -90, 140, 18, at.height * .8, EMBER, s.seed());
         return new Live() {
-            { node.getChildren().addAll(shards); node.getChildren().add(flash); }
+            { node.getChildren().addAll(halves); node.getChildren().addAll(cut, embers); }
             @Override void update(double p) {
-                for (int c = 0; c < cols; c++)
-                    for (int r = 0; r < rows; r++) {
-                        double[] m = motion[c * rows + r];
-                        ImageView shard = shards[c * rows + r];
-                        shard.setTranslateX(at.x + c * w + w / 2 + (c - (cols - 1) / 2.0) * 55 * p + m[0] * 50 * p);
-                        shard.setTranslateY(at.y + r * h + h / 2 + (r - (rows - 1) / 2.0) * 30 * p + (m[1] * 90 + 260 * p) * p);
-                        shard.setRotate(Math.toDegrees(m[2] * 2.4 * p));
-                        shard.setOpacity(Math.max(0, 1 - p * 1.1));
-                    }
-                flash.setOpacity(p < .18 ? .3 * (1 - p / .18) : 0);
+                double apart = easeOutCubic(Math.min(1, p * 1.5));
+                for (int k = 0; k < 2; k++) {
+                    double sign = k == 0 ? 1 : -1;
+                    // Each half slides along the cut, away from the other, then drops and turns.
+                    halves[k].setTranslateX(sign * (-uy * 16 * apart + ux * 22 * apart) + sign * 10 * p);
+                    halves[k].setTranslateY(sign * (ux * 16 * apart + uy * 22 * apart) + 160 * p * p);
+                    halves[k].setRotate(sign * 24 * p * p);
+                    halves[k].setOpacity(p < .55 ? 1 : 1 - (p - .55) / .45);
+                }
+                cut.setOpacity(Math.max(0, 1 - p * 3));
+                embers.at(p);
             }
         };
     }
@@ -641,26 +710,28 @@ final class TableEffects {
         var veil = new javafx.scene.shape.Rectangle(at.x, at.y, at.width, at.height);
         veil.setArcWidth(9);
         veil.setArcHeight(9);
-        veil.setFill(Color.rgb(60, 60, 72, .43));
+        veil.setFill(Color.rgb(20, 16, 14, .5));
         var veilClip = new javafx.scene.shape.Rectangle(at.x - 12, at.y - 4, at.width + 24, 0);
         veil.setClip(veilClip);
         Group links = new Group();
+        double slope = Math.toDegrees(Math.atan2(at.height, at.width));
         for (int i = 0; i < 9; i++)
             for (int side = 0; side < 2; side++) {
                 double t = i / 8.0, y = at.y + at.height * t;
                 double x = side == 0 ? at.x + at.width * t : at.getMaxX() - at.width * t;
-                // Each link inked dark, then lit, so the chain reads over any artwork.
-                for (boolean lit : new boolean[]{false, true}) {
-                    Ellipse link = new Ellipse(x, y, 8, 5);
-                    link.setFill(null);
-                    link.setStroke(lit ? Color.rgb(222, 222, 236) : Color.rgb(30, 30, 38));
-                    link.setStrokeWidth(lit ? 2.4 : 5);
-                    links.getChildren().add(link);
-                }
+                // Iron links alternate flat and edge-on along each diagonal, as a real chain's do.
+                ImageView link = VfxSprites.chainLink(i % 2 == 1);
+                link.setTranslateX(x);
+                link.setTranslateY(y);
+                link.setRotate(side == 0 ? slope : -slope);
+                links.getChildren().add(link);
             }
         links.setEffect(new DropShadow(BlurType.GAUSSIAN, Color.rgb(0, 0, 0, .6), 6, 0, 0, 2));
+        // The chains lock with a flash and a spray of sparks where they cross.
+        VfxKit.Flash lock = new VfxKit.Flash(at.getCenterX(), at.getCenterY(), at.width * .45, colour(Tone.STEEL, 1), 4, 45);
+        VfxKit.Sparks clank = new VfxKit.Sparks(at.getCenterX(), at.getCenterY(), 0, 360, 14, at.width * .6, EMBER, at.x);
         return new Live() {
-            { node.getChildren().addAll(card, veil, links); }
+            { node.getChildren().addAll(card, veil, links, lock, clank); }
             @Override void update(double p) {
                 double shudder = Math.sin(p * Math.PI * 5) * 2 * (1 - p);
                 card.pose(at.getCenterX() + shudder, at.getCenterY(), 0, 1, 0);
@@ -668,8 +739,13 @@ final class TableEffects {
                 veilClip.setHeight((at.height + 8) * Math.min(1, p * 2.2));
                 double drawn = Math.max(0, Math.min(1, (p - .25) / .5));
                 for (int i = 0; i < links.getChildren().size(); i++)
-                    links.getChildren().get(i).setVisible(i / 4 < 9 * drawn);
+                    links.getChildren().get(i).setVisible(i / 2 < 9 * drawn);
                 links.setTranslateX(shudder);
+                double locked = Math.max(0, (p - .75) / .25);
+                lock.setVisible(p >= .75);
+                clank.setVisible(p >= .75);
+                lock.at(locked);
+                clank.at(locked);
                 links.setOpacity(Math.min(1, 1.6 - p) * .94);
             }
         };
@@ -679,8 +755,8 @@ final class TableEffects {
     private Live shine(Staging.Shine s) {
         Rectangle at = s.at();
         var band = new javafx.scene.shape.Rectangle(-at.width * .3, at.y - at.height, at.width * .6, at.height * 3);
-        band.setFill(new LinearGradient(0, 0, 1, 0, true, CycleMethod.NO_CYCLE, new Stop(0, Color.rgb(255, 248, 225, 0)),
-                new Stop(.5, Color.rgb(255, 248, 225, .67)), new Stop(1, Color.rgb(255, 248, 225, 0))));
+        band.setFill(new LinearGradient(0, 0, 1, 0, true, CycleMethod.NO_CYCLE, new Stop(0, Color.rgb(255, 226, 160, 0)),
+                new Stop(.5, Color.rgb(255, 232, 180, .67)), new Stop(1, Color.rgb(255, 226, 160, 0))));
         band.setRotate(-20);
         var clip = new javafx.scene.shape.Rectangle(at.x, at.y, at.width, at.height);
         clip.setArcWidth(9);
@@ -695,40 +771,28 @@ final class TableEffects {
     }
 
     /**
-     * A pair link drawing itself from one card to the other as a brass thread over a dark groove,
-     * with an ember at its head, then its bonus. A gold link (a +9 pair) is brighter and thicker.
+     * A pair link: a crackling filament of light leaps from one card to the other with a spark
+     * where it starts and a flash where it lands, flickers for a beat, then its bonus. A +9 pair's
+     * filament is gold, thicker and lands harder.
      */
     private Live link(Staging.Link l) {
         boolean gold = l.tone() == Tone.GOLD;
-        Color colour = gold ? TablePlaque.BRASS_LIGHT : TablePlaque.BRASS;
-        Polyline groove = new Polyline(), line = new Polyline();
-        groove.setStroke(Color.rgb(15, 13, 12, .7));
-        groove.setStrokeWidth(gold ? 6 : 5);
-        line.setStroke(colour);
-        line.setStrokeWidth(gold ? 3 : 2.2);
-        for (Polyline stroke : List.of(groove, line)) stroke.setStrokeLineCap(StrokeLineCap.ROUND);
-        line.setEffect(new DropShadow(BlurType.GAUSSIAN, colour.deriveColor(0, 1, 1, gold ? .8 : .45), gold ? 12 : 6, .25, 0, 0));
-        Circle head = new Circle(3.6, Color.web("#FFE6A8"));
-        head.setEffect(new DropShadow(BlurType.GAUSSIAN, Color.web("#F0A848"), 12, .5, 0, 0));
-        Text bonus = popText(l.bonus() == null ? "" : l.bonus(), colour, 17);
+        Color colour = gold ? Color.web("#FFC85A") : Color.web("#FF9A4A");
         double ax = l.a().getX(), ay = l.a().getY(), bx = l.b().getX(), by = l.b().getY();
-        double cx = (ax + bx) / 2, cy = ay + l.sag();
+        double cx = (ax + bx) / 2;
+        VfxKit.Filament arc = new VfxKit.Filament(ax, ay, bx, by, l.sag(), colour, gold ? 2.2 : 1.5, Math.round(ax * 7 + bx));
+        VfxKit.Flash start = new VfxKit.Flash(ax, ay, gold ? 16 : 11, colour, 4, 45);
+        VfxKit.Flash land = new VfxKit.Flash(bx, by, gold ? 26 : 16, colour, gold ? 6 : 4, 0);
+        Text bonus = popText(l.bonus() == null ? "" : l.bonus(), colour, 17);
         return new Live() {
-            { node.getChildren().addAll(groove, line, head, bonus); }
+            { node.getChildren().addAll(arc, start, land, bonus); }
             @Override void update(double p) {
-                double e = easeOutCubic(Math.min(1, p / .45));
-                List<Double> points = new ArrayList<>();
-                for (int i = 0; i <= 24; i++) {
-                    double t = e * i / 24;
-                    points.add((1 - t) * (1 - t) * ax + 2 * (1 - t) * t * cx + t * t * bx);
-                    points.add((1 - t) * (1 - t) * ay + 2 * (1 - t) * t * cy + t * t * by);
-                }
-                line.getPoints().setAll(points);
-                groove.getPoints().setAll(points);
-                node.setOpacity(p < .8 ? 1 : (1 - p) / .2);
-                head.setVisible(e < 1);
-                head.setCenterX(points.get(points.size() - 2));
-                head.setCenterY(points.get(points.size() - 1));
+                double reach = easeOutCubic(Math.min(1, p / .3));
+                arc.at(reach, (int) (p * 40));
+                arc.setOpacity(p < .7 ? 1 : 1 - (p - .7) / .3);
+                start.at(Math.min(1, p / .35));
+                land.setVisible(p >= .3);
+                land.at(Math.min(1, Math.max(0, (p - .3) / .4)));
                 bonus.setVisible(p >= .45 && l.bonus() != null);
                 if (p >= .45) pop(bonus, cx, ay + l.sag() * .6 + 16, (p - .45) / .55);
             }
@@ -965,28 +1029,22 @@ final class TableEffects {
         double angle = Math.toDegrees(Math.atan2(dy, dx)), nx = -dy / Math.max(1, length), ny = dx / Math.max(1, length);
         int count = Math.max(6, (int) (length / 15));
         Group links = new Group();
-        for (int i = 0; i < count; i++)
-            for (boolean lit : new boolean[]{false, true}) {
-                // Links alternate flat and edge-on, as a real chain's do.
-                Ellipse link = new Ellipse(0, 0, 8, i % 2 == 0 ? 4.5 : 1.8);
-                link.setFill(null);
-                link.setRotate(angle);
-                link.setStroke(lit ? Color.rgb(222, 226, 238) : Color.rgb(28, 30, 38));
-                link.setStrokeWidth(lit ? 2.2 : 4.6);
-                links.getChildren().add(link);
-            }
-        links.setEffect(new DropShadow(BlurType.GAUSSIAN, colour(Tone.STEEL, .7), 10, .2, 0, 0));
+        for (int i = 0; i < count; i++) {
+            // Iron links alternate flat and edge-on, as a real chain's do.
+            ImageView link = VfxSprites.chainLink(i % 2 == 1);
+            link.setRotate(angle);
+            links.getChildren().add(link);
+        }
+        links.setEffect(new DropShadow(BlurType.GAUSSIAN, Color.rgb(0, 0, 0, .6), 6, .1, 0, 3));
         return new Live() {
             { node.getChildren().add(links); }
             @Override void update(double p) {
                 double reach = Math.min(1, p * p * 1.25);
                 for (int i = 0; i < count; i++) {
                     double t = (i + .5) / count * reach, wave = Math.sin(t * Math.PI * 3 - p * 9) * 10 * (1 - p);
-                    for (int k = 0; k < 2; k++) {
-                        Node link = links.getChildren().get(i * 2 + k);
-                        link.setTranslateX(l.from().getX() + dx * t + nx * wave);
-                        link.setTranslateY(l.from().getY() + dy * t + ny * wave);
-                    }
+                    Node link = links.getChildren().get(i);
+                    link.setTranslateX(l.from().getX() + dx * t + nx * wave);
+                    link.setTranslateY(l.from().getY() + dy * t + ny * wave);
                 }
                 links.setOpacity(p < .85 ? 1 : 1 - (p - .85) / .15);
             }
@@ -994,48 +1052,23 @@ final class TableEffects {
     }
 
     /**
-     * A turning rune seal descends onto the card and stamps it: a flash, a small shudder, and the
-     * card's colour drains for a moment as its new disable marks appear.
+     * A sigil of binding draws itself in violet light over the card, turning and closing in, then
+     * slams down onto it: a burst of light, a shockwave and sparks; the card shudders and its colour
+     * drains for a moment as its new disable marks appear, and the sigil burns into it and fades.
      */
     private Live sigil(Staging.Sigil g) {
         Rectangle at = g.at();
-        double cx = at.getCenterX(), cy = at.getCenterY(), radius = at.width * .42, stampAt = g.stamp() / (double) PlayAnimator.SEAL;
+        double cx = at.getCenterX(), cy = at.getCenterY(), stampAt = g.stamp() / (double) PlayAnimator.SEAL;
         CardNode was = card(g.card(), g.was(), at), now = card(g.card(), g.marks(), at);
         Color colour = colour(Tone.ARCANE, 1);
-        Group seal = new Group();
-        for (double r : new double[]{radius, radius * .78}) {
-            Circle ring = new Circle(0, 0, r);
-            ring.setFill(null);
-            ring.setStroke(colour.brighter());
-            ring.setStrokeWidth(r == radius ? 2.4 : 1.4);
-            seal.getChildren().add(ring);
-        }
-        // Two interlaced triangles and six rune ticks between the rings.
-        for (int tri = 0; tri < 2; tri++) {
-            javafx.scene.shape.Polygon star = new javafx.scene.shape.Polygon();
-            for (int k = 0; k < 3; k++) {
-                double a = Math.PI * 2 * k / 3 + tri * Math.PI / 3 - Math.PI / 2;
-                star.getPoints().addAll(Math.cos(a) * radius * .74, Math.sin(a) * radius * .74);
-            }
-            star.setFill(null);
-            star.setStroke(colour);
-            star.setStrokeWidth(1.6);
-            seal.getChildren().add(star);
-        }
-        for (int k = 0; k < 6; k++) {
-            double a = Math.PI * 2 * k / 6;
-            Line tick = new Line(Math.cos(a) * radius * .8, Math.sin(a) * radius * .8, Math.cos(a) * radius * .96, Math.sin(a) * radius * .96);
-            tick.setStroke(WHITE);
-            tick.setStrokeWidth(2);
-            seal.getChildren().add(tick);
-        }
-        seal.setEffect(new DropShadow(BlurType.GAUSSIAN, colour, 16, .35, 0, 0));
-        seal.setBlendMode(BlendMode.ADD);
-        Circle flash = new Circle(cx, cy, radius * 1.2, colour(Tone.ARCANE, .9));
-        flash.setEffect(new GaussianBlur(18));
-        flash.setBlendMode(BlendMode.ADD);
+        VfxKit.Sigil seal = new VfxKit.Sigil(at.width * .55, colour, g.card().id().hashCode());
+        seal.setTranslateX(cx);
+        seal.setTranslateY(cy);
+        VfxKit.Flash flash = new VfxKit.Flash(cx, cy, at.width * .6, colour, 8, 0);
+        VfxKit.Shockwave wave = new VfxKit.Shockwave(cx, cy, at.width * 1.3, .5, colour);
+        VfxKit.Sparks sparks = new VfxKit.Sparks(cx, cy, 0, 360, 22, at.width * .9, colour, Math.round(cx));
         return new Live() {
-            { node.getChildren().addAll(was, now, seal, flash); }
+            { node.getChildren().addAll(was, now, seal, wave, flash, sparks); }
             @Override void update(double p) {
                 boolean stamped = p >= stampAt;
                 double since = stamped ? (p - stampAt) / (1 - stampAt) : 0;
@@ -1046,35 +1079,38 @@ final class TableEffects {
                 // The colour drains at the stamp and returns, so the real card takes over without a jump.
                 now.shade.setSaturation(-.75 * Math.sin(Math.PI * since));
                 double fall = Math.min(1, p / stampAt);
-                double size = stamped ? 1 + .25 * since : 2.3 - 1.3 * fall * fall;
-                seal.setTranslateX(cx + shudder);
-                seal.setTranslateY(cy - (1 - fall) * at.height * .35);
+                seal.draw(Math.min(1, fall * 1.4));
+                double size = stamped ? 1 : 1.7 - .7 * fall * fall * fall;
                 seal.setScaleX(size);
                 seal.setScaleY(size);
-                seal.setRotate(200 * p);
-                seal.setOpacity(stamped ? 1 - since : Math.min(1, p / (stampAt * .4)));
-                flash.setOpacity(stamped && since < .3 ? .35 * (1 - since / .3) : 0);
+                seal.setRotate(stamped ? 0 : -120 * (1 - fall));
+                seal.setTranslateX(cx + shudder);
+                seal.setOpacity(stamped ? (since < .35 ? 1 : 1 - (since - .35) / .65) : Math.min(1, p / (stampAt * .25)));
+                for (Node light : List.of(flash, wave, sparks)) light.setVisible(stamped);
+                flash.at(Math.min(1, since * 2.5));
+                wave.at(Math.min(1, since * 2));
+                sparks.at(Math.min(1, since * 1.5));
             }
         };
     }
 
-    /** A shaft of light falls from above the table onto the card, motes rise through it, and it narrows away. */
+    /** A shaft of warm candlelight falls onto the card, gold motes rise through it, and it narrows away. */
     private Live beam(Staging.Beam b) {
         Rectangle at = b.at();
         double cx = at.getCenterX(), width = at.width * .8;
         var shaft = new javafx.scene.shape.Rectangle(-width / 2, 0, width, 1);
-        shaft.setFill(new LinearGradient(0, 0, 1, 0, true, CycleMethod.NO_CYCLE, new Stop(0, Color.rgb(255, 248, 225, 0)),
-                new Stop(.5, Color.rgb(255, 248, 225, .75)), new Stop(1, Color.rgb(255, 248, 225, 0))));
+        shaft.setFill(new LinearGradient(0, 0, 1, 0, true, CycleMethod.NO_CYCLE, new Stop(0, Color.rgb(255, 226, 160, 0)),
+                new Stop(.5, Color.rgb(255, 226, 160, .75)), new Stop(1, Color.rgb(255, 226, 160, 0))));
         shaft.setEffect(new GaussianBlur(10));
         Ellipse pool = new Ellipse(0, 0, width * .8, width * .22);
         pool.setFill(new RadialGradient(0, 0, .5, .5, .5, true, CycleMethod.NO_CYCLE,
-                new Stop(0, Color.rgb(255, 248, 225, .8)), new Stop(1, Color.rgb(255, 248, 225, 0))));
+                new Stop(0, Color.rgb(255, 226, 160, .8)), new Stop(1, Color.rgb(255, 226, 160, 0))));
         Random random = new Random(b.seed());
         double[][] motes = new double[18][3];
         Group rising = new Group();
         for (double[] m : motes) {
             m[0] = (random.nextDouble() - .5) * width * .8; m[1] = random.nextDouble() * .6; m[2] = 1.5 + random.nextDouble() * 2;
-            rising.getChildren().add(new Circle(m[2], WHITE));
+            rising.getChildren().add(new Circle(m[2], CANDLE));
         }
         Group light = new Group(shaft, pool, rising);
         light.setBlendMode(BlendMode.ADD);
@@ -1113,11 +1149,19 @@ final class TableEffects {
         Random random = new Random(b.seed());
         double[] jag = new double[13];
         for (int i = 0; i < jag.length; i++) jag[i] = (random.nextDouble() - .5) * 9;
-        Polyline front = new Polyline();
-        front.setStroke(colour(Tone.EMBER, 1).brighter());
-        front.setStrokeWidth(3);
-        front.setStrokeLineCap(StrokeLineCap.ROUND);
-        front.setEffect(new DropShadow(BlurType.GAUSSIAN, colour(Tone.EMBER, 1), 14, .5, 0, 0));
+        // A charred band with a thin glowing edge, and flame tongues licking up from it.
+        Polyline ash = new Polyline(), front = new Polyline();
+        ash.setStroke(Color.rgb(28, 14, 6, .9));
+        ash.setStrokeWidth(7);
+        front.setStroke(Color.web("#FFB347"));
+        front.setStrokeWidth(2);
+        for (Polyline line : List.of(ash, front)) line.setStrokeLineCap(StrokeLineCap.ROUND);
+        front.setEffect(new DropShadow(BlurType.GAUSSIAN, colour(Tone.EMBER, 1), 8, .4, 0, 0));
+        ImageView[] tongues = new ImageView[7];
+        Group flames = new Group();
+        flames.setBlendMode(BlendMode.ADD);
+        for (int i = 0; i < tongues.length; i++) flames.getChildren().add(tongues[i] = VfxSprites.flame(26));
+        VfxKit.Smoke smoke = new VfxKit.Smoke(at.x, at.getMaxY(), at.width, 14, b.seed());
         double[][] embers = new double[28][3];
         Group sparks = new Group();
         for (double[] e : embers) {
@@ -1126,7 +1170,7 @@ final class TableEffects {
         }
         sparks.setBlendMode(BlendMode.ADD);
         return new Live() {
-            { node.getChildren().addAll(paper, front, sparks); }
+            { node.getChildren().addAll(smoke, paper, ash, front, flames, sparks); }
             @Override void update(double p) {
                 double edge = edgeAt(Math.min(1, p / .85));
                 clip.setHeight(Math.max(0, edge - clip.getY()));
@@ -1137,7 +1181,17 @@ final class TableEffects {
                     points.add(edge + jag[i] * (1 + .3 * Math.sin(p * 30 + i)));
                 }
                 front.getPoints().setAll(points);
-                front.setOpacity(p < .85 ? 1 : 1 - (p - .85) / .15);
+                ash.getPoints().setAll(points);
+                smoke.setTranslateY(edge - at.getMaxY());
+                smoke.at(p);
+                double fade = p < .85 ? 1 : 1 - (p - .85) / .15;
+                for (Node line : List.of(ash, front, flames)) line.setOpacity(fade);
+                for (int i = 0; i < tongues.length; i++) {
+                    double flicker = .55 + .45 * Math.abs(Math.sin(p * 38 + i * 1.7));
+                    tongues[i].setScaleY(flicker);
+                    tongues[i].setTranslateX(at.x + at.width * (i + .5) / tongues.length);
+                    tongues[i].setTranslateY(edge + jag[i * 2] - 13 * flicker);
+                }
                 for (int i = 0; i < embers.length; i++) {
                     double age = (p - embers[i][1]) / .3;
                     Node ember = sparks.getChildren().get(i);
@@ -1154,26 +1208,28 @@ final class TableEffects {
     }
 
     /**
-     * A golden thread arcs out to a hand and hooks a card with a glint; then it snaps taut and
+     * A brass wire arcs out to a hand and hooks a card with a glinting rivet; then it snaps taut and
      * fades as the stolen card is pulled across.
      */
     private Live tether(Staging.Tether t) {
         double hookAt = PlayAnimator.HOOK / (double) PlayAnimator.TETHER;
         double ax = t.from().getX(), ay = t.from().getY(), bx = t.hook().getX(), by = t.hook().getY();
-        Color gold = colour(Tone.GOLD, 1);
-        Polyline thread = new Polyline();
-        thread.setStroke(gold);
+        // A brass wire over a dark groove; a rivet glints where it hooks the card.
+        Polyline groove = new Polyline(), thread = new Polyline();
+        groove.setStroke(Color.rgb(15, 13, 12, .75));
+        groove.setStrokeWidth(5);
+        thread.setStroke(TablePlaque.BRASS_LIGHT);
         thread.setStrokeWidth(2.2);
-        thread.setStrokeLineCap(StrokeLineCap.ROUND);
-        thread.setEffect(new DropShadow(BlurType.GAUSSIAN, gold, 10, .3, 0, 0));
-        Group glint = new Group(new Line(-16, 0, 16, 0), new Line(0, -16, 0, 16), new Circle(4, WHITE));
-        for (Node arm : glint.getChildren()) if (arm instanceof Line line) { line.setStroke(WHITE); line.setStrokeWidth(2); }
-        glint.setEffect(new DropShadow(BlurType.GAUSSIAN, gold, 14, .5, 0, 0));
-        glint.setBlendMode(BlendMode.ADD);
+        for (Polyline line : List.of(groove, thread)) line.setStrokeLineCap(StrokeLineCap.ROUND);
+        thread.setEffect(new DropShadow(BlurType.GAUSSIAN, TablePlaque.BRASS.deriveColor(0, 1, 1, .6), 8, .3, 0, 0));
+        Line across = new Line(-16, 0, 16, 0), down = new Line(0, -16, 0, 16);
+        for (Line arm : List.of(across, down)) { arm.setStroke(CANDLE); arm.setStrokeWidth(2); arm.setBlendMode(BlendMode.ADD); }
+        Group glint = new Group(across, down, VfxSprites.rivet(10));
+        glint.setEffect(new DropShadow(BlurType.GAUSSIAN, TablePlaque.BRASS, 12, .4, 0, 0));
         glint.setTranslateX(bx);
         glint.setTranslateY(by);
         return new Live() {
-            { node.getChildren().addAll(thread, glint); }
+            { node.getChildren().addAll(groove, thread, glint); }
             @Override void update(double p) {
                 boolean hooked = p >= hookAt;
                 double reach = hooked ? 1 : easeOutCubic(p / hookAt), since = hooked ? (p - hookAt) / (1 - hookAt) : 0;
@@ -1187,7 +1243,10 @@ final class TableEffects {
                     points.add((1 - q) * (1 - q) * ay + 2 * (1 - q) * q * cy + q * q * by);
                 }
                 thread.getPoints().setAll(points);
-                thread.setOpacity(since < .5 ? 1 : 1 - (since - .5) / .5);
+                groove.getPoints().setAll(points);
+                double fade = since < .5 ? 1 : 1 - (since - .5) / .5;
+                thread.setOpacity(fade);
+                groove.setOpacity(fade);
                 glint.setVisible(hooked && since < .45);
                 double size = .4 + 1.2 * Math.sin(Math.PI * Math.min(1, since / .45));
                 glint.setScaleX(size);
@@ -1197,24 +1256,25 @@ final class TableEffects {
         };
     }
 
-    /** A pulse at the deck and motes thrown up from it, arcing out and falling back. */
+    /** A brass ripple at the deck and gold motes thrown up from it, arcing out and falling back. */
     private Live wellspring(Staging.Wellspring w) {
         Rectangle pile = w.pile();
         double cx = pile.getCenterX(), cy = pile.getCenterY();
-        Color colour = colour(w.tone(), 1);
+        // Warm gold, only tinted by the Spell's colour: the deck gives up its cards like a lit hearth.
+        Color colour = colour(w.tone(), 1).interpolate(CANDLE, .7);
         Ellipse pulse = new Ellipse(cx, cy, 1, 1);
         pulse.setFill(null);
-        pulse.setStroke(colour);
+        pulse.setStroke(TablePlaque.BRASS_LIGHT);
         pulse.setStrokeWidth(2.5);
         Circle glow = new Circle(cx, cy, pile.height * .8);
         glow.setFill(new RadialGradient(0, 0, .5, .5, .5, true, CycleMethod.NO_CYCLE,
-                new Stop(0, colour(w.tone(), .7)), new Stop(1, colour(w.tone(), 0))));
+                new Stop(0, colour.deriveColor(0, 1, 1, .55)), new Stop(1, colour.deriveColor(0, 1, 1, 0))));
         Random random = new Random(w.seed());
         double[][] motes = new double[30][3];
         Group fountain = new Group();
         for (double[] m : motes) {
             m[0] = (random.nextDouble() - .5) * 120; m[1] = 140 + random.nextDouble() * 110; m[2] = random.nextDouble() * .35;
-            fountain.getChildren().add(new Circle(1.6 + random.nextDouble() * 2, colour.brighter()));
+            fountain.getChildren().add(new Circle(1.6 + random.nextDouble() * 2, random.nextBoolean() ? CANDLE : TablePlaque.BRASS_LIGHT));
         }
         Group all = new Group(glow, pulse, fountain);
         all.setBlendMode(BlendMode.ADD);
@@ -1239,40 +1299,53 @@ final class TableEffects {
         };
     }
 
-    /** Spiral arms turning about a dark core, opening and then closing. */
+    /**
+     * A vortex of light: streaks spiral inward round a dark well under a turning sigil, faster as it
+     * closes, as cards are swallowed and given back.
+     */
     private Live vortex(Staging.Vortex v) {
         Rectangle at = v.at();
-        double radius = Math.max(at.width, at.height) * .7;
+        double radius = Math.max(at.width, at.height) * .7, cx = at.getCenterX(), cy = at.getCenterY();
         Color colour = colour(v.tone(), 1);
-        Circle core = new Circle(0, 0, radius * .42);
-        core.setFill(new RadialGradient(0, 0, .5, .5, .5, true, CycleMethod.NO_CYCLE,
-                new Stop(0, Color.rgb(6, 10, 24, .95)), new Stop(.7, Color.rgb(12, 24, 48, .6)), new Stop(1, colour(v.tone(), 0))));
-        Group arms = new Group();
-        for (int arm = 0; arm < 4; arm++) {
-            Polyline line = new Polyline();
-            for (int i = 0; i <= 40; i++) {
-                double t = i / 40.0, a = arm * Math.PI / 2 + t * Math.PI * 2.2, r = radius * (1 - t * .9);
-                line.getPoints().addAll(Math.cos(a) * r, Math.sin(a) * r);
-            }
-            line.setStroke(arm % 2 == 0 ? colour : colour.brighter());
-            line.setStrokeWidth(arm % 2 == 0 ? 3 : 1.6);
-            line.setStrokeLineCap(StrokeLineCap.ROUND);
-            arms.getChildren().add(line);
+        Circle core = new Circle(cx, cy, radius * .7);
+        core.setFill(new RadialGradient(0, 0, cx, cy, radius * .7, false, CycleMethod.NO_CYCLE,
+                new Stop(0, Color.rgb(4, 4, 6, .95)), new Stop(.6, Color.rgb(10, 12, 18, .7)), new Stop(1, Color.rgb(10, 12, 18, 0))));
+        VfxKit.Sigil ring = new VfxKit.Sigil(radius, colour, 11);
+        ring.setTranslateX(cx);
+        ring.setTranslateY(cy);
+        Random random = new Random(7);
+        double[][] streams = new double[44][3];
+        Group swirl = new Group();
+        swirl.setBlendMode(BlendMode.ADD);
+        for (double[] st : streams) {
+            st[0] = random.nextDouble() * Math.PI * 2; st[1] = random.nextDouble(); st[2] = .6 + random.nextDouble() * .6;
+            Line streak = new Line();
+            streak.setStrokeLineCap(StrokeLineCap.ROUND);
+            streak.setStroke(VfxKit.HOT.interpolate(colour, .2 + random.nextDouble() * .6));
+            swirl.getChildren().add(streak);
         }
-        arms.setEffect(new DropShadow(BlurType.GAUSSIAN, colour, 16, .3, 0, 0));
-        arms.setBlendMode(BlendMode.ADD);
-        Group whirl = new Group(core, arms);
-        whirl.setTranslateX(at.getCenterX());
-        whirl.setTranslateY(at.getCenterY());
         return new Live() {
-            { node.getChildren().add(whirl); }
+            { node.getChildren().addAll(core, ring, swirl); }
             @Override void update(double p) {
                 double open = p < .2 ? easeOutBack(p / .2) : p > .8 ? 1 - easeInOutCubic((p - .8) / .2) : 1;
-                whirl.setScaleX(Math.max(.01, open));
-                whirl.setScaleY(Math.max(.01, open * .9));
-                // Turning faster as it closes, as water does going down a drain.
-                arms.setRotate(-(360 * p + 300 * p * p));
-                whirl.setOpacity(Math.min(1, p / .1));
+                ring.draw(Math.min(1, p / .3));
+                ring.setRotate(-(200 * p + 260 * p * p));
+                ring.setScaleX(Math.max(.01, open));
+                ring.setScaleY(Math.max(.01, open));
+                core.setScaleX(Math.max(.01, open));
+                core.setScaleY(Math.max(.01, open));
+                for (int i = 0; i < streams.length; i++) {
+                    // Each streak circles inward on a tightening spiral, faster near the middle.
+                    double age = (p * 1.6 * streams[i][2] + streams[i][1]) % 1;
+                    double r = radius * 1.05 * (1 - age) * open, a = streams[i][0] + age * 5, lag = .35 + age * .5;
+                    Line streak = (Line) swirl.getChildren().get(i);
+                    streak.setStartX(cx + Math.cos(a - lag) * r * 1.08);
+                    streak.setStartY(cy + Math.sin(a - lag) * r * 1.08);
+                    streak.setEndX(cx + Math.cos(a) * r);
+                    streak.setEndY(cy + Math.sin(a) * r);
+                    streak.setStrokeWidth(.6 + 1.8 * (1 - age));
+                    streak.setOpacity(Math.sin(Math.PI * age) * Math.min(1, open));
+                }
             }
         };
     }
@@ -1296,14 +1369,14 @@ final class TableEffects {
         };
     }
 
-    /** Face-down cards rising from the deck into a small fan, glowing faintly while looked over, then sinking back. */
+    /** Face-down cards rising from the deck into a small fan, lit as if by a candle while looked over, then sinking back. */
     private Live peek(Staging.Peek pk) {
         Rectangle pile = pk.pile();
         int count = pk.count();
         CardNode[] backs = new CardNode[count];
         for (int i = 0; i < count; i++) {
             backs[i] = card(null, List.of(), pile);
-            backs[i].setEffect(new DropShadow(BlurType.GAUSSIAN, colour(Tone.TEAL, .9), 14, .3, 0, 0));
+            backs[i].setEffect(new DropShadow(BlurType.GAUSSIAN, CANDLE.deriveColor(0, 1, 1, .8), 14, .3, 0, 0));
         }
         return new Live() {
             { node.getChildren().addAll(backs); }
@@ -1319,36 +1392,48 @@ final class TableEffects {
         };
     }
 
-    /** An almond eye opening over a hand: its iris glances along the cards, then the lids close. */
+    /** An eye of light opening over a hand: its rune-ringed iris and a cone of sight sweep along the cards, then it closes. */
     private Live eye(Staging.Eye e) {
         double w = e.width(), h = w * .44;
-        Color teal = colour(Tone.TEAL, 1);
+
         javafx.scene.shape.QuadCurveTo upper = new javafx.scene.shape.QuadCurveTo(0, 0, w / 2, 0);
         javafx.scene.shape.QuadCurveTo lower = new javafx.scene.shape.QuadCurveTo(0, 0, -w / 2, 0);
         javafx.scene.shape.QuadCurveTo clipUpper = new javafx.scene.shape.QuadCurveTo(0, 0, w / 2, 0);
         javafx.scene.shape.QuadCurveTo clipLower = new javafx.scene.shape.QuadCurveTo(0, 0, -w / 2, 0);
         javafx.scene.shape.Path lids = new javafx.scene.shape.Path(new javafx.scene.shape.MoveTo(-w / 2, 0), upper, lower,
                 new javafx.scene.shape.ClosePath());
+        // An eye of light: a dark smoky well rimmed in a thin bright line, its iris ringed with runes.
+        Color sight = colour(Tone.TEAL, 1);
         lids.setFill(new RadialGradient(0, 0, .5, .5, .6, true, CycleMethod.NO_CYCLE,
-                new Stop(0, Color.rgb(240, 248, 244)), new Stop(1, Color.rgb(170, 200, 196))));
-        lids.setStroke(teal.brighter());
-        lids.setStrokeWidth(2.5);
+                new Stop(0, Color.rgb(6, 14, 14, .75)), new Stop(1, Color.rgb(4, 8, 8, .9))));
+        lids.setStroke(VfxKit.HOT.interpolate(sight, .35));
+        lids.setStrokeWidth(1.8);
+        lids.setEffect(new DropShadow(BlurType.GAUSSIAN, sight, 16, .45, 0, 0));
         javafx.scene.shape.Path clip = new javafx.scene.shape.Path(new javafx.scene.shape.MoveTo(-w / 2, 0), clipUpper, clipLower,
                 new javafx.scene.shape.ClosePath());
         // A clip uses the shape's fill, which a Path lacks by default.
         clip.setFill(Color.BLACK);
         Circle iris = new Circle(0, 0, h * .34);
         iris.setFill(new RadialGradient(0, 0, .5, .5, .5, true, CycleMethod.NO_CYCLE,
-                new Stop(0, teal.brighter()), new Stop(.8, teal.darker()), new Stop(1, Color.rgb(10, 40, 40))));
-        Circle pupil = new Circle(0, 0, h * .14, Color.rgb(8, 12, 14));
-        Circle gleam = new Circle(-h * .1, -h * .1, h * .06, WHITE);
-        Group ball = new Group(iris, pupil, gleam);
+                new Stop(0, VfxKit.HOT), new Stop(.35, sight.brighter()), new Stop(.8, sight.darker()), new Stop(1, Color.rgb(4, 20, 20, 0))));
+        VfxKit.Sigil runes = new VfxKit.Sigil(h * .42, sight, 5);
+        runes.draw(1);
+        // A slit pupil, like a cat's in the dark.
+        Ellipse pupil = new Ellipse(0, 0, h * .05, h * .26);
+        pupil.setFill(Color.rgb(2, 6, 6));
+        Circle gleam = new Circle(-h * .1, -h * .12, h * .045, VfxKit.HOT);
+        Group ball = new Group(iris, runes, pupil, gleam);
         ball.setClip(clip);
         Ellipse halo = new Ellipse(0, 0, w * .75, h * .9);
         halo.setFill(new RadialGradient(0, 0, .5, .5, .5, true, CycleMethod.NO_CYCLE,
-                new Stop(0, colour(Tone.TEAL, .5)), new Stop(1, colour(Tone.TEAL, 0))));
-        Group whole = new Group(halo, lids, ball);
-        whole.setEffect(new DropShadow(BlurType.GAUSSIAN, teal, 18, .2, 0, 0));
+                new Stop(0, sight.deriveColor(0, 1, 1, .35)), new Stop(1, sight.deriveColor(0, 1, 1, 0))));
+        halo.setBlendMode(BlendMode.ADD);
+        // Its gaze is a pale cone of light sweeping down over the hand.
+        Polygon gazeCone = new Polygon(-h * .15, 0, h * .15, 0, w * .32, h * 2.4, -w * .32, h * 2.4);
+        gazeCone.setFill(new LinearGradient(0, 0, 0, 1, true, CycleMethod.NO_CYCLE,
+                new Stop(0, sight.deriveColor(0, 1, 1, .4)), new Stop(1, sight.deriveColor(0, 1, 1, 0))));
+        gazeCone.setBlendMode(BlendMode.ADD);
+        Group whole = new Group(gazeCone, halo, lids, ball);
         whole.setTranslateX(e.x());
         whole.setTranslateY(e.y());
         return new Live() {
@@ -1362,6 +1447,9 @@ final class TableEffects {
                 double gaze = Math.sin(Math.max(0, p - .15) / .7 * Math.PI * 2) * w * .2 * (p < .85 ? 1 : 0);
                 ball.setTranslateX(gaze);
                 clip.setTranslateX(-gaze);
+                gazeCone.setTranslateX(gaze * 1.6);
+                gazeCone.setOpacity(open);
+                runes.setRotate(90 * p);
                 halo.setOpacity(open);
                 whole.setOpacity(Math.min(1, p / .08));
             }

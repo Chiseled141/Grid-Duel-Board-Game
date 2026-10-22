@@ -27,8 +27,8 @@ final class Staging {
 
     /** Effect colours, named for what they mean on the table; each Spell family charges in its own. */
     enum Tone {
-        EMBER(0xF0874A), ARCANE(0xA88BE8), CREAM(0xF4E6C6), GOLD(0xF4C766),
-        CRIMSON(0xE85A4C), STEEL(0xB4C2D8), VERDANT(0x8FD49A), AZURE(0x6FB7F0), TEAL(0x5FD3C4), ASH(0x9A9088);
+        EMBER(0xE0783A), ARCANE(0x8C6FB8), CREAM(0xEDE3CF), GOLD(0xD9B56A),
+        CRIMSON(0xC2443A), STEEL(0x9AA6B4), VERDANT(0x7FA36A), AZURE(0x5E8FB8), TEAL(0x4F9E94), ASH(0x9A9088);
         final int rgb;
         Tone(int rgb) { this.rgb = rgb; }
     }
@@ -66,10 +66,12 @@ final class Staging {
     record Charge(CardDef spell, Rectangle at, Tone tone) implements Effect {
         Charge { at = new Rectangle(at); }
     }
-    /** A bolt from a Spell to its target. */
-    record Bolt(Point2D from, Point2D to, Tone tone) implements Effect {
-        Bolt { from = (Point2D) from.clone(); to = (Point2D) to.clone(); }
+    /** A war axe swung down onto a Unit (Destroy Unit): it winds up, chops and bites at {@link PlayAnimator#CHOP_HIT}. */
+    record Chop(Rectangle at) implements Effect {
+        Chop { at = new Rectangle(at); }
     }
+    /** The table's cards and effects shaken by a heavy blow, {@code strength} pixels at first. */
+    record Shake(double strength) implements Effect { }
     /** A spent Spell fading into embers. */
     record Dissolve(CardDef spell, Rectangle at, Tone tone, long seed) implements Effect {
         Dissolve { at = new Rectangle(at); }
@@ -109,7 +111,7 @@ final class Staging {
     record Burn(CardDef card, Rectangle at, long seed) implements Effect {
         Burn { at = new Rectangle(at); }
     }
-    /** A golden thread cast from a Spell that hooks a card in a hand, then snaps taut (Random Steal). */
+    /** A brass wire cast from a Spell that hooks a card in a hand, then snaps taut (Random Steal). */
     record Tether(Point2D from, Point2D hook) implements Effect {
         Tether { from = (Point2D) from.clone(); hook = (Point2D) hook.clone(); }
     }
