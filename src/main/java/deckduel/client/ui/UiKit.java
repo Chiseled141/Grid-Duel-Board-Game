@@ -24,8 +24,8 @@ import java.awt.RenderingHints;
 import java.awt.Window;
 
 /**
- * Component kit shared by every screen: jade and gold pill buttons, sticker
- * panels, heading banners and small drawn motifs. Everything is plain Swing painted with
+ * Component kit shared by every screen: iron and gold plate buttons, iron
+ * plates, heading banners and small drawn motifs. Everything is plain Swing painted with
  * Graphics2D — no images, no extra libraries.
  */
 public final class UiKit {
@@ -40,44 +40,31 @@ public final class UiKit {
     // Buttons
     // ------------------------------------------------------------------
 
-    /** Lightens a color slightly for hover states. */
-    public static Color lighten(Color color) {
-        // A restrained tint keeps ivory labels readable on the jade hover fill.
-        return new Color(color.getRed() + (int) ((255 - color.getRed()) * .12),
-                color.getGreen() + (int) ((255 - color.getGreen()) * .12),
-                color.getBlue() + (int) ((255 - color.getBlue()) * .12));
-    }
-
-    /** Coordinated action colors for the painted mountain theme. */
+    /** Button looks matched to the match table's iron plates (see {@code TablePlaque}). */
     public enum Pill {
-        /** Gold fill, ink text — the primary action. */
-        GOLD(Theme.AMBER, Theme.INK, Theme.INK, false),
-        /** Warm parchment, brass border and dark lettering for help on the campaign table. */
-        PARCHMENT(new Color(237, 222, 186), new Color(143, 107, 54), Theme.INK, false),
-        /** Deep jade fill, gold border and text — secondary action on dark. */
-        GOLD_OUTLINE(Theme.BG, Theme.AMBER, Theme.AMBER, true),
-        /** Jade fill, mint border and ivory text — neutral action on dark. */
-        CREAM_OUTLINE(Theme.JADE, Theme.FOCUS_WASH, Theme.CREAM, true),
-        /** Vermilion fill, coral border and ivory text — destructive action. */
-        DANGER(Theme.VERMILION, Theme.CORAL, Theme.CREAM, false);
+        /** Aged gold, ink text: the primary action. */
+        GOLD(Theme.BRASS_LIGHT, Theme.BRASS_DARK, Theme.BRASS_LIGHT, Theme.INK),
+        /** Blackened iron with gold trim and gold text: a secondary action. */
+        GOLD_OUTLINE(new Color(0x4A423D), Theme.IRON_DARK, Theme.BRASS, Theme.BRASS_LIGHT),
+        /** Blackened iron with gold trim and cream text: a neutral action. */
+        CREAM_OUTLINE(new Color(0x4A423D), Theme.IRON_DARK, Theme.BRASS, Theme.CREAM);
 
-        final Color fill;
-        final Color border;
+        final Color top;
+        final Color bottom;
+        final Color trim;
         final Color text;
-        final boolean outline;
 
-        Pill(Color fill, Color border, Color text, boolean outline) {
-            this.fill = fill;
-            this.border = border;
+        Pill(Color top, Color bottom, Color trim, Color text) {
+            this.top = top;
+            this.bottom = bottom;
+            this.trim = trim;
             this.text = text;
-            this.outline = outline;
         }
     }
 
     /**
-     * A pill button: fully rounded, uppercase display font, and a hard
-     * charcoal shadow that the button "sinks" into when pressed and lifts
-     * slightly on hover.
+     * A table button: a clipped-corner plate with a vertical gradient, an inner gold hairline
+     * and a soft shadow; it brightens on hover and sinks a pixel when pressed.
      */
     public static class PillButton extends JButton {
         private final Pill variant;
@@ -114,32 +101,51 @@ public final class UiKit {
 
         @Override
         protected void paintComponent(Graphics graphics) {
-            Graphics2D g = (Graphics2D) graphics.create();
-            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
-                    RenderingHints.VALUE_ANTIALIAS_ON);
-            boolean enabled = isEnabled();
-            boolean pressed = enabled && getModel().isPressed();
-            boolean hover = enabled && getModel().isRollover();
-            int shadow = pressed ? 1 : hover ? SHADOW + 2 : SHADOW;
-            int w = getWidth() - shadow;
-            int h = getHeight() - shadow;
-            int arc = Math.min(h, 22);
-            Color fill = enabled ? variant.fill : Theme.DISABLED;
-            Color border = enabled ? variant.border : Theme.DISABLED.darker();
+            Graphics2D g = nice(graphics);
+            boolean pressed = getModel().isPressed();
+            boolean hover = getModel().isRollover();
+            int w = getWidth() - SHADOW;
+            int h = getHeight() - SHADOW;
+            int sink = pressed ? 1 : 0;
             if (!pressed) {
-                g.setColor(Theme.SHADOW);
-                g.fillRoundRect(shadow, shadow, w, h, arc, arc);
+                g.setColor(new Color(0, 0, 0, 90));
+                g.fill(chamfer(1, 3, w, h, 5));
             }
-            int sink = pressed ? 2 : 0;
-            g.setColor(hover ? lighten(fill) : fill);
-            g.fillRoundRect(sink, sink, w, h, arc, arc);
-            g.setColor(border);
-            g.setStroke(new java.awt.BasicStroke(2f));
-            g.drawRoundRect(sink, sink, w - 1, h - 1, arc, arc);
+            g.translate(0, sink);
+            g.setColor(Theme.WOOD_LINE);
+            g.fill(chamfer(0, 0, w, h, 5));
+            Color top = hover ? brighter(variant.top, 1.18f) : variant.top;
+            Color bottom = hover ? brighter(variant.bottom, 1.3f) : variant.bottom;
+            g.setPaint(new java.awt.GradientPaint(0, 0, top, 0, h, bottom));
+            g.fill(chamfer(1, 1, w - 2, h - 2, 4));
+            g.setColor(Theme.withAlpha(variant.trim, hover ? 240 : 170));
+            g.setStroke(new java.awt.BasicStroke(1f));
+            g.draw(chamfer(2.5, 2.5, w - 5, h - 5, 3));
             g.dispose();
-            setForeground(enabled ? variant.text : Theme.INK);
+            setForeground(hover && variant != Pill.GOLD ? Theme.BRASS_LIGHT : variant.text);
             super.paintComponent(graphics);
         }
+    }
+
+    /** {@code colour} lightened by {@code factor} in HSB brightness, for hover states. */
+    private static Color brighter(Color colour, float factor) {
+        float[] hsb = Color.RGBtoHSB(colour.getRed(), colour.getGreen(), colour.getBlue(), null);
+        return Color.getHSBColor(hsb[0], hsb[1], Math.min(1f, hsb[2] * factor));
+    }
+
+    /** A rectangle with its four corners cut at 45 degrees, the shape of the table's plates. */
+    static java.awt.geom.Path2D chamfer(double x, double y, double w, double h, double cut) {
+        java.awt.geom.Path2D.Double path = new java.awt.geom.Path2D.Double();
+        path.moveTo(x + cut, y);
+        path.lineTo(x + w - cut, y);
+        path.lineTo(x + w, y + cut);
+        path.lineTo(x + w, y + h - cut);
+        path.lineTo(x + w - cut, y + h);
+        path.lineTo(x + cut, y + h);
+        path.lineTo(x, y + h - cut);
+        path.lineTo(x, y + cut);
+        path.closePath();
+        return path;
     }
 
     public static PillButton pill(String text, Pill variant) {
@@ -166,12 +172,12 @@ public final class UiKit {
     // ------------------------------------------------------------------
 
     /**
-     * A cream "sticker": rounded rectangle with an ink outline and a hard
-     * shadow, like a printed card laid on the table. Content sits inside
-     * the given padding.
+     * An iron plate like the match table's score rail: blackened iron with clipped corners, a
+     * soft light from above, a vignette, worn gold trim and four studs, on a soft shadow.
+     * Content sits inside the given padding.
      */
-    public static JPanel sticker(int padding) {
-        return new RoundedPanel(Theme.CREAM, 18, padding, true);
+    public static JPanel plate(int padding) {
+        return new IronPlate(padding);
     }
 
     /** A dark rounded surface for lists and side panels (no shadow). */
@@ -179,7 +185,53 @@ public final class UiKit {
         return new RoundedPanel(Theme.SURFACE, 14, padding, false);
     }
 
-    /** Rounded panel base doing the sticker painting; children layout in insets. */
+    private static final int PLATE_CUT = 14;
+
+    /** Paints an iron plate of {@code w} by {@code h} at the origin, its soft shadow below and right. */
+    static void paintPlate(Graphics2D g, int w, int h) {
+        // A soft shadow built from a few widening translucent outlines.
+        for (int i = SHADOW; i >= 1; i--) {
+            g.setColor(new Color(0, 0, 0, 30));
+            g.fill(chamfer(i, i + 1, w, h, PLATE_CUT));
+        }
+        g.setColor(Theme.WOOD_LINE);
+        g.fill(chamfer(0, 0, w, h, PLATE_CUT));
+        var inner = chamfer(2, 2, w - 4, h - 4, PLATE_CUT - 1);
+        g.setPaint(new java.awt.LinearGradientPaint(0, 0, 0, h, new float[] {0f, .35f, 1f},
+                new Color[] {new Color(0x3A3431), Theme.IRON, Theme.IRON_DARK}));
+        g.fill(inner);
+        g.setClip(inner);
+        g.setPaint(new java.awt.RadialGradientPaint(w / 2f, h * .35f, Math.max(w, h) * .75f,
+                new float[] {.55f, 1f}, new Color[] {new Color(0, 0, 0, 0), new Color(0, 0, 0, 115)}));
+        g.fillRect(0, 0, w, h);
+        g.setClip(null);
+        g.setColor(Theme.withAlpha(Theme.BRASS, 140));
+        g.setStroke(new java.awt.BasicStroke(1.2f));
+        g.draw(chamfer(6.5, 6.5, w - 13, h - 13, PLATE_CUT - 4));
+        for (int[] stud : new int[][] {{11, 11}, {w - 11, 11}, {11, h - 11}, {w - 11, h - 11}}) {
+            g.setPaint(new java.awt.RadialGradientPaint(stud[0] - .8f, stud[1] - .8f, 3f,
+                new float[] {0f, 1f}, new Color[] {Theme.BRASS_LIGHT, Theme.BRASS_DARK}));
+            g.fill(new java.awt.geom.Ellipse2D.Double(stud[0] - 2.6, stud[1] - 2.6, 5.2, 5.2));
+        }
+    }
+
+    /** The painted iron plate behind {@link #plate}. */
+    static class IronPlate extends JPanel {
+
+        IronPlate(int padding) {
+            setOpaque(false);
+            setBorder(BorderFactory.createEmptyBorder(padding, padding, padding + SHADOW, padding + SHADOW));
+        }
+
+        @Override
+        protected void paintComponent(Graphics graphics) {
+            Graphics2D g = nice(graphics);
+            paintPlate(g, getWidth() - SHADOW, getHeight() - SHADOW);
+            g.dispose();
+        }
+    }
+
+    /** Rounded panel base for {@link #surface}; children layout in insets. */
     static class RoundedPanel extends JPanel {
         private final Color fill;
         private final int radius;
@@ -300,23 +352,27 @@ public final class UiKit {
     // Field borders
     // ------------------------------------------------------------------
 
-    /** Rounded stroke border for text fields (cream fill, ink outline). */
+    /**
+     * The border of a text field sunk into an iron plate: a dark rim with a gold hairline that
+     * brightens while the field has focus. The field itself is filled with {@link Theme#SLOT}.
+     */
     public static javax.swing.border.Border fieldBorder() {
         return new javax.swing.border.Border() {
             @Override
             public void paintBorder(Component c, Graphics g, int x, int y, int w, int h) {
-                Graphics2D g2 = (Graphics2D) g.create();
-                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
-                        RenderingHints.VALUE_ANTIALIAS_ON);
-                g2.setColor(Theme.INK);
+                Graphics2D g2 = nice(g);
+                g2.setColor(Theme.WOOD_LINE);
                 g2.setStroke(new java.awt.BasicStroke(2f));
-                g2.drawRoundRect(x + 1, y + 1, w - 3, h - 3, 12, 12);
+                g2.drawRect(x + 1, y + 1, w - 2, h - 2);
+                g2.setColor(Theme.withAlpha(Theme.BRASS, c.isFocusOwner() ? 230 : 110));
+                g2.setStroke(new java.awt.BasicStroke(1f));
+                g2.drawRect(x + 2, y + 2, w - 5, h - 5);
                 g2.dispose();
             }
 
             @Override
             public java.awt.Insets getBorderInsets(Component c) {
-                return new java.awt.Insets(6, 10, 6, 10);
+                return new java.awt.Insets(8, 12, 8, 12);
             }
 
             @Override
@@ -331,19 +387,15 @@ public final class UiKit {
     // ------------------------------------------------------------------
 
     /**
-     * The painted root panel for an undecorated themed dialog: a rounded
-     * sticker with ink border and hard shadow on a transparent background.
-     * {@link #setAppear} tweens a 0.9→1.0 scale-in of the children.
+     * The painted root panel for an undecorated themed dialog: an iron plate like
+     * {@link #plate} on a transparent background. {@link #setAppear} tweens a 0.9→1.0 scale-in
+     * of the children.
      */
     public static class DialogSurface extends JPanel {
-        private final Color fill;
-        private final int radius;
         private float appear = 1f;
 
-        /** @param fill surface color, @param radius corner radius in px */
-        public DialogSurface(Color fill, int radius) {
-            this.fill = fill;
-            this.radius = radius;
+        /** An empty surface; children are laid out inside its border. */
+        public DialogSurface() {
             setOpaque(false);
         }
 
@@ -356,16 +408,7 @@ public final class UiKit {
         @Override
         protected void paintComponent(Graphics graphics) {
             Graphics2D g = nice(graphics);
-            int shadow = Theme.SHADOW_OFFSET;
-            int w = getWidth() - shadow;
-            int h = getHeight() - shadow;
-            g.setColor(Theme.SHADOW);
-            g.fillRoundRect(shadow, shadow, w, h, radius, radius);
-            g.setColor(fill);
-            g.fillRoundRect(0, 0, w, h, radius, radius);
-            g.setColor(Theme.INK);
-            g.setStroke(new java.awt.BasicStroke(2f));
-            g.drawRoundRect(0, 0, w - 1, h - 1, radius, radius);
+            paintPlate(g, getWidth() - SHADOW, getHeight() - SHADOW);
             g.dispose();
         }
 
@@ -401,8 +444,8 @@ public final class UiKit {
     }
 
     /**
-     * Themed yes/no confirmation replacing the stock JOptionPane: a cream
-     * DialogSurface with the question in ink, an outline No pill and a
+     * Themed yes/no confirmation replacing the stock JOptionPane: an iron
+     * DialogSurface with the question in cream, an outline No pill and a
      * {@code yesVariant}-colored Yes pill of equal width. Blocks the EDT
      * like JOptionPane; ESC, ✕ and No all close it as "No". The appear
      * tween keeps animating while it waits (Swing timers stay live).
@@ -411,9 +454,9 @@ public final class UiKit {
                                         String yesText, Pill yesVariant) {
         Window owner = parent instanceof Window window ? window
                 : SwingUtilities.getWindowAncestor(parent);
-        DialogSurface surface = new DialogSurface(Theme.CREAM, 18);
+        DialogSurface surface = new DialogSurface();
         surface.setLayout(new BorderLayout(0, 14));
-        surface.setBorder(BorderFactory.createEmptyBorder(20, 22, 20 + Theme.SHADOW_OFFSET, 22));
+        surface.setBorder(BorderFactory.createEmptyBorder(24, 26, 24 + SHADOW, 26 + SHADOW));
 
         JDialog dialog = new JDialog(owner, title, Dialog.ModalityType.APPLICATION_MODAL);
         dialog.setUndecorated(true);
@@ -434,7 +477,7 @@ public final class UiKit {
 
         JLabel question = new JLabel(message, SwingConstants.CENTER);
         question.setFont(Theme.bold(15f));
-        question.setForeground(Theme.INK);
+        question.setForeground(Theme.CREAM);
         surface.add(question, BorderLayout.CENTER);
 
         // Equal-width pill pair on one row; No keeps the dialog open-state.

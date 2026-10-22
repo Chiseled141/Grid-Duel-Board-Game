@@ -98,6 +98,7 @@ final class CardTableView extends Pane {
     private final Button leave = FxKit.pill("Menu", "gold-outline");
     private final VBox result = new VBox(8);
     private final Label resultTitle = new Label(), resultDetail = new Label();
+    private final Label yourTotal = new Label(), theirTotal = new Label(), theirName = new Label();
     private final Button rematch = FxKit.pill("Rematch", "gold"), backToMenu = FxKit.pill("Back to menu", "cream-outline");
     private final StackPane confirm = new StackPane();
     private Long inspectedSpyCard;
@@ -749,9 +750,10 @@ final class CardTableView extends Pane {
         result.getStyleClass().add("leather");
         result.setId("matchResult");
         result.setAlignment(Pos.CENTER);
-        resultTitle.setFont(FxKit.display(34));
-        resultTitle.setTextFill(FxKit.AMBER);
-        resultDetail.setFont(FxKit.normal(14));
+        // The title rides a swallowtail ribbon whose cloth tells the outcome (see the stylesheet).
+        resultTitle.getStyleClass().add("result-title");
+        resultTitle.setFont(FxKit.display(30));
+        resultDetail.setFont(FxKit.normal(13));
         resultDetail.setTextFill(FxKit.CREAM);
         resultDetail.setWrapText(true);
         resultDetail.setTextAlignment(TextAlignment.CENTER);
@@ -759,9 +761,31 @@ final class CardTableView extends Pane {
         backToMenu.setOnAction(event -> actions.leave());
         HBox buttons = new HBox(12, rematch, backToMenu);
         buttons.setAlignment(Pos.CENTER);
-        result.getChildren().addAll(resultTitle, resultDetail, buttons);
+        result.getChildren().addAll(resultTitle, buildTotals(), resultDetail, buttons);
         result.setVisible(false);
         getChildren().add(result);
+    }
+
+    /** The match totals as the panel's headline: your score lit in the outcome colour, theirs dimmed. */
+    private HBox buildTotals() {
+        yourTotal.getStyleClass().add("result-score");
+        theirTotal.getStyleClass().addAll("result-score", "theirs");
+        Label dash = new Label("–");
+        dash.getStyleClass().addAll("result-score", "theirs");
+        dash.setFont(FxKit.bold(34));
+        HBox totals = new HBox(22, scoreColumn(yourTotal, new Label("YOU")), dash, scoreColumn(theirTotal, theirName));
+        totals.setAlignment(Pos.CENTER);
+        return totals;
+    }
+
+    private static VBox scoreColumn(Label score, Label caption) {
+        score.setFont(FxKit.bold(46));
+        caption.getStyleClass().add("result-caption");
+        caption.setFont(FxKit.bold(11.5));
+        VBox column = new VBox(-4, score, caption);
+        column.setAlignment(Pos.CENTER);
+        column.setMinWidth(130);
+        return column;
     }
 
     private void buildConfirm() {
@@ -795,10 +819,15 @@ final class CardTableView extends Pane {
         if (!finished) return;
         confirm.setVisible(false);
         var outcome = view.outcome();
-        resultTitle.setText(outcome.winner() == null ? "Draw" : outcome.winner() == view.seat() ? "Victory" : "Defeat");
+        String verdict = outcome.winner() == null ? "Draw" : outcome.winner() == view.seat() ? "Victory" : "Defeat";
+        resultTitle.setText(verdict);
+        result.getStyleClass().removeAll("victory", "defeat", "draw");
+        result.getStyleClass().add(verdict.toLowerCase(Locale.ROOT));
         String how = outcome.forfeit() ? (outcome.winner() == view.seat() ? shown.opponentName() + " forfeited." : "You forfeited.") + "\n" : "";
-        resultDetail.setText(how + "Match total: you " + view.you().matchTotal() + " – " + view.opponent().matchTotal() + " "
-                + shown.opponentName() + "\n" + roundHistory(view));
+        yourTotal.setText(String.valueOf(view.you().matchTotal()));
+        theirTotal.setText(String.valueOf(view.opponent().matchTotal()));
+        theirName.setText(shown.opponentName().toUpperCase(Locale.ROOT));
+        resultDetail.setText(how + roundHistory(view));
         rematch.setDisable(shown.opponentLeft() || shown.rematchRequested());
         rematch.setText((shown.opponentLeft() ? "Opponent left" : shown.rematchRequested() ? "Waiting for opponent…"
                 : shown.opponentWantsRematch() ? "Accept rematch" : "Rematch").toUpperCase(Locale.ROOT));
@@ -854,8 +883,8 @@ final class CardTableView extends Pane {
         handH = Math.max(cardH, Math.min(cardH * 3 / 2, h - ownTop - cardH - 70));
         handW = handH * 2 / 3;
         handTop = Math.max(ownTop + cardH + 30, h - handH - 40);
-        // Over the hand, which no longer matters once the match is over, so both final rows stay visible.
-        result.resizeRelocate(tableLeft + (tableWidth - 560) / 2.0, Math.max(ownTop, h - 214), 560, 200);
+        // Centred on the window: the match is over, so the verdict takes the middle of the screen.
+        result.resizeRelocate((w - 560) / 2.0, (h - 290) / 2.0, 560, 290);
         confirm.resizeRelocate(0, 0, w, h);
         cardDetails.resizeRelocate(0, 0, w, h);
         startPendingOpening();
@@ -1001,7 +1030,8 @@ final class CardTableView extends Pane {
         drawDrawButton(g);
         drawSkipButton(g);
         // The keep overlay carries its own heading; the status line would show through under it.
-        if (!shown.view().keeping()) drawStatus(g);
+        // A notification toast sits where the status line is; the line waits until it has gone.
+        if (!shown.view().keeping() && !effects.noticeShowing()) drawStatus(g);
         drawHand(g);
         if (shown.view().keeping()) drawLooking(g);
         else drawPreview(g);
@@ -1170,13 +1200,9 @@ final class CardTableView extends Pane {
         Rectangle r = drawBounds();
         boolean can = shown.view().canDraw() && !state.reconnecting();
         boolean lit = can && hover != null && hover.zone() == TableZone.DRAW;
-        g.setFill(can ? (lit ? FxKit.AMBER : FxKit.AMBER.deriveColor(0, 1, 1, .78)) : Color.rgb(90, 80, 66, .7));
-        g.fillRoundRect(r.x, r.y, r.width, r.height, r.height, r.height);
-        Font font = FxKit.bold(12);
         String label = "DRAW " + shown.view().you().drawsRemaining() + "/" + Rules.MANUAL_DRAWS;
-        g.setFont(font);
-        g.setFill(can ? FxKit.INK : FxKit.MUTED);
-        g.fillText(label, r.getCenterX() - FxKit.width(label, font) / 2, r.y + 17);
+        TablePlaque.button(g, r.x, r.y, r.width, r.height, can ? TablePlaque.Look.PRIMARY : TablePlaque.Look.OFF, lit,
+                label, FxKit.bold(12));
     }
 
     /** Skip sits below Draw, with its allowance cost always visible. */
@@ -1185,13 +1211,8 @@ final class CardTableView extends Pane {
         Rectangle r = skipBounds();
         boolean can = shown.view().canSkip() && !state.reconnecting();
         boolean lit = can && hover != null && hover.zone() == TableZone.SKIP;
-        g.setFill(lit ? FxKit.AMBER : Color.rgb(90, 80, 66, .85));
-        g.fillRoundRect(r.x, r.y, r.width, r.height, r.height, r.height);
-        Font font = FxKit.bold(11);
-        String label = "SKIP TURN";
-        g.setFont(font);
-        g.setFill(lit ? FxKit.INK : can ? FxKit.CREAM : FxKit.MUTED);
-        g.fillText(label, r.getCenterX() - FxKit.width(label, font) / 2, r.y + 17);
+        TablePlaque.button(g, r.x, r.y, r.width, r.height, can ? TablePlaque.Look.PLAIN : TablePlaque.Look.OFF, lit,
+                "SKIP TURN", FxKit.bold(11));
         text(g, "S · uses 1 play", r.x + 6, r.y + 40, FxKit.normal(11), FxKit.MUTED, true);
     }
 
@@ -1230,13 +1251,9 @@ final class CardTableView extends Pane {
         if (castable) {
             Rectangle cast = castBounds();
             boolean lit = hover != null && hover.zone() == TableZone.CAST;
-            g.setFill(lit ? FxKit.AMBER : FxKit.AMBER.deriveColor(0, 1, 1, .67));
-            g.fillRoundRect(cast.x, cast.y, cast.width, cast.height, cast.height, cast.height);
-            g.setFont(FxKit.bold(13));
-            g.setFill(FxKit.INK);
             CardInstance spell = handCard(selected);
             String label = Rules.takesTarget(spell.def().effect()) ? "Cast without a target" : "Cast " + spell.def().name();
-            g.fillText(label, cast.getCenterX() - FxKit.width(label, FxKit.bold(13)) / 2, cast.y + 19);
+            TablePlaque.button(g, cast.x, cast.y, cast.width, cast.height, TablePlaque.Look.PRIMARY, lit, label, FxKit.bold(13));
         }
     }
 

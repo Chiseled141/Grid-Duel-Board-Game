@@ -34,25 +34,25 @@ public final class Theme {
     public static final Color MUTED_INK = new Color(0x74664F);
     /** Dark honey text on light caption plates. */
     public static final Color GOLD_INK = new Color(0x87551A);
-    /** Pine-jade secondary buttons. */
-    public static final Color JADE = new Color(0x5D6447);
-    /** Warm red destructive buttons, with ivory text. */
-    public static final Color VERMILION = new Color(0xAA4438);
-
-    // --- extended accents ---
-    /** Muted sage disabled controls. */
-    public static final Color DISABLED = new Color(0xB3AB98);
-
-    /** Warm paper for login input fields. */
-    public static final Color INPUT_PAPER = new Color(0xF8EDCF);
-    /** Pale blue focus background for shared controls. */
-    public static final Color FOCUS_WASH = new Color(0xDAE5EB);
-
-    // --- shape tokens ---
-    /** Hard shadow offset in px. */
-    public static final int SHADOW_OFFSET = 4;
 
 
+    // --- iron and brass, shared with the match table's plates (TablePlaque) ---
+    /** Blackened iron plate faces. */
+    public static final Color IRON = new Color(0x2B2725);
+    /** The dark foot of an iron plate's gradient. */
+    public static final Color IRON_DARK = new Color(0x1A1716);
+    /** The near-black outline around plates and slots. */
+    public static final Color WOOD_LINE = new Color(0x0F0D0C);
+    /** A dark slot sunk into a plate, behind text fields. */
+    public static final Color SLOT = new Color(0x141110);
+    /** Worn gold trim. */
+    public static final Color BRASS = new Color(0xA9843F);
+    /** The shadowed side of brass. */
+    public static final Color BRASS_DARK = new Color(0x5E4520);
+    /** Lit brass: headings and hovered labels. */
+    public static final Color BRASS_LIGHT = new Color(0xD9B56A);
+    /** Faded cream for labels and hints on iron. */
+    public static final Color FADED = new Color(0xB4A890);
 
     /** The same color at a new alpha (washes and scrims over painted art). */
     public static Color withAlpha(Color color, int alpha) {

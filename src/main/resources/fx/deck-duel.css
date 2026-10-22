@@ -1,40 +1,85 @@
-/* JavaFX look for the match table, matching the Swing menu's UiKit pills and leather panels. */
+/* JavaFX look for the match table: iron and aged-gold controls matched to the painted card art (see TablePlaque). */
 
+/*
+ * Table buttons, matched to the painted dark fantasy art and TablePlaque: a near-black edge, a
+ * soft vertical light across iron or aged gold, a worn gold inner trim, and a slight sink when
+ * pressed. Corners stay almost square; each variant's colour has one job.
+ */
 .pill {
-    -fx-background-color: #241E19, -fx-pill-fill;
-    -fx-background-insets: 4 0 0 4, 0 4 4 0;
-    -fx-background-radius: 22;
-    -fx-border-color: -fx-pill-border;
-    -fx-border-width: 2;
-    -fx-border-radius: 22;
-    -fx-border-insets: 0 4 4 0;
-    -fx-padding: 8 26 12 22;
+    -fx-background-color: #0F0D0C, linear-gradient(to bottom, -fx-pill-top, -fx-pill-bottom), -fx-pill-trim,
+        linear-gradient(to bottom, -fx-pill-top, -fx-pill-bottom);
+    -fx-background-insets: 0, 1, 3, 4;
+    -fx-background-radius: 4, 3, 2, 2;
+    -fx-border-width: 0;
+    -fx-padding: 9 24 9 24;
     -fx-text-fill: -fx-pill-text;
     -fx-cursor: hand;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.45), 8, 0, 0, 3);
 }
-.pill:hover { -fx-background-color: #241E19, derive(-fx-pill-fill, 14%); }
-.pill:pressed { -fx-background-insets: 4 0 0 4, 2 2 2 2; -fx-border-insets: 2 2 2 2; }
-.pill:disabled { -fx-opacity: 1; -fx-pill-fill: #B3AB98; -fx-pill-border: #8C8676; -fx-pill-text: #382A20; }
+.pill:hover { -fx-pill-top: derive(-fx-pill-base-top, 14%); -fx-pill-bottom: derive(-fx-pill-base-bottom, 18%); }
+.pill:pressed { -fx-translate-y: 1; -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.35), 3, 0, 0, 1); }
+.pill:disabled { -fx-opacity: 1; -fx-pill-top: #2E2A28; -fx-pill-bottom: #1E1B1A; -fx-pill-trim: #2E2A28; -fx-pill-text: #7E7564; }
 
-.gold { -fx-pill-fill: #F4BF60; -fx-pill-border: #382A20; -fx-pill-text: #382A20; }
-.gold-outline { -fx-pill-fill: #2C2925; -fx-pill-border: #F4BF60; -fx-pill-text: #F4BF60; }
-.cream-outline { -fx-pill-fill: #5D6447; -fx-pill-border: #DAE5EB; -fx-pill-text: #FFF2D7; }
-.danger { -fx-pill-fill: #AA4438; -fx-pill-border: #DA9B8A; -fx-pill-text: #FFF2D7; }
+/* The main action: aged gold with dark ink lettering. */
+.gold { -fx-pill-base-top: #D9B56A; -fx-pill-base-bottom: #7A5A28; -fx-pill-top: #D9B56A; -fx-pill-bottom: #7A5A28;
+        -fx-pill-trim: #EDD08F; -fx-pill-text: #1E140C; }
+/* Secondary actions: iron with gold lettering and trim. */
+.gold-outline { -fx-pill-base-top: #4A423D; -fx-pill-base-bottom: #1A1716; -fx-pill-top: #4A423D; -fx-pill-bottom: #1A1716;
+                -fx-pill-trim: #A9843F; -fx-pill-text: #D9B56A; }
+/* A quiet way back: iron with cream lettering and a dim trim. */
+.cream-outline { -fx-pill-base-top: #4A423D; -fx-pill-base-bottom: #1A1716; -fx-pill-top: #4A423D; -fx-pill-bottom: #1A1716;
+                 -fx-pill-trim: #6B6158; -fx-pill-text: #EDE3CF; }
+/* Destructive actions: blood-red cloth with gold lettering. */
+.danger { -fx-pill-base-top: #A33A30; -fx-pill-base-bottom: #5A1714; -fx-pill-top: #A33A30; -fx-pill-bottom: #5A1714;
+          -fx-pill-trim: #C49A45; -fx-pill-text: #F1D99A; }
 
-/* Floating leather panels: the match result and the leave confirmation. */
+/* Floating dialogs (the match result, the leave confirmation, card details): an iron plate with
+   soft painted light, a near-black edge and a worn gold inner trim, like TablePlaque.board. */
 .leather {
-    -fx-background-color: #352B24;
-    -fx-background-radius: 14;
-    -fx-border-color: #AD8954;
-    -fx-border-width: 1.5;
-    -fx-border-radius: 10;
-    -fx-border-insets: 3;
-    -fx-padding: 12;
-    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.55), 22, 0.2, 0, 8);
+    -fx-background-color: #0F0D0C, linear-gradient(to bottom, #3A3431, #2B2725 35%, #1A1716), rgba(169, 132, 63, 0.55),
+        linear-gradient(to bottom, #3A3431, #2B2725 35%, #1A1716);
+    -fx-background-insets: 0, 2, 7, 8;
+    -fx-background-radius: 6, 5, 3, 3;
+    -fx-border-width: 0;
+    -fx-padding: 18;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.6), 24, 0.15, 0, 8);
+}
+
+/* Defaults for the result ribbon until an outcome class is set. */
+.root { -fx-ribbon-cloth: #2B2725; -fx-ribbon-text: #EDE3CF; -fx-outcome: #EDE3CF; }
+
+/* The match result's title on a swallowtail ribbon; its cloth tells the outcome. */
+.result-title {
+    -fx-shape: "M0 0 H100 L93 50 L100 100 H0 L7 50 Z";
+    -fx-background-color: #0F0D0C, -fx-ribbon-cloth;
+    -fx-background-insets: 0, 1.5;
+    -fx-padding: 4 54 6 54;
+    -fx-text-fill: -fx-ribbon-text;
+}
+/* Victory is green, defeat is red, a draw stays steel: the ribbon, the panel's trim and its glow. */
+.victory { -fx-ribbon-cloth: linear-gradient(to bottom, #4FA05B, #2F7A3B 45%, #17431F); -fx-ribbon-text: #F4E3A8; -fx-outcome: #8EE09A; }
+.defeat { -fx-ribbon-cloth: linear-gradient(to bottom, #C2443A, #8E2620 45%, #4E1210); -fx-ribbon-text: #F4E3A8; -fx-outcome: #FF8A7A; }
+.draw { -fx-ribbon-cloth: linear-gradient(to bottom, #6E7E89, #4C5963 45%, #2C343A); -fx-ribbon-text: #EDE3CF; -fx-outcome: #EDE3CF; }
+/* The match totals headline the result panel: yours glows in the outcome colour, theirs is dimmed. */
+.result-score {
+    -fx-text-fill: -fx-outcome;
+    -fx-effect: dropshadow(gaussian, derive(-fx-outcome, -30%), 14, 0.25, 0, 0);
+}
+.result-score.theirs { -fx-text-fill: #B4A890; -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.6), 4, 0.3, 0, 1); }
+.result-caption { -fx-text-fill: #B4A890; }
+.leather.victory {
+    -fx-background-color: #0F0D0C, linear-gradient(to bottom, #2F3A2E, #252B24 35%, #161A16), rgba(92, 176, 104, 0.8),
+        linear-gradient(to bottom, #2F3A2E, #252B24 35%, #161A16);
+    -fx-effect: dropshadow(gaussian, rgba(70, 170, 90, 0.55), 34, 0.2, 0, 0);
+}
+.leather.defeat {
+    -fx-background-color: #0F0D0C, linear-gradient(to bottom, #3D2726, #2E1F1E 35%, #1A1211), rgba(196, 68, 58, 0.8),
+        linear-gradient(to bottom, #3D2726, #2E1F1E 35%, #1A1211);
+    -fx-effect: dropshadow(gaussian, rgba(200, 60, 50, 0.55), 34, 0.2, 0, 0);
 }
 
 .scroll-bar:vertical { -fx-background-color: transparent; -fx-pref-width: 8; }
-.scroll-bar .thumb { -fx-background-color: #A98D60; -fx-background-radius: 4; }
+.scroll-bar .thumb { -fx-background-color: #A9843F; -fx-background-radius: 2; }
 .scroll-bar .increment-button, .scroll-bar .decrement-button { -fx-padding: 0; -fx-pref-height: 0; }
 .scroll-bar .increment-arrow, .scroll-bar .decrement-arrow { -fx-shape: ""; -fx-padding: 0; }
 .scroll-bar .track { -fx-background-color: transparent; }

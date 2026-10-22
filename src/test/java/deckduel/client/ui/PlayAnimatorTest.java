@@ -118,8 +118,11 @@ class PlayAnimatorTest {
         Staging staging = new Staging();
         List<ScoreRail.Tally> tallies = PlayAnimator.combos(staging, trace, 0, LAYOUT);
         String value = "+" + formation.bonus() + "  ×" + formation.multiplier();
-        assertTrue(staging.steps().stream().anyMatch(s -> s.effect() instanceof Staging.Banner b
-                && b.title().equals(formation.title()) && b.subtitle().equals(value)), "the formation is called out by name");
+        assertTrue(staging.steps().stream().anyMatch(s -> s.effect() instanceof Staging.Callout c
+                && c.title().equals(formation.title()) && c.value().equals(value)
+                && c.at().getY() <= LAYOUT.slot(TableZone.OWN, 0).y), "the formation is called out by name, above its row");
+        assertTrue(staging.steps().stream().noneMatch(s -> s.effect() instanceof Staging.Banner),
+                "no banner is laid across the cards that scored");
         assertTrue(staging.steps().stream().anyMatch(s -> s.effect() instanceof Staging.Chip c && c.text().equals(value)));
         assertTrue(tallies.stream().anyMatch(t -> t.pocket() == ScoreRail.Pocket.FORMATION), "its chip lands on the rail's formation line");
         assertTrue(tallies.stream().allMatch(t -> t.atMillis() < trace.finishAt), "the score settles after it lands");

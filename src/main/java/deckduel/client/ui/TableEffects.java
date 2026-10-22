@@ -27,6 +27,7 @@ import javafx.scene.paint.Stop;
 import javafx.scene.shape.Circle;
 import javafx.scene.shape.Ellipse;
 import javafx.scene.shape.Line;
+import javafx.scene.shape.Polygon;
 import javafx.scene.shape.Polyline;
 import javafx.scene.shape.StrokeLineCap;
 import javafx.scene.text.Text;
@@ -131,6 +132,16 @@ final class TableEffects {
     boolean hiddenOnRow(long cardId) {
         long now = System.nanoTime();
         return runs.stream().anyMatch(run -> run.staging.hiddenOnRow(cardId, run.elapsed(now)));
+    }
+
+    /** True while a notification toast (round banner or formation callout) is on screen. */
+    boolean noticeShowing() {
+        long now = System.nanoTime();
+        return runs.stream().anyMatch(run -> {
+            double elapsed = run.elapsed(now);
+            return run.steps.stream().anyMatch(step -> step.at() <= elapsed && elapsed < step.end()
+                    && (step.effect() instanceof Staging.Banner || step.effect() instanceof Staging.Callout));
+        });
     }
 
     boolean hiddenInHand(long cardId) {
@@ -292,6 +303,7 @@ final class TableEffects {
         if (effect instanceof Staging.Link l) return link(l);
         if (effect instanceof Staging.Chip c) return chip(c);
         if (effect instanceof Staging.Banner b) return banner(b);
+        if (effect instanceof Staging.Callout c) return callout(c);
         if (effect instanceof Staging.Confetti c) return confetti(c);
         throw new IllegalArgumentException("Unknown effect " + effect);
     }
@@ -682,21 +694,27 @@ final class TableEffects {
         };
     }
 
-    /** A pair link drawing itself from one card to the other with a spark at its head, then its bonus. */
+    /**
+     * A pair link drawing itself from one card to the other as a brass thread over a dark groove,
+     * with an ember at its head, then its bonus. A gold link (a +9 pair) is brighter and thicker.
+     */
     private Live link(Staging.Link l) {
-        Color colour = colour(l.tone(), 1);
-        Polyline line = new Polyline();
+        boolean gold = l.tone() == Tone.GOLD;
+        Color colour = gold ? TablePlaque.BRASS_LIGHT : TablePlaque.BRASS;
+        Polyline groove = new Polyline(), line = new Polyline();
+        groove.setStroke(Color.rgb(15, 13, 12, .7));
+        groove.setStrokeWidth(gold ? 6 : 5);
         line.setStroke(colour);
-        line.setStrokeWidth(3);
-        line.setStrokeLineCap(StrokeLineCap.ROUND);
-        line.setEffect(new DropShadow(BlurType.GAUSSIAN, colour(l.tone(), .7), 10, .25, 0, 0));
-        Circle head = new Circle(4, Color.WHITE);
-        head.setEffect(new DropShadow(BlurType.GAUSSIAN, Color.WHITE, 12, .5, 0, 0));
+        line.setStrokeWidth(gold ? 3 : 2.2);
+        for (Polyline stroke : List.of(groove, line)) stroke.setStrokeLineCap(StrokeLineCap.ROUND);
+        line.setEffect(new DropShadow(BlurType.GAUSSIAN, colour.deriveColor(0, 1, 1, gold ? .8 : .45), gold ? 12 : 6, .25, 0, 0));
+        Circle head = new Circle(3.6, Color.web("#FFE6A8"));
+        head.setEffect(new DropShadow(BlurType.GAUSSIAN, Color.web("#F0A848"), 12, .5, 0, 0));
         Text bonus = popText(l.bonus() == null ? "" : l.bonus(), colour, 17);
         double ax = l.a().getX(), ay = l.a().getY(), bx = l.b().getX(), by = l.b().getY();
         double cx = (ax + bx) / 2, cy = ay + l.sag();
         return new Live() {
-            { node.getChildren().addAll(line, head, bonus); }
+            { node.getChildren().addAll(groove, line, head, bonus); }
             @Override void update(double p) {
                 double e = easeOutCubic(Math.min(1, p / .45));
                 List<Double> points = new ArrayList<>();
@@ -706,7 +724,8 @@ final class TableEffects {
                     points.add((1 - t) * (1 - t) * ay + 2 * (1 - t) * t * cy + t * t * by);
                 }
                 line.getPoints().setAll(points);
-                line.setOpacity(p < .8 ? .94 : .94 * (1 - p) / .2);
+                groove.getPoints().setAll(points);
+                node.setOpacity(p < .8 ? 1 : (1 - p) / .2);
                 head.setVisible(e < 1);
                 head.setCenterX(points.get(points.size() - 2));
                 head.setCenterY(points.get(points.size() - 1));
@@ -717,37 +736,52 @@ final class TableEffects {
     }
 
     /**
-     * A poker-style chip: it pops up where the points were earned, hangs for a beat, then is
-     * flung in an accelerating arc to its place on the score rail, spinning, with a short trail.
+     * A struck coin in the score rail's enamel and brass: it pops up where the points were earned,
+     * hangs for a beat, then is flung in an accelerating arc to its place on the rail with a short
+     * trail of sparks. A label too wide for a coin (a formation's bonus and multiplier) rides a
+     * clipped-corner tag instead.
      */
     private Live chip(Staging.Chip c) {
-        double radius = c.big() ? 27 : 21;
-        Color colour = colour(c.tone(), 1);
-        Circle face = new Circle(radius);
-        face.setFill(new RadialGradient(0, 0, .35, .3, .8, true, CycleMethod.NO_CYCLE,
-                new Stop(0, colour.interpolate(Color.WHITE, .35)), new Stop(1, colour.darker())));
-        face.setStroke(Color.rgb(255, 246, 222));
-        face.setStrokeWidth(2.4);
-        Circle notches = new Circle(radius * .78);
-        notches.setFill(null);
-        notches.setStroke(Color.rgb(255, 250, 238, .7));
-        notches.setStrokeWidth(3);
-        notches.getStrokeDashArray().setAll(5.0, 6.0);
+        double radius = c.big() ? 25 : 20;
+        Color enamel = enamel(c.tone());
         Text label = new Text(c.text());
-        label.setFont(FxKit.bold(c.big() ? 19 : 15));
-        label.setFill(Color.WHITE);
-        label.setEffect(new DropShadow(BlurType.GAUSSIAN, Color.rgb(20, 10, 4, .9), 3, .5, 0, 1));
+        label.setFont(FxKit.bold(c.big() ? 18 : 15));
+        label.setFill(c.tone() == Tone.GOLD ? TablePlaque.INK : TablePlaque.CREAM);
+        label.setEffect(new DropShadow(BlurType.GAUSSIAN, c.tone() == Tone.GOLD ? Color.rgb(255, 240, 200, .5) : Color.rgb(10, 6, 2, .9),
+                2, .6, 0, 1));
         label.setX(-label.getLayoutBounds().getWidth() / 2);
         label.setY(label.getLayoutBounds().getHeight() * .3);
-        Group token = new Group(face, notches, label);
-        token.setEffect(new DropShadow(BlurType.GAUSSIAN, colour(c.tone(), .85), c.big() ? 26 : 18, .3, 0, 3));
-        // A soft streak of the chip's colour behind it while it flies.
+        double width = label.getLayoutBounds().getWidth();
+        Node edge;
+        Group token;
+        if (width > radius * 1.45) {
+            double w = width + 30, h = radius * 1.6;
+            edge = chamfer(-w / 2 + 3, -h / 2 + 3, w - 6, h - 6, 4);
+            ((Polygon) edge).setFill(enamelFace(enamel));
+            ((Polygon) edge).setStroke(TablePlaque.BRASS_DARK);
+            token = new Group(brass(chamfer(-w / 2, -h / 2, w, h, 7)), edge, label);
+        } else {
+            // The milled rim is the only part that turns in flight, so the number stays readable.
+            Circle milled = new Circle(radius - 1.8);
+            milled.setFill(null);
+            milled.setStroke(TablePlaque.BRASS_DARK);
+            milled.setStrokeWidth(2.4);
+            milled.getStrokeDashArray().setAll(1.4, 2.2);
+            Circle face = new Circle(radius * .72, enamelFace(enamel));
+            face.setStroke(TablePlaque.BRASS_DARK);
+            face.setStrokeWidth(1.2);
+            edge = milled;
+            token = new Group(brass(new Circle(radius)), milled, face, label);
+        }
+        token.setEffect(new DropShadow(BlurType.GAUSSIAN, c.big() ? TablePlaque.BRASS.deriveColor(0, 1, 1, .7) : Color.rgb(0, 0, 0, .65),
+                c.big() ? 22 : 9, .25, 0, 3));
+        // Sparks struck off the coin while it flies.
         Circle[] trail = new Circle[5];
         Group streak = new Group();
         streak.setBlendMode(BlendMode.ADD);
         for (int i = 0; i < trail.length; i++) {
-            trail[i] = new Circle(radius * (.8 - i * .13), colour(c.tone(), .5 - i * .08));
-            trail[i].setEffect(new GaussianBlur(5));
+            trail[i] = new Circle(radius * (.34 - i * .05), TablePlaque.BRASS_LIGHT.deriveColor(0, 1, 1, .7 - i * .12));
+            trail[i].setEffect(new GaussianBlur(3));
             streak.getChildren().add(trail[i]);
         }
         double ax = c.from().getX(), ay = c.from().getY(), bx = c.to().getX(), by = c.to().getY();
@@ -771,13 +805,43 @@ final class TableEffects {
                 token.setTranslateY(arcY(e) + hover);
                 token.setScaleX(size);
                 token.setScaleY(size);
-                // The face stays readable; only its notched rim spins.
-                notches.setRotate(540 * flight);
+                if (edge instanceof Circle) edge.setRotate(540 * flight);
             }
 
             private double arcX(double e) { return (1 - e) * (1 - e) * ax + 2 * (1 - e) * e * cx + e * e * bx; }
             private double arcY(double e) { return (1 - e) * (1 - e) * ay + 2 * (1 - e) * e * cy + e * e * by; }
         };
+    }
+
+    /** The rail's enamel for a chip's tone: blue Unit points, red combos, gold, or plain iron. */
+    private static Color enamel(Tone tone) {
+        return switch (tone) {
+            case AZURE -> TablePlaque.UNITS;
+            case CRIMSON -> TablePlaque.COMBOS;
+            case GOLD -> TablePlaque.GOLD;
+            case ASH -> Color.web("#4A423D");
+            default -> TablePlaque.IRON;
+        };
+    }
+
+    private static RadialGradient enamelFace(Color enamel) {
+        return new RadialGradient(0, 0, .35, .3, .85, true, CycleMethod.NO_CYCLE,
+                new Stop(0, enamel.deriveColor(0, 1, 1.35, 1)), new Stop(1, enamel.deriveColor(0, 1, .55, 1)));
+    }
+
+    /** {@code shape} filled as worn brass with a dark outline, like the rail's trim. */
+    private static <T extends javafx.scene.shape.Shape> T brass(T shape) {
+        shape.setFill(new LinearGradient(0, 0, 0, 1, true, CycleMethod.NO_CYCLE,
+                new Stop(0, TablePlaque.BRASS_LIGHT), new Stop(.55, TablePlaque.BRASS), new Stop(1, TablePlaque.BRASS_DARK)));
+        shape.setStroke(TablePlaque.WOOD_LINE);
+        shape.setStrokeWidth(1.4);
+        return shape;
+    }
+
+    /** A rectangle with its corners cut at 45 degrees, the node twin of {@link TablePlaque#clipped}. */
+    private static Polygon chamfer(double x, double y, double w, double h, double cut) {
+        return new Polygon(x + cut, y, x + w - cut, y, x + w, y + cut, x + w, y + h - cut,
+                x + w - cut, y + h, x + cut, y + h, x, y + h - cut, x, y + cut);
     }
 
     private static Text popText(String text, Color colour, double size) {
@@ -799,52 +863,69 @@ final class TableEffects {
     }
 
     /** A large centred title, sweeping in and out: round changes and combo call-outs. */
+    /** A round banner, drawn as a modern toast in the gap between the rows. */
     private Live banner(Staging.Banner b) {
-        double size = b.size();
-        Color colour = colour(b.tone(), 1);
-        Text title = new Text(b.title());
-        title.setFont(FxKit.decorative(size));
-        title.setFill(colour);
-        title.setEffect(new DropShadow(BlurType.GAUSSIAN, colour(b.tone(), .55), 18, .2, 0, 0));
-        double width = title.getLayoutBounds().getWidth();
-        title.setX(-width / 2);
-        boolean sub = b.subtitle() != null;
-        var plate = new javafx.scene.shape.Rectangle(-width / 2 - 28, -size * .95, width + 56, size * (sub ? 1.95 : 1.35));
-        plate.setArcWidth(14);
-        plate.setArcHeight(14);
-        plate.setFill(Color.rgb(20, 12, 6, .67));
-        plate.setEffect(new DropShadow(BlurType.GAUSSIAN, Color.rgb(0, 0, 0, .5), 20, 0, 0, 6));
-        Line top = rule(width, -size * .82, colour), bottom = rule(width, size * (sub ? .9 : .32), colour);
-        Group content = new Group(plate, top, bottom, title);
-        if (sub) {
-            Text subtitle = new Text(b.subtitle());
-            subtitle.setFont(FxKit.bold(size * .42));
-            subtitle.setFill(Color.web("#F4E6C6"));
-            subtitle.setX(-subtitle.getLayoutBounds().getWidth() / 2);
-            subtitle.setY(size * .62);
-            content.getChildren().add(subtitle);
+        return toast(toast(b.title(), b.subtitle(), null, b.tone(), Math.min(26, b.size() * .56)), b.x(), b.y());
+    }
+
+    /** A new formation, as the same toast with its bonus and multiplier in a badge, above its row. */
+    private Live callout(Staging.Callout c) {
+        Group card = toast(c.title(), null, c.value(), c.tone(), 17);
+        // The callout's anchor is its bottom edge, so it rests on the row's top edge.
+        return toast(card, c.at().getX(), c.at().getY() - card.getLayoutBounds().getHeight() / 2);
+    }
+
+    /**
+     * A notice in the table's object language ({@link TablePlaque}): a small iron plaque with
+     * clipped corners and a brass inlay, the title in cream, an optional faded subtitle, and an
+     * optional value on a cloth ribbon tag. Centred on (0, 0).
+     */
+    private static Group toast(String title, String subtitle, String badge, Tone tone, double size) {
+        javafx.scene.text.Font heading = FxKit.display(size), detail = FxKit.normal(13), value = FxKit.bold(size * .82);
+        double pad = 22, gap = 14, headingWidth = FxKit.width(title, heading);
+        double textWidth = Math.max(headingWidth, subtitle == null ? 0 : FxKit.width(subtitle, detail));
+        double badgeWidth = badge == null ? 0 : FxKit.width(badge, value) + 20;
+        double height = size * 1.3 + (subtitle == null ? 18 : 36);
+        // The ribbon's folded tails need room inside the plaque on both sides of the tag.
+        double tail = size * 1.25 * .6;
+        double width = pad + textWidth + (badge == null ? 0 : gap + tail + badgeWidth + tail) + pad;
+        var canvas = new javafx.scene.canvas.Canvas(width + 4, height + 4);
+        var g = canvas.getGraphicsContext2D();
+        TablePlaque.board(g, 2, 2, width, height, 8);
+        double baseline = subtitle == null ? height / 2 + size * .36 + 2 : 14 + size;
+        g.setFont(heading);
+        g.setFill(TablePlaque.CREAM);
+        g.fillText(title, 2 + pad, baseline);
+        if (subtitle != null) TablePlaque.engraved(g, subtitle, 2 + pad, baseline + 21, detail, TablePlaque.FADED, false);
+        if (badge != null) {
+            double tagX = 2 + pad + headingWidth + gap + tail, tagH = size * 1.25, tagY = 2 + (height - tagH) / 2 - 2;
+            // Gold-toned moments (a multiplier) get the blood-red ribbon; quieter ones a dark iron one.
+            TablePlaque.ribbon(g, tagX, tagY, badgeWidth, tagH, tone == Tone.GOLD ? TablePlaque.RIBBON : Color.web("#3C3634"));
+            g.setFont(value);
+            g.setFill(TablePlaque.BRASS_LIGHT);
+            g.fillText(badge, tagX + 10, tagY + tagH / 2 + size * .3);
         }
-        content.setTranslateX(b.x());
-        content.setTranslateY(b.y());
+        canvas.setLayoutX(-(width + 4) / 2);
+        canvas.setLayoutY(-(height + 4) / 2);
+        canvas.setEffect(new DropShadow(BlurType.GAUSSIAN, Color.rgb(0, 0, 0, .5), 14, 0, 0, 6));
+        return new Group(canvas);
+    }
+
+    /** Shows a toast at (x, y): it slides up into place as it fades in, holds, then fades away. */
+    private Live toast(Group card, double x, double y) {
+        card.setTranslateX(x);
         return new Live() {
-            { node.getChildren().add(content); }
+            { node.getChildren().add(card); }
             @Override void update(double p) {
-                double in = Math.max(.01, easeOutBack(Math.min(1, p / .22)));
-                content.setScaleX(in);
-                content.setScaleY(in);
-                content.setOpacity(Math.max(0, p < .8 ? Math.min(1, p / .12) : 1 - (p - .8) / .2));
+                double in = Math.min(1, p / .16), eased = 1 - Math.pow(1 - in, 3);
+                double out = p < .86 ? 0 : (p - .86) / .14;
+                card.setTranslateY(y + 14 * (1 - eased) - 6 * out);
+                card.setOpacity(Math.min(eased, 1 - out));
             }
         };
     }
 
-    private static Line rule(double width, double y, Color colour) {
-        Line line = new Line(-width / 2 - 18, y, width / 2 + 18, y);
-        line.setStroke(colour.deriveColor(0, 1, 1, .78));
-        line.setStrokeWidth(1.5);
-        return line;
-    }
-
-    /** Falling gold flakes over the whole table, for a victory. */
+    /** Falling gold leaf and scraps of banner red over the whole table, for a victory. */
     private Live confetti(Staging.Confetti c) {
         Random random = new Random(c.seed());
         Rectangle area = c.area();
@@ -857,7 +938,7 @@ final class TableEffects {
             {
                 for (double[] f : flakes) {
                     var flake = new javafx.scene.shape.Rectangle(-3.5, -2, 7, 4);
-                    flake.setFill(f[3] > 3 ? Color.web("#F4C766") : Color.web("#FFF1CF"));
+                    flake.setFill(f[3] > 4.2 ? TablePlaque.RIBBON.deriveColor(0, 1, 1.3, 1) : f[3] > 2 ? TablePlaque.BRASS_LIGHT : TablePlaque.GOLD);
                     node.getChildren().add(flake);
                 }
             }

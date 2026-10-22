@@ -14,18 +14,16 @@ import javafx.scene.paint.Color;
 import javafx.scene.text.Font;
 
 /**
- * The stacked card-duel score rail, in JavaFX: a quiet dark panel with your score, the opponent's
- * score, a short breakdown and the round counters. Values come from the server's view, never from UI
+ * The stacked card-duel score rail, in JavaFX: an iron tally plate on the table ({@link TablePlaque})
+ * with your score in ink on a vellum plate, the opponent's score and a tug-of-war lead bar, the
+ * Units and Combos tally with their colour tokens, the formation on a blood-red ribbon, and the round
+ * counters. Values come from the server's view, never from UI
  * arithmetic. A change is told in steps: as each scoring chip from the table lands, its well
  * (Units, Combos or the opponent's score) ticks toward the accepted value with a flash, and your
  * round score climbs with them; then the score settles on the accepted value with a gentle
  * punch and the change shown beside it. Used on the JavaFX thread.
  */
 public final class ScoreRail extends Region {
-    // A quiet dark palette: one warm accent for your score and formation, muted labels.
-    private static final Color PANEL = Color.web("#1F1B18"), SURFACE = Color.web("#2B2622"), EDGE = Color.rgb(255, 240, 210, .09);
-    private static final Color TEXT = Color.web("#F4EBDD"), MUTED = Color.web("#9C9285"), ACCENT = Color.web("#E9B95C");
-    private static final Color BLUE = Color.web("#5D9BB8"), RED = Color.web("#D06A55");
     private static final NumberFormat NUMBERS = NumberFormat.getIntegerInstance(Locale.ROOT);
     /** The final count, the score's punch, and how long a well flashes when a chip lands. */
     private static final long COUNT_NANOS = 800_000_000L, PULSE_NANOS = 1_100_000_000L, HIT_NANOS = 320_000_000L;
@@ -133,10 +131,10 @@ public final class ScoreRail extends Region {
     Point2D pocket(Pocket pocket) {
         double scale = scale();
         Point2D at = switch (pocket) {
-            case UNITS -> new Point2D(205, 255);
-            case COMBOS -> new Point2D(205, 299);
-            case FORMATION -> new Point2D(190, 346);
-            case OPPONENT -> new Point2D(205, 155);
+            case UNITS -> new Point2D(205, 256);
+            case COMBOS -> new Point2D(205, 300);
+            case FORMATION -> new Point2D(185, 347);
+            case OPPONENT -> new Point2D(205, 156);
         };
         return new Point2D((getWidth() - 260 * scale) / 2 + at.getX() * scale, at.getY() * scale);
     }
@@ -244,110 +242,102 @@ public final class ScoreRail extends Region {
     }
 
     private void drawRail(GraphicsContext g, long now, double since) {
-        g.setFill(Color.rgb(0, 0, 0, .35));
-        g.fillRoundRect(2, 5, 252, 535, 18, 18);
-        g.setFill(PANEL);
-        g.fillRoundRect(0, 0, 252, 532, 18, 18);
-        g.setStroke(EDGE);
-        g.setLineWidth(1);
-        g.strokeRoundRect(.5, .5, 251, 531, 18, 18);
-        caption(g, "YOUR SCORE", LEFT, 38);
+        TablePlaque.board(g, 0, 0, 256, 538, 12);
+        TablePlaque.nameplate(g, 46, 18, 164, 26, "YOUR SCORE");
         drawScore(g, now, since);
         drawLead(g, now);
-        divider(g, 192);
-        caption(g, "BREAKDOWN", LEFT, 222);
-        row(g, 236, "Units", BLUE, display == null ? "—" : number(shown(Pocket.UNITS, now)), hit(Pocket.UNITS, now));
-        row(g, 280, "Combos", RED, display == null ? "—" : number(shown(Pocket.COMBOS, now)), hit(Pocket.COMBOS, now));
+        TablePlaque.groove(g, 22, 206, 212);
+        TablePlaque.engraved(g, "THE TALLY", 128, 228, TablePlaque.label(), TablePlaque.FADED, true);
+        row(g, 238, "Units", TablePlaque.UNITS, display == null ? "—" : number(shown(Pocket.UNITS, now)), hit(Pocket.UNITS, now));
+        row(g, 282, "Combos", TablePlaque.COMBOS, display == null ? "—" : number(shown(Pocket.COMBOS, now)), hit(Pocket.COMBOS, now));
         drawFormation(g, now);
-        divider(g, 386);
-        stat(g, LEFT, 404, "PLAYS LEFT", display == null ? "—" : String.valueOf(display.playsRemaining()));
-        stat(g, 134, 404, "ROUND", display == null ? "—" : display.round() + " / 3");
-        g.setFill(SURFACE);
-        g.fillRoundRect(LEFT - 6, 470, RIGHT - LEFT + 12, 44, 12, 12);
-        caption(g, "MATCH TOTAL", LEFT + 6, 497);
-        value(g, display == null ? "—" : number(display.matchTotal()), RIGHT - 6, 500, FxKit.display(22), TEXT);
+        TablePlaque.groove(g, 22, 392, 212);
+        stat(g, 30, 404, "PLAYS LEFT", display == null ? "—" : String.valueOf(display.playsRemaining()));
+        stat(g, 146, 404, "ROUND", display == null ? "—" : display.round() + " of 3");
+        TablePlaque.slot(g, 22, 470, 212, 44, TablePlaque.GOLD, 0);
+        TablePlaque.engraved(g, "MATCH TOTAL", 34, 497, TablePlaque.label(), TablePlaque.FADED, false);
+        value(g, display == null ? "—" : number(display.matchTotal()), 222, 501, FxKit.display(22), TablePlaque.CREAM);
     }
 
-    /** Your round score, large: it nudges up as each of your chips lands, then settles with a gentle punch. */
+    /** Your round score in ink on the parchment plate: it nudges up as your chips land, then settles with a gentle punch. */
     private void drawScore(GraphicsContext g, long now, double since) {
-        if (display == null) { left(g, "—", LEFT, 100, FxKit.display(54), TEXT); return; }
+        TablePlaque.parchment(g, 22, 52, 212, 78);
+        if (display == null) { centred(g, "—", 128, 108, FxKit.display(50), TablePlaque.INK); return; }
         double nudge = .05 * Math.max(hit(Pocket.UNITS, now), hit(Pocket.COMBOS, now));
         double punch = since < 0 ? 0 : emphasis * .1 * Math.exp(-since * 6) * Math.cos(since * 20);
-        Color colour = since >= 0 || nudge > 0 ? (gain < 0 ? FxKit.CORAL : ACCENT) : TEXT;
-        Font font = FxKit.display(54 * (1 + punch + nudge));
+        Font font = FxKit.display(50 * (1 + punch + nudge));
         String score = number(shownScore(now));
-        left(g, score, LEFT, 100, font, colour);
+        centred(g, score, 128, 108, font, TablePlaque.INK);
         if (since < 0 || gain == 0) return;
-        // The change fades in beside the score, then out.
+        // The change is written in the plate's margin, then fades.
         g.setGlobalAlpha(Math.min(1, since / .12) * (since > .85 ? Math.max(0, 1 - (since - .85) / .25) : 1));
-        left(g, (gain > 0 ? "+" : "−") + NUMBERS.format(Math.abs(gain)), LEFT + FxKit.width(score, font) + 10, 96,
-                FxKit.bold(16), gain < 0 ? FxKit.CORAL : ACCENT);
+        String change = (gain > 0 ? "+" : "−") + NUMBERS.format(Math.abs(gain));
+        left(g, change, 222 - FxKit.width(change, FxKit.bold(15)), 72, FxKit.bold(15), gain > 0 ? Color.web("#3E7A3A") : TablePlaque.COMBOS);
         g.setGlobalAlpha(1);
     }
 
-    /** The opponent's score, and a slim bar of your share of both scores. */
+    /** The opponent's score in a slot, and a tug-of-war bar: your share in gold, theirs in red, a brass marker between. */
     private void drawLead(GraphicsContext g, long now) {
         long mine = display == null ? 0 : shownScore(now), theirs = display == null ? 0 : shown(Pocket.OPPONENT, now);
         double share = mine + theirs <= 0 ? .5 : Math.max(0, Math.min(1, mine / (double) (mine + theirs)));
-        double width = RIGHT - LEFT;
-        g.setFill(SURFACE);
-        g.fillRoundRect(LEFT, 120, width, 6, 6, 6);
-        g.setFill(ACCENT);
-        g.fillRoundRect(LEFT, 120, Math.max(6, width * share), 6, 6, 6);
         double hit = display == null ? 0 : hit(Pocket.OPPONENT, now);
-        caption(g, "OPPONENT", LEFT, 160);
-        value(g, display == null ? "—" : number(theirs), RIGHT, 163, FxKit.display(22 * (1 + .15 * hit)), hit > 0 ? ACCENT : TEXT);
+        TablePlaque.slot(g, 22, 138, 212, 36, TablePlaque.COMBOS, hit);
+        TablePlaque.engraved(g, "OPPONENT", 34, 161, TablePlaque.label(), TablePlaque.FADED, false);
+        value(g, display == null ? "—" : number(theirs), 222, 164, FxKit.display(20 * (1 + .15 * hit)), TablePlaque.CREAM);
+        double left = 22, width = 212, split = left + width * share;
+        g.setFill(TablePlaque.WOOD_LINE);
+        g.fillRect(left, 184, width, 8);
+        g.setFill(TablePlaque.GOLD);
+        g.fillRect(left + 1, 185, split - left - 1, 6);
+        g.setFill(TablePlaque.COMBOS.darker());
+        g.fillRect(split, 185, left + width - 1 - split, 6);
+        g.setFill(TablePlaque.BRASS_LIGHT);
+        g.fillPolygon(new double[] {split - 4, split + 4, split}, new double[] {180, 180, 186}, 3);
+        g.fillRect(split - 1, 184, 2, 8);
     }
 
-    /** The row's formation as a gold pill, or a quiet note when the row has none. */
+    /** The row's formation on a blood-red ribbon lettered in gold, or a faded outline when the row has none. */
     private void drawFormation(GraphicsContext g, long now) {
         String formation = display == null ? null : display.formation();
         double hit = display == null ? 0 : hit(Pocket.FORMATION, now);
         if (formation == null) {
-            g.setFill(SURFACE);
-            g.fillRoundRect(LEFT - 6, 324, RIGHT - LEFT + 12, 44, 12, 12);
-            left(g, "No formation", LEFT + 6, 351, FxKit.normal(14), MUTED);
+            g.setStroke(TablePlaque.FADED.deriveColor(0, 1, 1, .45));
+            g.setLineWidth(1);
+            g.setLineDashes(4, 4);
+            g.strokeRect(40, 330, 176, 34);
+            g.setLineDashes((double[]) null);
+            centred(g, "No formation", 128, 352, FxKit.normal(14), TablePlaque.FADED);
             return;
         }
         int split = formation.indexOf("  +");
         String name = split < 0 ? formation : formation.substring(0, split), bonus = split < 0 ? "" : formation.substring(split).trim();
-        g.setFill(ACCENT.deriveColor(0, 1, 1, .16 + .2 * hit));
-        g.fillRoundRect(LEFT - 6, 324, RIGHT - LEFT + 12, 44, 12, 12);
-        g.setStroke(ACCENT.deriveColor(0, 1, 1, .45 + .4 * hit));
-        g.strokeRoundRect(LEFT - 5.5, 324.5, RIGHT - LEFT + 11, 43, 12, 12);
-        left(g, FxKit.fit(name, FxKit.bold(15), 120), LEFT + 6, 351, FxKit.bold(15), ACCENT);
-        value(g, bonus, RIGHT - 6, 351, FxKit.bold(15), TEXT);
+        TablePlaque.ribbon(g, 40, 330, 176, 34, TablePlaque.RIBBON.interpolate(TablePlaque.COMBOS, .6 * hit));
+        left(g, FxKit.fit(name, FxKit.bold(15), 104), 50, 352, FxKit.bold(15), TablePlaque.BRASS_LIGHT);
+        value(g, bonus, 208, 352, FxKit.display(15), TablePlaque.CREAM);
     }
 
     // ---------------------------------------------------------------- drawing helpers
 
     /** Left and right edges of the content. */
-    private static final double LEFT = 22, RIGHT = 230;
+    private static final double LEFT = 22, RIGHT = 234;
 
-    /** One breakdown line: a colour dot, its name, and its value; {@code hit} lights it as a chip lands. */
-    private static void row(GraphicsContext g, double top, String name, Color dot, String value, double hit) {
-        g.setFill(SURFACE.interpolate(dot, .25 * hit));
-        g.fillRoundRect(LEFT - 6, top, RIGHT - LEFT + 12, 38, 12, 12);
-        g.setFill(dot);
-        g.fillOval(LEFT + 4, top + 15, 8, 8);
-        left(g, name, LEFT + 20, top + 25, FxKit.normal(15), TEXT);
-        value(g, value, RIGHT - 6, top + 27, FxKit.display(20 * (1 + .15 * hit)), TEXT);
+    /** One tally line: its colour token, its name, and its value in a slot; {@code hit} warms it as a chip lands. */
+    private static void row(GraphicsContext g, double top, String name, Color token, String value, double hit) {
+        TablePlaque.slot(g, LEFT, top, RIGHT - LEFT, 36, token, hit);
+        TablePlaque.token(g, LEFT + 17, top + 18, 7 + 1.5 * hit, token);
+        left(g, name, LEFT + 34, top + 24, FxKit.bold(15), TablePlaque.CREAM);
+        value(g, value, RIGHT - 12, top + 26, FxKit.display(20 * (1 + .15 * hit)), TablePlaque.CREAM);
     }
 
-    /** A small labelled number in the footer. */
+    /** A small engraved label with its number below. */
     private static void stat(GraphicsContext g, double x, double top, String label, String value) {
-        caption(g, label, x, top + 14);
-        left(g, value, x, top + 46, FxKit.display(24), TEXT);
+        TablePlaque.engraved(g, label, x, top + 14, TablePlaque.label(), TablePlaque.FADED, false);
+        left(g, value, x, top + 46, FxKit.display(26), TablePlaque.CREAM);
     }
 
-    private static void divider(GraphicsContext g, double y) {
-        g.setFill(EDGE);
-        g.fillRect(LEFT, y, RIGHT - LEFT, 1);
-    }
-
-    /** A small muted capital label. */
-    private static void caption(GraphicsContext g, String text, double x, double y) {
-        left(g, text, x, y, FxKit.bold(10.5), MUTED);
+    private static void centred(GraphicsContext g, String text, double x, double y, Font font, Color color) {
+        while (FxKit.width(text, font) > 196 && font.getSize() > 9) font = new Font(font.getName(), font.getSize() - 1);
+        left(g, text, x - FxKit.width(text, font) / 2, y, font, color);
     }
 
     private static String number(long value) { return NUMBERS.format(value); }
