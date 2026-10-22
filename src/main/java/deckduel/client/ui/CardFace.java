@@ -14,8 +14,8 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * Paints card faces and backs: catalog cards from their pixel designs, and any card without one
- * as a procedural face with its points, tags or effect.
+ * Paints card faces and backs: Units and the back from their paintings, Spells from their pixel
+ * designs, and any card without art as a procedural face with its points, tags or effect.
  */
 final class CardFace {
     private static final Color UNIT = new Color(0xE6D3A8), SPELL = new Color(0x4B3346);
@@ -37,7 +37,7 @@ final class CardFace {
     static void paint(Graphics2D g, CardDef card, Rectangle r, boolean emphasized, List<Suppression> suppressed) {
         BufferedImage sprite = sprite(card, suppressed, r.width, r.height, emphasized, pixelScale(g));
         Graphics2D local = (Graphics2D) g.create();
-        if (PixelCardFace.supports(card)) local.setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION,
+        if (PixelSpellArt.supports(card)) local.setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION,
                 java.awt.RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
         local.drawImage(sprite, r.x, r.y, r.width + SHADOW_X, r.height + SHADOW_Y, null);
         local.dispose();
@@ -45,9 +45,9 @@ final class CardFace {
 
     /** A card face, shadow included, rendered once for this size at {@code scale} pixels per unit. */
     static BufferedImage sprite(CardDef card, List<Suppression> suppressed, int width, int height, boolean emphasized, double scale) {
-        boolean pixel = PixelCardFace.supports(card);
-        String key = card.id() + "|" + width + "x" + height + "|" + emphasized + "|" + suppressed + "|" + scale
-                + (pixel ? "|pixel|" + card.points() : "");
+        String art = PaintedCardArt.supports(card) ? "painted" : PixelSpellArt.supports(card) ? "pixel" : "drawn";
+        String key = card.id() + "|" + card.points() + "|" + art + "|" + width + "x" + height + "|" + emphasized
+                + "|" + suppressed + "|" + scale;
         return cached(key, () -> render(width + SHADOW_X, height + SHADOW_Y, scale,
                 g -> renderFace(g, card, new Rectangle(0, 0, width, height), emphasized, suppressed)));
     }
@@ -58,7 +58,7 @@ final class CardFace {
 
     /** The shared card back, shadow included, rendered once per size. */
     static BufferedImage backSprite(int width, int height, double scale) {
-        String key = "pxl-back|" + width + "x" + height + "|" + scale;
+        String key = "back|" + width + "x" + height + "|" + scale;
         return cached(key, () -> render(width + SHADOW_X, height + SHADOW_Y, scale,
                 g -> renderBack(g, new Rectangle(0, 0, width, height))));
     }
@@ -81,20 +81,21 @@ final class CardFace {
     private static void renderFace(Graphics2D g, CardDef card, Rectangle r, boolean emphasized, List<Suppression> suppressed) {
         g.setColor(new Color(0, 0, 0, 110));
         g.fillRoundRect(r.x + 3, r.y + 5, r.width, r.height, 9, 9);
-        if (PixelCardFace.supports(card)) {
-            paintPixel(g, card, r, emphasized, suppressed);
-            return;
-        }
-        paintProcedural(g, card, r, emphasized, suppressed);
+        if (PaintedCardArt.supports(card)) {
+            PaintedCardArt.paint(g, card.id(), r);
+            paintMarks(g, r, emphasized, suppressed);
+        } else if (PixelSpellArt.supports(card)) {
+            Graphics2D local = (Graphics2D) g.create();
+            local.setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION,
+                    java.awt.RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
+            local.drawImage(PixelSpellArt.render(card), r.x, r.y, r.width, r.height, null);
+            local.dispose();
+            paintMarks(g, r, emphasized, suppressed);
+        } else paintProcedural(g, card, r, emphasized, suppressed);
     }
 
-    private static void paintPixel(Graphics2D g, CardDef card, Rectangle r,
-                                   boolean emphasized, List<Suppression> suppressed) {
-        Graphics2D local = (Graphics2D) g.create();
-        local.setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION,
-                java.awt.RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
-        local.drawImage(PixelCardFace.render(card), r.x, r.y, r.width, r.height, null);
-        local.dispose();
+    /** The selection outline and disable labels over a card's art. */
+    private static void paintMarks(Graphics2D g, Rectangle r, boolean emphasized, List<Suppression> suppressed) {
         if (emphasized) {
             g.setStroke(new BasicStroke(2.5f));
             g.setColor(Theme.AMBER);
@@ -169,15 +170,7 @@ final class CardFace {
     private static void renderBack(Graphics2D g, Rectangle r) {
         g.setColor(new Color(0, 0, 0, 100));
         g.fillRoundRect(r.x + 2, r.y + 3, r.width, r.height, 7, 7);
-        BufferedImage back = new BufferedImage(PixelCardFace.WIDTH, PixelCardFace.HEIGHT, BufferedImage.TYPE_INT_ARGB);
-        Graphics2D pixels = back.createGraphics();
-        try { PxlCardArt.paint(pixels, "card-back"); }
-        finally { pixels.dispose(); }
-        Graphics2D local = (Graphics2D) g.create();
-        local.setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION,
-                java.awt.RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
-        local.drawImage(back, r.x, r.y, r.width, r.height, null);
-        local.dispose();
+        PaintedCardArt.paint(g, PaintedCardArt.BACK, r);
     }
 
     /** Draws word-wrapped text and returns the baseline below the last line. */

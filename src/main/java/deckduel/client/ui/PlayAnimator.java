@@ -10,7 +10,6 @@ import deckduel.core.card.MatchPhase;
 import deckduel.core.card.PairBonus;
 import deckduel.core.card.PlayRecord;
 import deckduel.core.card.PlayerView;
-import deckduel.core.card.RoundResult;
 import deckduel.core.card.Row;
 import deckduel.core.card.RowCard;
 import deckduel.core.card.Suppression;
@@ -70,14 +69,14 @@ final class PlayAnimator {
         view.hand().forEach(card -> s.uses(card.def()));
         s.sound(0, Kind.ROUND);
         Point2D gap = gap(layout);
-        s.add(0, 1400, new Staging.Banner("Round " + view.round(), "Ten cards each · ten plays · three draws",
+        s.add(0, 1400, new Staging.Banner("Round " + view.round(),
                 gap.getX(), gap.getY(), Tone.GOLD, 46));
         deal(s, view.hand(), layout, 450);
         return new Plan(s, 0);
     }
 
     /** The card play that produced {@code after}, staged from the table as it was in {@code before}. */
-    static Plan play(PlayerView before, PlayerView after, String opponent, Layout layout) {
+    static Plan play(PlayerView before, PlayerView after, Layout layout) {
         PlayRecord play = after.lastPlay();
         Staging s = new Staging();
         s.uses(play.card().def());
@@ -93,7 +92,7 @@ final class PlayAnimator {
         boolean roundOver = after.round() != before.round();
         // Cards a Spell moved between hands and decks travel once the Spell has done its work.
         if (!roundOver) handMoves(s, before, after, play, layout, play.card().def().occupiesSpace() ? FLIGHT / 2 : settle);
-        if (roundOver) clearAndDeal(s, play, after, opponent, actorZone, layout, settle + 650);
+        if (roundOver) clearAndDeal(s, play, after, actorZone, layout, settle + 650);
         if (after.phase() == MatchPhase.FINISHED && after.outcome().winner() == after.seat())
             s.add(settle + 500, 2600, new Staging.Confetti(layout.table(), after.revision()));
         return new Plan(s, settle);
@@ -393,7 +392,7 @@ final class PlayAnimator {
     }
 
     /** The finished round's rows stay until swept away; then the banner and a fresh deal. */
-    private static void clearAndDeal(Staging s, PlayRecord play, PlayerView after, String opponent,
+    private static void clearAndDeal(Staging s, PlayRecord play, PlayerView after,
                                      TableZone actorZone, Layout layout, int clearAt) {
         TableZone otherZone = actorZone == TableZone.OWN ? TableZone.OPPONENT : TableZone.OWN;
         int index = 0;
@@ -408,12 +407,10 @@ final class PlayAnimator {
                 index++;
             }
         }
-        RoundResult last = after.rounds().get(after.rounds().size() - 1);
         int bannerAt = clearAt + 380;
         s.sound(bannerAt, Kind.ROUND);
-        String score = "Round " + last.round() + ": you " + last.scoreOf(after.seat()) + " – " + last.scoreOf(after.seat().other()) + " " + opponent;
         Point2D gap = gap(layout);
-        s.add(bannerAt, 1700, new Staging.Banner("Round " + after.round(), score, gap.getX(), gap.getY(), Tone.GOLD, 46));
+        s.add(bannerAt, 1700, new Staging.Banner("Round " + after.round(), gap.getX(), gap.getY(), Tone.GOLD, 46));
         deal(s, after.hand(), layout, bannerAt + 700);
     }
 

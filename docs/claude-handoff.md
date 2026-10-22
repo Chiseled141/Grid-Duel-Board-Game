@@ -1,8 +1,9 @@
 # Claude handoff — card game on the neutral catalog
 
 Read `AGENTS.md` first. The old chess-like game is gone; the card game described there is
-implemented end to end on catalog `cards-neutral-4` (`docs/card-catalog.md`): the approved
-35-Unit library (Axemen replaced Battering Ram on 2026-10-21) and 45-card automatic deck with 10 neutral Spells, scored with Balatro-style
+implemented end to end on catalog `cards-neutral-5` (`docs/card-catalog.md`): the 35-Unit
+library from the painted card art (seven nations × Assassin 2, Bowman 3, Guardman 4, Knight 5,
+Wizard 6, adopted 2026-10-22) and 45-card automatic deck with 10 neutral Spells, scored with Balatro-style
 formations. Landmarks and Sabotage were removed on 2026-10-21. Formation values, the
 seven-nation bonus and some edge cases are provisional (AGENTS.md lists them).
 
@@ -62,19 +63,19 @@ partner joins by code) and play further games as rematches.
   kept, own-turn manual draws, and the Spy/Reconnaissance/Exchange edge cases.
 - An eleventh Spell to fill Sabotage's slot is still to be designed.
 - Card-specific combo interactions beyond the base pair rule need new `Effect` types.
-- Card artwork: all 45 card faces and the shared back now render from Java drawing data.
-  The 35 Unit figures, nation palettes and crests remain in `PixelCardFace`. All ten neutral
-  Spells and the back are pixel drawing data in `PxlCardArt.java`. `PixelSpellArt` composes catalog names
-  and effect captions; full rules remain in the inspector/details. The pxl designs supersede
-  Draw Two/Spy's original illustrations and the other eight Spells' painted faces. Legacy
-  No card JPEG ships any more. No runtime Node, PNG decoding or asset I/O is
-  required for the current catalog.
-  Unit figures are the hand-pixel v2 character maps (Axemen with a one-handed axe and round
-  shield) inside four-pixel nation borders; earlier iterations are in git history.
+- Card artwork: the 35 Units and the shared back are paintings
+  (`src/main/resources/assets/cards/<id>.png`, drawn by `PaintedCardArt`); the earlier
+  code-drawn Unit figures and pixel back are in git history. The ten neutral Spells are still
+  pixel drawing data in `PxlCardArt.java`, composed with catalog names and effect captions by
+  `PixelSpellArt`, so Spells and Units now differ in style until painted Spell art exists.
+  The Spell effects' props (chain links, axe, flame, hook, smoke, Spy eye, binding seal, vortex)
+  are paintings in `src/main/resources/assets/vfx/` (2026-10-23), trimmed and scaled from the
+  generated originals; light, sparks and motion stay in code (`VfxKit`, `TableEffects`).
 - The hard bot cannot see the opponent's hand, so it does not anticipate replies; a sampling
   or search bot over the opponent's possible cards would be the next step.
-- The first opening deal of a session can pause up to about 0.2 s while card faces render for
-  the first time (measurements in `docs/design/card-table-design.md`).
+- The first opening deal of a session pauses about 0.1 s while card faces are scaled for the
+  first time, or about 0.4–0.6 s if it starts before the background decode of the paintings
+  has finished (measurements in `docs/design/card-table-design.md`).
 - The JavaFX native libraries in the shaded jar are those of the building machine's platform.
 - The table shows the Exchange discard and Random Steal/Discard cards as simple card flights;
   there is no dedicated Spy or Reconnaissance animation beyond the cast and the private overlay.

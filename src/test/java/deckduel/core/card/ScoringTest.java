@@ -95,16 +95,16 @@ class ScoringTest {
                 unit("f", 1, "N3", "D"))));
     }
 
-    @Test void ridersAndAxemenShareFourPointsButAreDifferentClasses() {
+    @Test void catalogUnitsPairAndFormByTheirTagsNotTheirPoints() {
         var catalog = deckduel.cards.CatalogLoader.loadBundled();
-        CardDef riders = catalog.card("pl-riders"), axemen = catalog.card("hu-axemen");
-        assertEquals(riders.points(), axemen.points(), "both print 4");
-        assertEquals(0, Scoring.pairBonus(riders, axemen), "equal points make no pair");
-        assertEquals(Scoring.SINGLE_MATCH, Scoring.pairBonus(axemen, catalog.card("pl-axemen")), "two Axemen share a class");
-        Row twoPairs = row(riders, catalog.card("hu-riders"), axemen, catalog.card("au-axemen"));
-        assertEquals(Formation.TWO_COMPANIES, Formation.best(twoPairs), "a Riders pair and an Axemen pair, not four of a class");
-        Row line = row(catalog.card("pl-pikemen"), catalog.card("hu-bowmen"), riders, catalog.card("au-knight"), axemen);
-        assertEquals(Formation.ROYAL_LINE, Formation.best(line), "Axemen complete the five classes");
+        CardDef guardman = catalog.card("nerath-guardman"), wizard = catalog.card("solmara-wizard");
+        assertEquals(0, Scoring.pairBonus(guardman, wizard), "different nation and class make no pair");
+        assertEquals(Scoring.SINGLE_MATCH, Scoring.pairBonus(wizard, catalog.card("ashkar-wizard")), "two Wizards share a class");
+        assertEquals(Scoring.SINGLE_MATCH, Scoring.pairBonus(guardman, catalog.card("nerath-knight")), "two Nerath Units share a nation");
+        Row twoPairs = row(guardman, catalog.card("dravorn-guardman"), wizard, catalog.card("asterion-wizard"));
+        assertEquals(Formation.TWO_COMPANIES, Formation.best(twoPairs), "a Guardman pair and a Wizard pair");
+        Row line = row(catalog.card("sylvaren-assassin"), catalog.card("ashkar-bowman"), guardman, catalog.card("vaelora-knight"), wizard);
+        assertEquals(Formation.ROYAL_LINE, Formation.best(line), "one of each of the five classes");
     }
 
     @Test void theFormationBonusJoinsBeforeItsMultiplierAndTheSevenNationBonusIsNeverMultiplied() {

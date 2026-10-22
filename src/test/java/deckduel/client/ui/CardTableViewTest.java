@@ -270,6 +270,39 @@ class CardTableViewTest {
         return state.view(Seat.FIRST);
     }
 
+    @Test void theOpponentsReplyWaitsUntilYourPlayHasBeenShown() throws Exception {
+        MatchState start = state();
+        Seat you = start.turn();
+        var unit = start.view(you).hand().stream().filter(card -> card.def().occupiesSpace()).findFirst().orElseThrow();
+        MatchState mine = start.apply(you, new PlayCard(unit.id(), 0, null));
+        MatchState reply = mine.apply(you.other(), new deckduel.core.card.SkipTurn());
+        Table[] holder = new Table[1];
+        FxTesting.run(() -> {
+            var t = holder[0] = table(new ClientSettings(), true);
+            t.view.show(shown(start.view(you), true));
+            t.view.show(shown(start.view(you), false)); // Enable motion after setup, without an opening deal.
+            t.view.show(shown(mine.view(you), false));
+            assertTrue(t.view.animating(), "your own play is staged at once");
+            assertEquals(mine.view(you).revision(), t.view.shownRevision());
+            t.view.show(shown(reply.view(you), false));
+            assertEquals(mine.view(you).revision(), t.view.shownRevision(), "the reply waits for your play");
+        });
+        long deadline = System.currentTimeMillis() + 20_000;
+        int[] revision = {-1};
+        while (System.currentTimeMillis() < deadline) {
+            FxTesting.run(() -> revision[0] = holder[0].view.shownRevision());
+            if (revision[0] == reply.view(you).revision()) break;
+            Thread.sleep(100);
+        }
+        assertEquals(reply.view(you).revision(), revision[0], "then the reply is shown");
+        FxTesting.run(() -> {
+            var t = holder[0];
+            t.view.show(shown(mine.view(you), false));
+            t.view.show(shown(start.view(you), true));
+            assertEquals(start.view(you).revision(), t.view.shownRevision(), "reduced motion never waits");
+        });
+    }
+
     @Test void skipButtonAndShortcutSendOnlyLegalServerMoves() throws Exception {
         FxTesting.run(() -> {
             var t = table(new ClientSettings(), true);

@@ -18,8 +18,8 @@ import java.util.Locale;
 
 /**
  * Procedural heraldic art derived from a card's real data: nation banner colours
- * and one emblem per class or Spell effect. It is a stand-in until card artwork
- * exists and carries no meaning beyond the card's tags.
+ * and one emblem per class or Spell effect. It is the fallback for cards without
+ * painted or pixel art and carries no meaning beyond the card's tags.
  */
 final class CardArt {
     private static final Color GOLD = new Color(0xC9A15E), DARK = new Color(0x2B211A);
@@ -76,10 +76,9 @@ final class CardArt {
             local.setColor(color);
             local.setStroke(new BasicStroke(.08f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
             switch (name) {
-                case "Axemen" -> local.fill(shield());
-                case "Riders" -> horseshoe(local);
-                case "Bowmen" -> bow(local);
-                case "Knights" -> local.fill(crown());
+                case "Guardman" -> local.fill(shield());
+                case "Bowman" -> bow(local);
+                case "Knight" -> local.fill(crown());
                 case "Remove" -> local.fill(bolt());
                 case "Disable" -> brokenLink(local);
                 default -> initial(local, name);
@@ -92,11 +91,6 @@ final class CardArt {
         path.moveTo(.15, .1); path.lineTo(.85, .1); path.lineTo(.85, .5);
         path.quadTo(.82, .8, .5, .95); path.quadTo(.18, .8, .15, .5); path.closePath();
         return path;
-    }
-
-    private static void horseshoe(Graphics2D g) {
-        g.setStroke(new BasicStroke(.16f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_ROUND));
-        g.draw(new Arc2D.Double(.18, .12, .64, .7, -30, 240, Arc2D.OPEN));
     }
 
     private static void bow(Graphics2D g) {
@@ -139,16 +133,16 @@ final class CardArt {
         g.drawString(letter, .5f - g.getFontMetrics().stringWidth(letter) / 2f, .68f);
     }
 
-    /** The card colour of a region, or a stable tint for other regions. */
+    /** The ribbon colour of a region's painted cards, or a stable tint for other regions. */
     static Color regionColor(String region) {
         return switch (region) {
-            case "Hungary" -> new Color(0xB8693E);
-            case "Poland" -> new Color(0xC98F8C);
-            case "Bohemia" -> new Color(0x8A5A86);
-            case "Austria" -> new Color(0xB23E3A);
-            case "Styria" -> new Color(0x5B8A4C);
-            case "Croatia" -> new Color(0x5F6B78);
-            case "Transylvania" -> new Color(0x3F6EA8);
+            case "Ashkar" -> new Color(0xA95124);
+            case "Asterion" -> new Color(0xC4C7BD);
+            case "Dravorn" -> new Color(0x8F3038);
+            case "Nerath" -> new Color(0x255B8B);
+            case "Solmara" -> new Color(0xAD862B);
+            case "Sylvaren" -> new Color(0x35623A);
+            case "Vaelora" -> new Color(0x62447F);
             default -> Color.getHSBColor((region.hashCode() & 0xFF) / 255f, .35f, .7f);
         };
     }

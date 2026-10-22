@@ -7,8 +7,10 @@ import javafx.scene.Group;
 import javafx.scene.Node;
 import javafx.scene.effect.BlendMode;
 import javafx.scene.effect.BlurType;
+import javafx.scene.effect.ColorAdjust;
 import javafx.scene.effect.DropShadow;
 import javafx.scene.effect.GaussianBlur;
+import javafx.scene.image.ImageView;
 import javafx.scene.paint.Color;
 import javafx.scene.paint.CycleMethod;
 import javafx.scene.paint.RadialGradient;
@@ -25,7 +27,8 @@ import javafx.scene.shape.StrokeLineCap;
 /**
  * Reusable pieces of light for the table's effects, after common 2D game-VFX practice: a hard
  * weapon smear, sparks streaked along their motion, a burst of light with sharp glints, a thin
- * fast shockwave, a thin-line sigil that draws itself, a crackling energy filament and smoke.
+ * fast shockwave, a thin-line sigil that draws itself, a crackling energy filament and smoke
+ * (painted puffs from {@link VfxSprites}).
  * Light is additive with a white-hot core and a coloured falloff, so it reads as light rather
  * than as a flat shape. Each piece is posed from progress 0-1 by its owning effect. JavaFX
  * Application Thread only.
@@ -274,8 +277,10 @@ final class VfxKit {
         }
     }
 
-    /** Dark smoke puffs that swell and drift up from a line, thinning as they go. */
+    /** Painted smoke puffs that swell and drift up from a line, thinning as they go. */
     static final class Smoke extends Group {
+        /** How much a puff grows over its life; each is painted at its largest and scaled down. */
+        private static final double GROWTH = 1.9;
         private final double[][] puffs;
         private final double x, y, width;
 
@@ -285,22 +290,26 @@ final class VfxKit {
             puffs = new double[count][3];
             for (double[] puff : puffs) {
                 puff[0] = random.nextDouble(); puff[1] = random.nextDouble() * .4; puff[2] = 6 + random.nextDouble() * 8;
-                Circle circle = new Circle(1, Color.rgb(24, 19, 16, .55));
-                circle.setEffect(new GaussianBlur(7));
-                getChildren().add(circle);
+                ImageView cloud = VfxSprites.smokePuff(puff[2] * 2 * GROWTH);
+                cloud.setRotate(random.nextDouble() * 360);
+                getChildren().add(cloud);
             }
+            // The painting is a mid grey-brown; darken it to the soot of a burning card.
+            setEffect(new ColorAdjust(0, 0, -.45, 0));
         }
 
         void at(double p) {
             for (int i = 0; i < puffs.length; i++) {
                 double[] puff = puffs[i];
                 double age = Math.max(0, (p - puff[1]) / (1 - puff[1]));
-                Circle circle = (Circle) getChildren().get(i);
-                circle.setVisible(age > 0);
-                circle.setCenterX(x + puff[0] * width + Math.sin(age * 4 + i) * 6);
-                circle.setCenterY(y - 60 * age);
-                circle.setRadius(puff[2] * (.5 + 1.4 * age));
-                circle.setOpacity(Math.sin(Math.PI * age));
+                Node cloud = getChildren().get(i);
+                cloud.setVisible(age > 0);
+                cloud.setTranslateX(x + puff[0] * width + Math.sin(age * 4 + i) * 6);
+                cloud.setTranslateY(y - 60 * age);
+                double scale = (.5 + 1.4 * age) / GROWTH;
+                cloud.setScaleX(scale);
+                cloud.setScaleY(scale);
+                cloud.setOpacity(Math.sin(Math.PI * age) * .85);
             }
         }
     }

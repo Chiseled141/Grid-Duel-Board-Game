@@ -25,10 +25,13 @@ final class Staging {
      */
     static final double TEMPO = 1.8;
 
-    /** Effect colours, named for what they mean on the table; each Spell family charges in its own. */
+    /**
+     * Effect colours, named for what they mean on the table; each Spell family charges in its own.
+     * They stay close to the painted props' own colours, so the light matches the art it surrounds.
+     */
     enum Tone {
-        EMBER(0xE0783A), ARCANE(0x8C6FB8), CREAM(0xEDE3CF), GOLD(0xD9B56A),
-        CRIMSON(0xC2443A), STEEL(0x9AA6B4), VERDANT(0x7FA36A), AZURE(0x5E8FB8), TEAL(0x4F9E94), ASH(0x9A9088);
+        EMBER(0xE0783A), ARCANE(0x8A6BA6), CREAM(0xEDE3CF), GOLD(0xD9B56A),
+        CRIMSON(0xC2443A), STEEL(0x9AA6B4), VERDANT(0x7D9966), AZURE(0x5B7FA3), TEAL(0x5A8F86), ASH(0x9A9088);
         final int rgb;
         Tone(int rgb) { this.rgb = rgb; }
     }
@@ -146,7 +149,7 @@ final class Staging {
         Link { a = (Point2D) a.clone(); b = (Point2D) b.clone(); }
     }
     /** A large title for round changes and combo call-outs. */
-    record Banner(String title, String subtitle, double x, double y, Tone tone, double size) implements Effect { }
+    record Banner(String title, double x, double y, Tone tone, double size) implements Effect { }
     /**
      * A small plate naming a new formation, with its bonus and multiplier on a ribbon tag,
      * rising into the gap just above its row ({@code at} is the plate's bottom centre) so it never

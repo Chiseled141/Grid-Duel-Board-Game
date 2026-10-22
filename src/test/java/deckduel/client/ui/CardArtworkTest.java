@@ -10,13 +10,10 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 
 class CardArtworkTest {
-    @Test void everyCatalogCardIsDrawnFromCodeAndNoPaintedArtShips() {
+    @Test void everyCatalogCardHasArtUnitsPaintedAndSpellsInPixels() {
         var catalog = CatalogLoader.loadBundled();
-        assertTrue(catalog.cards().stream().allMatch(PixelCardFace::supports), "all 45 cards render from code");
-        for (CardDef card : catalog.cards())
-            assertNull(CardArtworkTest.class.getResource("/assets/cards/runtime/" + card.id() + ".jpg"), card.id());
-        for (String retired : List.of("card-back", "sabotage", "hu-battering-ram", "hu-footmen", "hu-envoy", "pl-chaplain"))
-            assertNull(CardArtworkTest.class.getResource("/assets/cards/runtime/" + retired + ".jpg"), retired);
+        assertTrue(catalog.cards().stream().allMatch(card -> PaintedCardArt.supports(card) != PixelSpellArt.supports(card)),
+                "each of the 45 cards has exactly one kind of art");
     }
 
     @Test void everyCatalogCardRendersAnOpaqueFace() throws Exception {
@@ -27,22 +24,22 @@ class CardArtworkTest {
             var g = face.createGraphics();
             CardFace.paint(g, card, r, false, List.of());
             g.dispose();
-            assertEquals(255, face.getRGB(52, 78) >>> 24, card.id() + " has an opaque fallback face");
+            assertEquals(255, face.getRGB(52, 78) >>> 24, card.id() + " has an opaque face");
             assertNotEquals(face.getRGB(52, 78), face.getRGB(0, 0), card.id() + " has a visible card body");
         }
     }
 
-    @Test void fallbackShowsSelectionAndSuppressionAndConcealsCardBacks() throws Exception {
+    @Test void facesShowSelectionAndSuppressionAndBacksConcealThem() throws Exception {
         var catalog = CatalogLoader.loadBundled();
-        CardDef card = catalog.card("hu-knight");
+        CardDef card = catalog.card("sylvaren-knight");
         var image = new BufferedImage(240, 180, BufferedImage.TYPE_INT_RGB);
         var g = image.createGraphics();
         CardFace.paint(g, card, new Rectangle(4, 4, 104, 156), true, List.of(deckduel.core.card.Suppression.TAGS));
         CardFace.paint(g, card, new Rectangle(120, 4, 104, 156), false, List.of());
         g.dispose();
-        assertNotEquals(image.getRGB(56, 80), image.getRGB(172, 80), "suppression shades the fallback face");
+        assertNotEquals(image.getRGB(56, 80), image.getRGB(172, 80), "suppression shades the face");
         BufferedImage back = CardFace.backSprite(104, 156, 1);
-        assertEquals(255, back.getRGB(52, 78) >>> 24, "the shared fallback back remains visible");
+        assertEquals(255, back.getRGB(52, 78) >>> 24, "the shared back is opaque");
         assertNotEquals(image.getRGB(172, 80), back.getRGB(52, 78), "the back conceals the face");
     }
 }
