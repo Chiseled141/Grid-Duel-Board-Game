@@ -29,7 +29,6 @@ class ClientSettingsTest {
         settings.setHost("example.test");
         settings.setPort(4321);
         settings.setReducedMotion(true);
-        settings.setMenuTheme(MenuTheme.GOLDEN_FIELDS);
         settings.save(file);
         var restored = ClientSettings.load(file);
         assertEquals(MenuTheme.GOLDEN_FIELDS, restored.menuTheme());
@@ -41,17 +40,13 @@ class ClientSettingsTest {
                 "a retired East Asian theme preference migrates to the remaining battlefield");
     }
 
-    @Test void oldMissingUnknownOrNullThemeFallsBackToGoldenFields() throws Exception {
+    @Test void oldMissingOrUnknownThemeFallsBackToGoldenFields() throws Exception {
         var file = temporary.resolve("client.properties");
         assertEquals(MenuTheme.GOLDEN_FIELDS, ClientSettings.load(file).menuTheme());
         Files.writeString(file, "pieceStyle=2\nmenuTheme=removed-theme\n");
         assertEquals(MenuTheme.GOLDEN_FIELDS, ClientSettings.load(file).menuTheme());
         Files.writeString(file, "pieceStyle=2\n");
         assertEquals(MenuTheme.GOLDEN_FIELDS, ClientSettings.load(file).menuTheme());
-        var settings = new ClientSettings();
-        settings.setMenuTheme(MenuTheme.GOLDEN_FIELDS);
-        settings.setMenuTheme(null);
-        assertEquals(MenuTheme.GOLDEN_FIELDS, settings.menuTheme());
     }
 
     @Test void deckEntriesFromOlderClientsArePreservedUnchanged() throws Exception {

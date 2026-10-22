@@ -41,9 +41,7 @@ class PixelCardFaceTest {
     private static void assertScaling(CardDef card) throws Exception {
         var nativeFace = PixelCardFace.render(card);
         var sprite = CardFace.sprite(card, List.of(), 240, 360, false, 1);
-        CardImages.shared().decode(card.id());
-        assertSame(sprite, CardFace.sprite(card, List.of(), 240, 360, false, 1),
-                "the old JPEG arriving must not replace the code-rendered sample");
+        assertSame(sprite, CardFace.sprite(card, List.of(), 240, 360, false, 1), "sprites are cached");
         for (int y = 4; y < 115; y++)
             for (int x = 4; x < 75; x++)
                 for (int dy = 0; dy < 3; dy++)

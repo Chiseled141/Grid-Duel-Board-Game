@@ -4,34 +4,19 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import deckduel.cards.CatalogLoader;
 import deckduel.core.card.CardDef;
-import deckduel.core.card.CardKind;
 import java.awt.Rectangle;
 import java.awt.image.BufferedImage;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
 class CardArtworkTest {
-    @Test void everyUnitHasCodeArtAndOtherCardsHaveRuntimeArt() throws Exception {
+    @Test void everyCatalogCardIsDrawnFromCodeAndNoPaintedArtShips() {
         var catalog = CatalogLoader.loadBundled();
-        assertTrue(catalog.units().stream().allMatch(PixelCardFace::supports), "all 35 Units render from code");
-        for (CardDef card : catalog.cards()) {
-            BufferedImage art = CardImages.shared().decode(card.id());
-            if (card.kind() == CardKind.UNIT) assertNull(art, card.id() + ": the old painted Unit art is no longer shipped");
-            if (PixelCardFace.supports(card)) continue;
-            assertNotNull(art, card.id() + " has art");
-            assertEquals(480, art.getWidth(), card.id());
-            assertEquals(720, art.getHeight(), card.id());
-        }
-        assertNull(CardImages.shared().decode(CardImages.BACK));
-        assertNull(CardImages.shared().decode("sabotage"), "removed with the Landmarks");
-        assertNull(CardImages.shared().decode("hu-battering-ram"), "Axemen replaced Battering Ram");
-    }
-
-    @Test void retiredArtworkIsNoLongerShipped() throws Exception {
-        for (String retired : List.of("hu-envoy", "pl-chaplain", "pl-siege", "st-sabotage", "hu-banner-hall", "au-chancery"))
-            assertNull(CardImages.shared().decode(retired), retired + " was replaced");
-        assertNull(CardImages.class.getResource("/assets/cards/manuscript-v1/hu-footmen.png"), "old sources stay out of the build");
-        assertNull(CardImages.shared().decode("hu-footmen"), "Battering Ram replaced Footmen");
+        assertTrue(catalog.cards().stream().allMatch(PixelCardFace::supports), "all 45 cards render from code");
+        for (CardDef card : catalog.cards())
+            assertNull(CardArtworkTest.class.getResource("/assets/cards/runtime/" + card.id() + ".jpg"), card.id());
+        for (String retired : List.of("card-back", "sabotage", "hu-battering-ram", "hu-footmen", "hu-envoy", "pl-chaplain"))
+            assertNull(CardArtworkTest.class.getResource("/assets/cards/runtime/" + retired + ".jpg"), retired);
     }
 
     @Test void everyCatalogCardRendersAnOpaqueFace() throws Exception {

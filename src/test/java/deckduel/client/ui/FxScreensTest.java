@@ -9,7 +9,6 @@ import deckduel.client.state.ClientModel;
 import deckduel.client.state.Screen;
 import deckduel.client.state.ServerConnection;
 import deckduel.core.card.DeckRules;
-import deckduel.core.card.Seat;
 import deckduel.core.card.MatchState;
 import deckduel.core.card.PlayCard;
 import deckduel.core.card.PlayerView;

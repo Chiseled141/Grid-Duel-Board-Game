@@ -30,8 +30,6 @@ import java.awt.Window;
  */
 public final class UiKit {
 
-    /** Hover animation length in ms (§11). */
-    public static final int HOVER_MS = 180;
     /** Hard-shadow offset in pixels (never blurred). */
     private static final int SHADOW = 4;
 
@@ -385,34 +383,6 @@ public final class UiKit {
         }
     }
 
-    /**
-     * An undecorated modal dialog showing the given surface, centered over
-     * {@code owner}, closable with ESC. Callers dispose it from their own
-     * buttons. Returns before it is visible; call {@code setVisible(true)}.
-     */
-    public static javax.swing.JDialog undecoratedDialog(java.awt.Window owner,
-                                                        JComponent surface,
-                                                        int width, int height) {
-        javax.swing.JDialog dialog = new javax.swing.JDialog(owner,
-                java.awt.Dialog.ModalityType.APPLICATION_MODAL);
-        dialog.setUndecorated(true);
-        dialog.setBackground(new Color(0, 0, 0, 0));
-        dialog.setContentPane(surface);
-        dialog.setSize(width, height);
-        dialog.setLocationRelativeTo(owner);
-        javax.swing.JRootPane rootPane = dialog.getRootPane();
-        rootPane.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW)
-                .put(javax.swing.KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_ESCAPE, 0),
-                        "closeDialog");
-        rootPane.getActionMap().put("closeDialog",
-                new javax.swing.AbstractAction() {
-                    @Override
-                    public void actionPerformed(java.awt.event.ActionEvent event) {
-                        dialog.dispose();
-                    }
-                });
-        return dialog;
-    }
 
     /** Runs a 200ms ease-out scale-in tween (0.9 → 1.0) for dialog surfaces. */
     public static void playAppearTween(DialogSurface surface) {

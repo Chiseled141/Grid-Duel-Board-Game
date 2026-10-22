@@ -1,3 +1,0 @@
-35 Unit frames thickened; inner figures and lettering identical except the one-pixel header crest shift.
-Seven distinct nation borders; all five classes match within each nation.
-Draw Two and Spy remain pixel-identical.
