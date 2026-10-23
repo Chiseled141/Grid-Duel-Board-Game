@@ -22,8 +22,11 @@ import java.util.Set;
  */
 final class ScoringTrace {
     static final int GLOW_MS = 650, FIRST_PAIR_MS = 260, PAIR_GAP_MS = 150, LINK_MS = 1100, FORMATION_MS = 900;
-    /** A pair's chip pops this long after its link starts drawing, then takes {@code CHIP_MS} to reach the score rail. */
-    static final int CHIP_POP_MS = 420, CHIP_MS = 600;
+    /**
+     * A pair's chip pops this long after its link starts drawing, as the link reaches the second
+     * card and both cards jump; then it takes {@code CHIP_MS} to reach the score rail.
+     */
+    static final int CHIP_POP_MS = 340, CHIP_MS = 600;
     /** Pairs beyond this light together, so a huge combo never makes the trace drag. */
     private static final int PAIR_STEPS = 10;
 

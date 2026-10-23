@@ -36,7 +36,7 @@ class AccountLobbyIntegrationTest {
             out = new ObjectOutputStream(socket.getOutputStream()); out.flush();
             in = new ObjectInputStream(socket.getInputStream()); in.setObjectInputFilter(Message.WIRE_FILTER);
             assertEquals(new ErrorMessage(Message.GREETING), expect(ErrorMessage.class));
-            if (handshake) { send(new ProtocolHello(Message.PROTOCOL_VERSION)); expect(ProtocolReady.class); }
+            if (handshake) { send(new ProtocolHello(Message.PROTOCOL_VERSION, "1.0.0")); expect(ProtocolReady.class); }
         }
         void send(Object message) throws Exception { out.writeObject(message); out.flush(); out.reset(); }
         <T> T expect(Class<T> type) throws Exception { return type.cast(in.readObject()); }
@@ -80,7 +80,7 @@ class AccountLobbyIntegrationTest {
         try (var peer = new Peer(true)) {
             for (Object request : java.util.List.of(new CreateMatchRequest(), new ListMatchesRequest(),
                     new HistoryRequest(), new JoinMatchRequest("ABCDE"),
-                    new PracticeRequest(false), new LeaveMatchRequest(), new RematchRequest())) {
+                    new PracticeRequest(false), new LeaveMatchRequest(), new RematchRequest(), new ReplayRequest(1), new CancelRoomRequest())) {
                 peer.send(request); assertTrue(peer.expect(ErrorMessage.class).text().contains("log in"));
             }
         }
@@ -89,7 +89,7 @@ class AccountLobbyIntegrationTest {
     @Test void oldProtocolIsRejectedBeforeAccountCommands() throws Exception {
         try (var peer = new Peer(false)) {
             // Version 10 clients do not know SkipTurn.
-            peer.send(new ProtocolHello(10)); assertTrue(peer.expect(ErrorMessage.class).text().contains(Message.GREETING));
+            peer.send(new ProtocolHello(10, "1.0.0")); assertTrue(peer.expect(ErrorMessage.class).text().contains(Message.GREETING));
             assertThrows(IOException.class, peer.in::readObject);
         }
     }
@@ -118,7 +118,7 @@ class AccountLobbyIntegrationTest {
     @Test void productionClientSpeaksTheCurrentProtocol() throws Exception {
         var received = new LinkedBlockingQueue<Message>();
         try (var client = new DeckDuelClient(received::add, reason -> { })) {
-            client.ensureConnected("127.0.0.1", port);
+            client.ensureConnected(new deckduel.client.startup.ServerRoute("127.0.0.1", port, false));
             client.send(new RegisterRequest("client", "secret123"));
             var response = received.poll(5, TimeUnit.SECONDS);
             assertInstanceOf(LoginResponse.class, response); assertTrue(((LoginResponse) response).ok());

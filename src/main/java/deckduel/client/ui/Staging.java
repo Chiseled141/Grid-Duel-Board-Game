@@ -143,7 +143,8 @@ final class Staging {
         Shine { at = new Rectangle(at); }
     }
     /** A scoring chip that pops up at {@code from} and flies to the score rail at {@code to}; {@code big} for a +9 pair. */
-    record Chip(String text, Point2D from, Point2D to, Tone tone, boolean big) implements Effect {
+    /** A scoring coin; {@code scale} grows it as a combo builds. */
+    record Chip(String text, Point2D from, Point2D to, Tone tone, boolean big, double scale) implements Effect {
         Chip { from = (Point2D) from.clone(); to = (Point2D) to.clone(); }
     }
     /** A pair link drawing itself, then its bonus ({@code bonus} null when a chip carries it instead). */
@@ -157,7 +158,8 @@ final class Staging {
      * rising into the gap just above its row ({@code at} is the plate's bottom centre) so it never
      * covers the cards that scored.
      */
-    record Callout(String title, String value, Point2D at, Tone tone) implements Effect {
+    /** A new formation's name and bonus on a plaque; a {@code multiplier} above 1 is stamped beside it. */
+    record Callout(String title, String bonus, int multiplier, Point2D at, Tone tone) implements Effect {
         Callout { at = (Point2D) at.clone(); }
     }
     /** Gold flakes falling over an area, for a victory. */

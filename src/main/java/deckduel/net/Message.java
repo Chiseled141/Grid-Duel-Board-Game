@@ -4,26 +4,31 @@ import java.io.ObjectInputFilter;
 import java.io.Serializable;
 
 /** Closed account, lobby and card-match protocol; anything outside the allowlist is rejected. */
-public sealed interface Message extends Serializable permits ActionRejected,
+public sealed interface Message extends Serializable permits ActionRejected, CancelRoomRequest,
         CreateMatchRequest, ErrorMessage, HistoryRequest, HistoryResponse,
         JoinMatchRequest, LeaveMatchRequest, ListMatchesRequest, ListMatchesResponse, LoginRequest,
-        LoginResponse, MatchCreated, MatchUpdate, MoveRequest, Ping, Pong,
-        PracticeRequest, ProfileUpdate, ProtocolHello, ProtocolReady, RegisterRequest, RematchRequest {
+        LoginResponse, MaintenanceNotice, MatchCreated, MatchUpdate, MoveRequest, Ping, Pong,
+        PracticeRequest, ProfileUpdate, ProtocolHello, ProtocolReady, RegisterRequest, RematchRequest,
+        ReplayRequest, ReplayResponse, UpdateRequired {
     /**
-     * Version 13 removes the matchmaking queue (no FindMatchRequest or MatchmakingStatus); matches
-     * start only from hosted rooms or practice. Older peers are rejected at the handshake.
+     * Version 16 adds the client's release version to ProtocolHello, UpdateRequired (the server's
+     * minimum client version, answered before login) and MaintenanceNotice (drain before a
+     * restart). Version 15 added CancelRoomRequest, 14 personal replays, and 13 removed the
+     * matchmaking queue. Older peers are rejected at the handshake.
      */
-    int PROTOCOL_VERSION = 13;
+    int PROTOCOL_VERSION = 16;
     /** Greeting shared by both peers. */
     String GREETING = "DECK_DUEL_PROTOCOL:" + PROTOCOL_VERSION;
     /** Restricts deserialization to protocol records, card view contracts and bounded collections. */
     ObjectInputFilter WIRE_FILTER = ObjectInputFilter.Config.createFilter(
             "maxdepth=32;maxarray=1000;"
                     + "deckduel.net.ActionRejected;"
+                    + "deckduel.net.CancelRoomRequest;"
                     + "deckduel.net.CreateMatchRequest;"
                     + "deckduel.net.ErrorMessage;"
                     + "deckduel.net.JoinMatchRequest;"
                     + "deckduel.net.HistoryEntry;"
+                    + "deckduel.net.HistoryEntry$Replay;"
                     + "deckduel.net.HistoryEntry$Result;"
                     + "deckduel.net.HistoryRequest;"
                     + "deckduel.net.HistoryResponse;"
@@ -32,6 +37,7 @@ public sealed interface Message extends Serializable permits ActionRejected,
                     + "deckduel.net.ListMatchesResponse;"
                     + "deckduel.net.LoginRequest;"
                     + "deckduel.net.LoginResponse;"
+                    + "deckduel.net.MaintenanceNotice;"
                     + "deckduel.net.MatchCreated;"
                     + "deckduel.net.MatchSummary;"
                     + "deckduel.net.MatchUpdate;"
@@ -44,6 +50,9 @@ public sealed interface Message extends Serializable permits ActionRejected,
                     + "deckduel.net.ProtocolReady;"
                     + "deckduel.net.RegisterRequest;"
                     + "deckduel.net.RematchRequest;"
+                    + "deckduel.net.ReplayRequest;"
+                    + "deckduel.net.ReplayResponse;"
+                    + "deckduel.net.UpdateRequired;"
                     + "deckduel.net.UserProfile;"
                     + "deckduel.core.card.CardDef;deckduel.core.card.CardInstance;deckduel.core.card.CardKind;"
                     + "deckduel.core.card.DrawCard;deckduel.core.card.KeepCard;"

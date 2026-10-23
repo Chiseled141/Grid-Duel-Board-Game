@@ -1,0 +1,20 @@
+# A consistent, encrypted SQLite backup into /var/backups/deckduel (keeps the newest 14).
+[Unit]
+Description=Deck Duel database backup
+After=deckduel.service
+
+[Service]
+Type=oneshot
+User=deckduel
+Group=deckduel
+UMask=0077
+ExecStart=/usr/bin/java -Xmx256m -Djava.awt.headless=true -jar /opt/deckduel/current/deck-duel-server.jar backup \
+    --database /var/lib/deckduel/deck-duel.db --out-dir /var/backups/deckduel --key-file /etc/deckduel/backup.key --keep 14
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/deckduel /var/backups/deckduel
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+RestrictAddressFamilies=AF_UNIX
+CapabilityBoundingSet=

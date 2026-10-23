@@ -38,6 +38,8 @@ final class PlayAnimator {
     static final int SEAL = 760, STAMP = 340, TETHER = 620, HOOK = 280;
     /** How long a discarded card burns, an Exchange vortex turns, Reconnaissance cards hover and a Spy's eye stays open. */
     static final int BURN = 760, VORTEX = 1000, PEEK = 1000, EYE = 1150;
+    /** Where in a formation callout its multiplier is stamped down, as a fraction of the callout. */
+    static final double SLAM_AT = .3;
     /** How long a card's landing ring and dust last. */
     static final int IMPACT = 560;
     /** A replaced Unit strains, rips in two and its halves fall away; it starts as the new card is thrown. */
@@ -445,15 +447,18 @@ final class PlayAnimator {
                         new Point2D.Double(from.getCenterX(), from.y + 14), units > 0 ? Tone.AZURE : Tone.ASH, false, step);
             }
             List<ScoringTrace.Link> links = trace.links.stream().filter(link -> link.zone() == zone).toList();
+            // Over your row the arcs stay within the gap below the opponent's cards.
+            double ceiling = own ? (layout.slot(TableZone.OWN, 0).y - layout.slot(TableZone.OPPONENT, 0).getMaxY()) * .75 : 70;
             for (ScoringTrace.Link link : links) {
                 PairBonus pair = link.pair();
                 Rectangle a = layout.slot(zone, pair.slotA()), b = layout.slot(zone, pair.slotB());
-                double dip = Math.min(9, 3 + Math.abs(b.getCenterX() - a.getCenterX()) * .02);
+                // The link arcs over the row, higher for cards further apart, so pairs do not stack on one line.
+                double rise = Math.max(10, Math.min(ceiling, 18 + Math.abs(b.getCenterX() - a.getCenterX()) * .12));
                 boolean big = pair.points() >= 9;
-                Point2D left = new Point2D.Double(a.getCenterX(), a.getMaxY() - 3), right = new Point2D.Double(b.getCenterX(), b.getMaxY() - 3);
-                s.add(delay + link.at(), ScoringTrace.LINK_MS, new Staging.Link(left, right, dip * 2, big ? Tone.GOLD : Tone.CREAM, null));
+                Point2D left = new Point2D.Double(a.getCenterX(), a.y + 4), right = new Point2D.Double(b.getCenterX(), b.y + 4);
+                s.add(delay + link.at(), ScoringTrace.LINK_MS, new Staging.Link(left, right, -rise * 2, big ? Tone.GOLD : Tone.CREAM, null));
                 chip(s, tallies, layout, delay + link.at() + ScoringTrace.CHIP_POP_MS, own ? ScoreRail.Pocket.COMBOS : ScoreRail.Pocket.OPPONENT,
-                        pair.points(), new Point2D.Double((left.getX() + right.getX()) / 2, left.getY() + dip * 1.2 + 4),
+                        pair.points(), new Point2D.Double((left.getX() + right.getX()) / 2, left.getY() - rise - 6),
                         big ? Tone.GOLD : Tone.CRIMSON, big, step);
             }
             Formation formation = trace.formations.get(zone);
@@ -471,10 +476,17 @@ final class PlayAnimator {
         String value = "+" + formation.bonus() + "  ×" + formation.multiplier();
         Tone tone = formation.multiplier() > 1 ? Tone.GOLD : Tone.CREAM;
         s.sound(at, Kind.CHIME);
-        s.add(at, ScoringTrace.FORMATION_MS + 300, new Staging.Callout(formation.title(), value, above, tone));
+        s.add(at, ScoringTrace.FORMATION_MS + 300, new Staging.Callout(formation.title(), "+" + formation.bonus(),
+                formation.multiplier(), above, tone));
+        if (formation.multiplier() > 1) {
+            // The multiplier is stamped down beside the name: the biggest moment of a play.
+            int slam = at + (int) Math.round((ScoringTrace.FORMATION_MS + 300) * SLAM_AT);
+            s.sound(slam, Kind.IMPACT);
+            s.add(slam, 260, new Staging.Shake(2.5 + 1.5 * formation.multiplier()));
+        }
         int fling = at + ScoringTrace.FORMATION_MS - ScoringTrace.CHIP_MS;
         s.add(fling, ScoringTrace.CHIP_MS, new Staging.Chip(value, new Point2D.Double(above.getX(), above.getY() - 14),
-                layout.pocket(own ? ScoreRail.Pocket.FORMATION : ScoreRail.Pocket.OPPONENT), tone, true));
+                layout.pocket(own ? ScoreRail.Pocket.FORMATION : ScoreRail.Pocket.OPPONENT), tone, true, 1.15));
         s.sound(fling + ScoringTrace.CHIP_MS, Kind.TALLY, step[0]++);
         tallies.add(new ScoreRail.Tally(fling + ScoringTrace.CHIP_MS, own ? ScoreRail.Pocket.FORMATION : ScoreRail.Pocket.OPPONENT, 0));
     }
@@ -483,7 +495,9 @@ final class PlayAnimator {
     private static void chip(Staging s, List<ScoreRail.Tally> tallies, Layout layout, int at, ScoreRail.Pocket pocket, long points,
                              Point2D from, Tone tone, boolean big, int[] step) {
         String text = (points > 0 ? "+" : "−") + Math.abs(points);
-        s.add(at, ScoringTrace.CHIP_MS, new Staging.Chip(text, from, layout.pocket(pocket), tone, big));
+        // Each coin of a combo is a little larger than the last, so a long chain builds.
+        double scale = (big ? 1.2 : 1) * (1 + .07 * Math.min(6, step[0]));
+        s.add(at, ScoringTrace.CHIP_MS, new Staging.Chip(text, from, layout.pocket(pocket), tone, big, scale));
         int landed = at + ScoringTrace.CHIP_MS;
         s.sound(landed, Kind.TALLY, step[0]++);
         tallies.add(new ScoreRail.Tally(landed, pocket, points));

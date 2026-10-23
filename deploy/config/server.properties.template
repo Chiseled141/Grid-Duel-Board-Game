@@ -1,0 +1,31 @@
+# Deck Duel server configuration.
+# Install as /etc/deckduel/server.properties, owned root:deckduel, mode 0640 (docs/deployment.md).
+# No passwords belong here: TLS uses PEM files protected by file permissions.
+
+# Listen on every interface. Anything but 127.0.0.1 requires the TLS files below; the server
+# refuses to start otherwise.
+bind=0.0.0.0
+
+# The game port. Open exactly this TCP port in the security group, and only after trusted TLS works.
+port=5555
+
+# Persistent SQLite data (accounts, history, W/L, round scores, replays).
+database=/var/lib/deckduel/deck-duel.db
+
+# The certificate for the public DNS name players connect to, issued by a public authority
+# (for example Let's Encrypt): the full chain, leaf first, and its unencrypted PKCS#8 key.
+tls.certificateChain=/etc/deckduel/tls/fullchain.pem
+tls.privateKey=/etc/deckduel/tls/privkey.pem
+
+# The oldest client release allowed to log in, for example 1.1.0. Empty accepts any client
+# that speaks the current protocol. Changing it requires a (drained) restart.
+minimumClientVersion=
+
+# The local operator socket used by deckduel-ctl; never exposed on the network.
+control.socket=/run/deckduel/control.sock
+
+# How long a new connection may take for its TLS handshake and hello before it is dropped.
+handshakeTimeoutSeconds=10
+
+# How long a disconnected player's seat is held during a match.
+reconnectGraceSeconds=60

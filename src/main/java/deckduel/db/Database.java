@@ -45,6 +45,8 @@ public final class Database implements AutoCloseable {
         this.connection = DriverManager.getConnection("jdbc:sqlite:" + file);
         try (Statement statement = connection.createStatement()) {
             statement.execute("PRAGMA foreign_keys = ON");
+            // A write that meets a backup's brief read lock waits instead of failing the result.
+            statement.execute("PRAGMA busy_timeout = 5000");
             statement.execute("""
                     CREATE TABLE IF NOT EXISTS users (
                       id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -72,6 +74,32 @@ public final class Database implements AutoCloseable {
                       blue_score   INTEGER NOT NULL,
                       red_score    INTEGER NOT NULL,
                       PRIMARY KEY (match_id, round_number)
+                    )""");
+            // Additive replay tables: each account's own recorded views, one row per state revision.
+            // finished = the match ended and its result was stored; complete = no frame is missing.
+            statement.execute("""
+                    CREATE TABLE IF NOT EXISTS replays (
+                      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                      owner_user_id   INTEGER NOT NULL REFERENCES users(id),
+                      match_key       TEXT NOT NULL,
+                      opponent        TEXT NOT NULL,
+                      practice        INTEGER NOT NULL,
+                      rules_version   TEXT NOT NULL,
+                      played_at       TEXT NOT NULL,
+                      finished        INTEGER NOT NULL DEFAULT 0,
+                      complete        INTEGER NOT NULL DEFAULT 0,
+                      result          TEXT,
+                      end_reason      TEXT,
+                      your_rounds     TEXT,
+                      opponent_rounds TEXT,
+                      UNIQUE (owner_user_id, match_key)
+                    )""");
+            statement.execute("""
+                    CREATE TABLE IF NOT EXISTS replay_frames (
+                      replay_id INTEGER NOT NULL REFERENCES replays(id),
+                      revision  INTEGER NOT NULL,
+                      view      BLOB NOT NULL,
+                      PRIMARY KEY (replay_id, revision)
                     )""");
         }
         migrateMatchesTable();
@@ -106,6 +134,7 @@ public final class Database implements AutoCloseable {
         boolean hasRulesVersion = false;
         boolean hasStartedTurns = false;
         boolean hasCompletedTurns = false;
+        boolean hasMatchKey = false;
         try (java.sql.PreparedStatement pragma = connection.prepareStatement("PRAGMA table_info(matches)")) {
             try (java.sql.ResultSet rs = pragma.executeQuery()) {
                 while (rs.next()) {
@@ -116,14 +145,17 @@ public final class Database implements AutoCloseable {
                         hasStartedTurns = true;
                     } else if ("completed_turns".equalsIgnoreCase(col)) {
                         hasCompletedTurns = true;
+                    } else if ("match_key".equalsIgnoreCase(col)) {
+                        hasMatchKey = true;
                     }
                 }
             }
         }
-        if (!hasRulesVersion || !hasStartedTurns || !hasCompletedTurns) {
+        if (!hasRulesVersion || !hasStartedTurns || !hasCompletedTurns || !hasMatchKey) {
             final boolean addRulesVersion = !hasRulesVersion;
             final boolean addStartedTurns = !hasStartedTurns;
             final boolean addCompletedTurns = !hasCompletedTurns;
+            final boolean addMatchKey = !hasMatchKey;
             inTransaction(conn -> {
                 try (Statement stmt = conn.createStatement()) {
                     if (addRulesVersion) {
@@ -134,6 +166,10 @@ public final class Database implements AutoCloseable {
                     }
                     if (addCompletedTurns) {
                         stmt.execute("ALTER TABLE matches ADD COLUMN completed_turns INTEGER");
+                    }
+                    // Links a result to its players' replays; older rows stay NULL ("Replay unavailable").
+                    if (addMatchKey) {
+                        stmt.execute("ALTER TABLE matches ADD COLUMN match_key TEXT");
                     }
                 }
                 return null;

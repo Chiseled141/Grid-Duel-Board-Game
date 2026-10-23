@@ -47,7 +47,7 @@ class FxScreensTest {
             model[0] = new ClientModel(new ServerConnection() {
                 public void send(Message message) { sent.add(message); }
                 public boolean isConnected() { return true; }
-                public void ensureConnected(String host, int port) { }
+                public void ensureConnected(deckduel.client.startup.ServerRoute route) { }
             });
             model[0].setReducedMotion(true);
             frame[0] = new JFrame("menu");
