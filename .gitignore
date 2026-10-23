@@ -13,3 +13,10 @@ logs/
 artifacts/
 docs/screenshots/
 output/
+
+# Release and deployment output, and secrets that must never be committed.
+dist/
+*.pem
+*.key
+*.p12
+*.db.enc

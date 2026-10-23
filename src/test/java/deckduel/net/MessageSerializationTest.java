@@ -39,9 +39,13 @@ class MessageSerializationTest {
                 new MatchUpdate("M1", 1, "alice", "bob", false, true, false, false, true, view),
                 new ListMatchesRequest(), new ListMatchesResponse(List.of(new MatchSummary("ABCDE", "alice"))),
                 new HistoryRequest(), new HistoryResponse(List.of(new HistoryEntry("2026-10-19T10:00:00", "bob",
-                        HistoryEntry.Result.DRAW, "DRAW", "cards-neutral-1", List.of(30L), List.of(30L)))),
+                        HistoryEntry.Result.DRAW, "DRAW", "cards-neutral-1", List.of(30L), List.of(30L), false, 7L,
+                        HistoryEntry.Replay.INCOMPLETE))),
+                new CancelRoomRequest(), new ReplayRequest(7), new ReplayResponse(7, "bob", true, "2026-10-19T10:00:00", false, List.of(view, view)),
+                new UpdateRequired("1.2.0", "This server needs Deck Duel 1.2.0 or newer."),
+                new MaintenanceNotice(true, "Maintenance"), new MaintenanceNotice(false, "Over"),
                 new Ping(10), new Pong(10),
-                new ErrorMessage("Example"), new ProtocolHello(Message.PROTOCOL_VERSION), new ProtocolReady(Message.PROTOCOL_VERSION));
+                new ErrorMessage("Example"), new ProtocolHello(Message.PROTOCOL_VERSION, "1.0.0"), new ProtocolReady(Message.PROTOCOL_VERSION));
     }
 
     @Test void everyEffectTypeAndBothCardFamiliesCanCrossTheWire() throws Exception {

@@ -16,7 +16,8 @@ import javax.sound.sampled.SourceDataLine;
  * cues of the table: a whoosh, a spell shimmer, a shattering impact, a chain clink, a dealing
  * tick, a round bell, and the Spells' own cues: a seal's thud, a chime, a crackle of flame, a
  * vortex's falling warble and a high glint, and a coin chink that rises as score chips land. Playback
- * runs on one daemon thread; a machine without audio simply stays silent.
+ * runs on one daemon thread; a machine without audio simply stays silent. Cues that arrive after
+ * {@link #close()}, as the window closes during a match, are not played.
  */
 public final class ScoringSounds implements AutoCloseable {
     private static final Logger LOG = Logger.getLogger(ScoringSounds.class.getName());
@@ -36,25 +37,39 @@ public final class ScoringSounds implements AutoCloseable {
         thread.setDaemon(true);
         return thread;
     });
+    // Queuing and closing hold this lock, so no cue is handed to the worker after it shut down.
+    private final Object lifecycle = new Object();
+    private volatile boolean closed;
     // Owned by the worker thread only.
     private SourceDataLine line;
     private boolean unavailable;
 
     /** Plays through the default audio device while {@code enabled} is true. */
-    public ScoringSounds(BooleanSupplier enabled) {
-        this.enabled = enabled;
-        this.output = cue -> worker.execute(() -> write(synthesize(cue)));
-    }
+    public ScoringSounds(BooleanSupplier enabled) { this(enabled, null, null); }
 
     /** Sends cues to {@code output} instead of the audio device, for tests and silent tables. */
-    public ScoringSounds(BooleanSupplier enabled, Consumer<Cue> output) {
-        this.enabled = enabled;
-        this.output = output;
+    public ScoringSounds(BooleanSupplier enabled, Consumer<Cue> output) { this(enabled, output, null); }
+
+    /** Plays synthesized cues on the playback thread into {@code device} instead of the audio device. */
+    static ScoringSounds onDevice(BooleanSupplier enabled, Consumer<byte[]> device) {
+        return new ScoringSounds(enabled, null, device);
     }
 
-    /** Plays a cue unless sounds are switched off; never blocks the caller. */
+    private ScoringSounds(BooleanSupplier enabled, Consumer<Cue> output, Consumer<byte[]> device) {
+        this.enabled = enabled;
+        Consumer<byte[]> sink = device == null ? this::write : device;
+        this.output = output != null ? output : cue -> queue(() -> sink.accept(synthesize(cue)));
+    }
+
+    /** Plays a cue unless sounds are switched off or closed; never blocks the caller. */
     public void play(Cue cue) {
-        if (enabled.getAsBoolean()) output.accept(cue);
+        if (!closed && enabled.getAsBoolean()) output.accept(cue);
+    }
+
+    private void queue(Runnable task) {
+        synchronized (lifecycle) {
+            if (!closed) worker.execute(task);
+        }
     }
 
     private void write(byte[] pcm) {
@@ -219,9 +234,13 @@ public final class ScoringSounds implements AutoCloseable {
         return both;
     }
 
-    /** Stops playback and releases the audio device. */
+    /** Lets queued cues finish, then releases the audio device. Safe to call repeatedly and from any thread. */
     @Override public void close() {
-        worker.execute(() -> { if (line != null) { line.drain(); line.close(); } });
-        worker.shutdown();
+        synchronized (lifecycle) {
+            if (closed) return;
+            closed = true;
+            worker.execute(() -> { if (line != null) { line.drain(); line.close(); } });
+            worker.shutdown();
+        }
     }
 }

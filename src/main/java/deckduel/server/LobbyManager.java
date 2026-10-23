@@ -11,10 +11,13 @@ public final class LobbyManager {
     private static final String ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
     private final ConcurrentHashMap<String, Entrant> rooms = new ConcurrentHashMap<>();
     private final SecureRandom random = new SecureRandom();
+    // Closed during maintenance: no room may be created or put back.
+    private boolean closed;
 
-    /** Replaces a host's old room with one uniquely claimed code. */
+    /** Replaces a host's old room with one uniquely claimed code, or returns null during maintenance. */
     synchronized String createLobby(Entrant host) {
         removeHostedLobby(host.handler());
+        if (closed) return null;
         String code;
         do { code = randomCode(); } while (rooms.putIfAbsent(code, host) != null);
         return code;
@@ -24,7 +27,13 @@ public final class LobbyManager {
     synchronized Entrant claim(String code) { return code == null ? null : rooms.remove(code); }
 
     /** Puts a room back when the match could not start. */
-    synchronized void restore(String code, Entrant host) { rooms.putIfAbsent(code, host); }
+    synchronized void restore(String code, Entrant host) { if (!closed) rooms.putIfAbsent(code, host); }
+
+    /** Closes every waiting room and refuses new ones until {@link #reopen()}. */
+    synchronized void close() { closed = true; rooms.clear(); }
+
+    /** Admits rooms again after maintenance. */
+    synchronized void reopen() { closed = false; }
 
     /** Lists the hosts in stable room-code order. */
     public List<MatchSummary> openMatches() {

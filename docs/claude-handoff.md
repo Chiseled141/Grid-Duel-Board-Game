@@ -32,6 +32,23 @@ seven-nation bonus and some edge cases are provisional (AGENTS.md lists them).
   table; marshals between the EDT and the JavaFX thread),
   `client/bot/CardBot` (headless protocol bot for `demo` and `bots`).
 
+## Startup and offline play
+
+The client opens on `StartupPanel`: update check, then connection, then login (see
+`docs/startup-and-updates.md`). `client/startup` keeps the logic away from the UI; `client/update`,
+`launcher` and `release` implement the real automatic updater and its local tooling
+(`docs/updates.md`). Remote connections use TLS with a packaged production endpoint, the server
+enforces a minimum client version, and drain mode, backups and a manual EC2 procedure exist
+(`docs/connections.md`, `docs/deployment.md`). No release bucket, signing key, certificate or
+production hostname is configured in the repository, so
+default builds report "Updates not set up"; `tools/update-demo.sh` shows a real local update and
+`--startup-fixture <name>` shows each state with labelled local stand-ins. When the server cannot
+be reached, **Play offline** runs a private `GameServer` inside the client (loopback, temporary
+database, account `offline`) so practice against the bots still works. Offline, the menu says
+"Offline play", hides Create match and Join a game, and notes that history and replays last only
+for the session. A required update found from Settings after login blocks new matches and
+rematches but never interrupts the current match.
+
 ## Routes
 
 The Atlas section was removed at the user’s request (2026-10-20), including its menu entry,
@@ -46,17 +63,27 @@ In-match chat was removed entirely: no table controls, client history/callbacks,
 or chat protocol messages remain. Reconnect, errors/notices and rematch remain supported.
 
 The deck builder and Deck menu were removed at the user’s request. No client sends a deck
-(protocol 13 has no deck field or matchmaking queue, supports voluntary skips and carries formations); `MatchSession` builds the same 45-card deck for both seats every
+(protocol 16 has no deck field or matchmaking queue, supports voluntary skips, carries formations, personal replays, room cancellation, the client version in the hello, UpdateRequired and MaintenanceNotice); `MatchSession` builds the same 45-card deck for both seats every
 game and shuffles each independently. Deck entries saved in `client.properties` by older clients
 are preserved unchanged and never read.
 
 Play → Create match / Join a game / Practice → Easy bot or Hard bot all start real matches;
-the matchmaking queue was removed at the user's request. Home → History shows the account's recorded matches. The old leaderboard was
+the matchmaking queue was removed at the user's request. Play → Match history shows the account's recorded matches and practice games, and opens their replays (`docs/replays.md`); before 2026-10-23 no menu entry led to this page. The old leaderboard was
 removed at the user's request. `demo` runs two bots against a throwaway local server and database; `bots` connects
 an even `--count` of bots to a running server. Bots pair up through hosted rooms (one hosts, its
 partner joins by code) and play further games as rematches.
 
 ## Remaining work
+
+- Startup: the updater is implemented and tested locally on macOS; a release bucket and key,
+  Windows/Linux client verification and a bundled runtime/native installer are still to be done;
+  the production endpoint, certificate and buckets are supplied by the operator at build/deploy time; offline accounts, history and replays
+  are deliberately not kept between launches. `docs/startup-and-updates.md` lists the open policy
+  questions. A server restart ends every active match; `deckduel-switch-release` drains first and
+  refuses until it is safe (`docs/deployment.md`). The EC2 steps are written but were not run
+  here: Linux ARM64, systemd and AWS are unverified.
+- Replays: no sharing, seeking, deletion or retention limit; frames from an incompatible future
+  change to the `core.card` records are refused, not migrated (`docs/replays.md`).
 
 - Confirm or change the provisional values (AGENTS.md "Provisional implementation values"):
   formation bonuses and multipliers, all seven nations +15, empty-hand skipping with plays

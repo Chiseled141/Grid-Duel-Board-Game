@@ -1,13 +1,24 @@
 package deckduel.client;
 
+import deckduel.client.startup.InstalledVersion;
+import deckduel.client.startup.ServerRoute;
+import deckduel.client.startup.UpdateRequiredException;
 import deckduel.client.state.ServerConnection;
 import deckduel.net.Message;
+import deckduel.net.UpdateRequired;
 
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.net.InetSocketAddress;
 import java.net.Socket;
+import java.net.SocketTimeoutException;
+import java.util.List;
+import javax.net.ssl.SNIHostName;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLException;
+import javax.net.ssl.SSLParameters;
+import javax.net.ssl.SSLSocket;
 import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ScheduledExecutorService;
@@ -17,7 +28,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- * The client's network endpoint: one persistent TCP connection with a reader
+ * The client's network endpoint: one persistent TCP connection (TLS for every remote server) with a reader
  * thread and a writer thread. Incoming messages are handed to {@code receiver}
  * on the reader thread (the caller forwards them to the Swing EDT); outgoing
  * messages are enqueued by {@link #send(Message)} — never blocking the caller —
@@ -27,7 +38,8 @@ import java.util.logging.Logger;
 public final class DeckDuelClient implements AutoCloseable, ServerConnection {
 
     private static final Logger LOG = Logger.getLogger(DeckDuelClient.class.getName());
-    private static final int CONNECT_TIMEOUT_MILLIS = 5000;
+    /** How long connecting, the TLS handshake and the greeting may each take. */
+    public static final int HANDSHAKE_TIMEOUT_MILLIS = 10_000;
     /** Heartbeat interval while the connection is idle. */
     private static final int PING_INTERVAL_SECONDS = 30;
     /** A peer silent for this long is considered gone. */
@@ -36,6 +48,9 @@ public final class DeckDuelClient implements AutoCloseable, ServerConnection {
     private final LinkedBlockingQueue<Message> outgoing = new LinkedBlockingQueue<>();
     private final Consumer<Message> receiver;
     private final Consumer<String> connectionLostHandler;
+    private final SSLContext tls;
+    private final String clientVersion;
+    private final int timeoutMillis;
     private final ScheduledExecutorService heartbeat =
             Executors.newSingleThreadScheduledExecutor(runnable -> {
                 Thread thread = new Thread(runnable, "deckduel-client-heartbeat");
@@ -51,60 +66,72 @@ public final class DeckDuelClient implements AutoCloseable, ServerConnection {
     private volatile java.util.concurrent.ScheduledFuture<?> heartbeatTask;
 
     /**
-     * Creates a client.
+     * Creates a client that trusts the Java runtime's certificate authorities.
      *
      * @param receiver called on the reader thread for every incoming message
      * @param connectionLostHandler called once when the connection drops
      *        unexpectedly (not on a deliberate {@link #close()})
      */
     public DeckDuelClient(Consumer<Message> receiver, Consumer<String> connectionLostHandler) {
-        this.receiver = receiver;
-        this.connectionLostHandler = connectionLostHandler;
+        this(receiver, connectionLostHandler, ClientTls.systemTrust(), InstalledVersion.current(), HANDSHAKE_TIMEOUT_MILLIS);
     }
 
     /**
-     * Connects to the server, or does nothing when already connected.
+     * Creates a client.
      *
+     * @param tls the trusted certificate authorities for TLS routes
+     * @param clientVersion this client's release version, sent before login
+     * @param timeoutMillis how long connecting, the TLS handshake and the protocol greeting may each take
+     */
+    public DeckDuelClient(Consumer<Message> receiver, Consumer<String> connectionLostHandler, SSLContext tls,
+                          String clientVersion, int timeoutMillis) {
+        this.receiver = receiver;
+        this.connectionLostHandler = connectionLostHandler;
+        this.tls = tls;
+        this.clientVersion = clientVersion;
+        this.timeoutMillis = timeoutMillis;
+    }
+
+    /**
+     * Connects to the server, or does nothing when already connected. A TLS route is verified
+     * (trusted certificate, matching host name) before anything is sent; a plain route exists
+     * only for this computer. Every failure closes the socket before it is reported.
+     *
+     * @throws UpdateRequiredException if the server requires a newer client
      * @throws IOException if the connection cannot be established
      */
-    public synchronized void ensureConnected(String host, int port) throws IOException {
+    public synchronized void ensureConnected(ServerRoute route) throws IOException {
         if (isConnected()) {
             return;
         }
-        Socket newSocket = new Socket();
-        newSocket.connect(new InetSocketAddress(host, port), CONNECT_TIMEOUT_MILLIS);
-        newSocket.setSoTimeout(CONNECT_TIMEOUT_MILLIS);
-        ObjectOutputStream out = new ObjectOutputStream(newSocket.getOutputStream());
-        out.flush();
-        ObjectInputStream in = new ObjectInputStream(newSocket.getInputStream());
-        // Reject any serialized class outside the protocol allowlist before
-        // readObject can instantiate it (deserialization gadget defense).
-        in.setObjectInputFilter(Message.WIRE_FILTER);
-
+        Socket newSocket = route.tls() ? tls.getSocketFactory().createSocket() : new Socket();
+        ObjectOutputStream out;
+        ObjectInputStream in;
         try {
-            Object greetingObj = in.readObject();
-            if (!(greetingObj instanceof deckduel.net.ErrorMessage greeting)
-                    || !Message.GREETING.equals(greeting.text())) {
-                newSocket.close();
-                throw new IOException("server handshake failed: expected " + Message.GREETING + " greeting, got " + greetingObj);
+            newSocket.connect(new InetSocketAddress(route.host(), route.port()), timeoutMillis);
+            newSocket.setSoTimeout(timeoutMillis);
+            if (newSocket instanceof SSLSocket secure) {
+                try {
+                    handshake(secure, route.host());
+                } catch (SSLException | SocketTimeoutException reported) {
+                    throw reported;
+                } catch (IOException dropped) {
+                    // A peer that is not a TLS server usually just drops the connection.
+                    throw new SSLException("the server did not complete a TLS handshake", dropped);
+                }
             }
-            out.reset();
-            out.writeObject(new deckduel.net.ProtocolHello(Message.PROTOCOL_VERSION));
+            out = new ObjectOutputStream(newSocket.getOutputStream());
             out.flush();
-
-            Object readyObj = in.readObject();
-            if (!(readyObj instanceof deckduel.net.ProtocolReady ready) || ready.version() != Message.PROTOCOL_VERSION) {
-                newSocket.close();
-                throw new IOException("server handshake failed: expected ProtocolReady(" + Message.PROTOCOL_VERSION + "), got " + readyObj);
-            }
-        } catch (java.net.SocketTimeoutException e) {
-            newSocket.close();
-            throw new IOException("handshake timed out waiting for " + Message.GREETING + ": server upgrade required", e);
-        } catch (ClassNotFoundException e) {
-            newSocket.close();
-            throw new IOException("protocol error during handshake", e);
+            in = new ObjectInputStream(newSocket.getInputStream());
+            // Reject any serialized class outside the protocol allowlist before
+            // readObject can instantiate it (deserialization gadget defense).
+            in.setObjectInputFilter(Message.WIRE_FILTER);
+            greet(in, out);
+            newSocket.setSoTimeout(0);
+        } catch (IOException | RuntimeException failure) {
+            closeQuietly(newSocket);
+            throw explain(failure, route);
         }
-        newSocket.setSoTimeout(0);
 
         socket = newSocket;
         // Messages queued for a dropped connection are stale; the server needs a fresh login first.
@@ -123,7 +150,76 @@ public final class DeckDuelClient implements AutoCloseable, ServerConnection {
         }
         heartbeatTask = heartbeat.scheduleWithFixedDelay(this::checkLiveness,
                 PING_INTERVAL_SECONDS, PING_INTERVAL_SECONDS, TimeUnit.SECONDS);
-        LOG.info(() -> "connected to " + host + ":" + port);
+        LOG.info(() -> "connected to " + route.describe());
+    }
+
+    /** Verifies the server certificate and host name, offering TLS 1.3 and 1.2 only. */
+    private static void handshake(SSLSocket secure, String host) throws IOException {
+        SSLParameters parameters = secure.getSSLParameters();
+        parameters.setEndpointIdentificationAlgorithm("HTTPS");
+        parameters.setProtocols(new String[] {"TLSv1.3", "TLSv1.2"});
+        // Server Name Indication carries DNS names only, never IP literals.
+        if (!host.matches("[0-9.]+|\\[?[0-9a-fA-F]*:[0-9a-fA-F:]+]?")) parameters.setServerNames(List.of(new SNIHostName(host)));
+        secure.setSSLParameters(parameters);
+        secure.startHandshake();
+    }
+
+    /** The protocol greeting: the server's banner, our hello with our version, its answer. */
+    private void greet(ObjectInputStream in, ObjectOutputStream out) throws IOException {
+        try {
+            Object greetingObj = in.readObject();
+            if (!(greetingObj instanceof deckduel.net.ErrorMessage greeting) || !Message.GREETING.equals(greeting.text())) {
+                throw new IOException("server handshake failed: expected " + Message.GREETING + " greeting, got " + greetingObj);
+            }
+            out.reset();
+            out.writeObject(new deckduel.net.ProtocolHello(Message.PROTOCOL_VERSION, clientVersion));
+            out.flush();
+            Object reply = in.readObject();
+            if (reply instanceof UpdateRequired required)
+                throw new UpdateRequiredException(required.minimumVersion(), required.text());
+            if (!(reply instanceof deckduel.net.ProtocolReady ready) || ready.version() != Message.PROTOCOL_VERSION) {
+                throw new IOException("server handshake failed: expected ProtocolReady(" + Message.PROTOCOL_VERSION + "), got " + reply);
+            }
+        } catch (ClassNotFoundException e) {
+            throw new IOException("protocol error during handshake", e);
+        }
+    }
+
+    /** Turns low-level failures into reasons a player can understand, keeping the cause. */
+    static IOException explain(Exception failure, ServerRoute route) {
+        if (failure instanceof UpdateRequiredException required) return required;
+        String server = route.host() + ":" + route.port();
+        String reason;
+        if (failure instanceof SocketTimeoutException) reason = server + " did not answer in time";
+        else if (failure instanceof java.net.ConnectException) reason = "nothing is accepting connections at " + server;
+        else if (failure instanceof java.net.UnknownHostException) reason = "cannot find " + route.host();
+        else if (failure instanceof SSLException) reason = "the secure connection to " + server + " was refused: " + certificateProblem(failure);
+        else return failure instanceof IOException io ? io : new IOException(failure.getMessage(), failure);
+        return new IOException(reason, failure);
+    }
+
+    private static String certificateProblem(Exception failure) {
+        // Expiry sits deepest in the cause chain, under the generic path-validation failure, so look for it first.
+        for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
+            if (cause instanceof java.security.cert.CertificateExpiredException) return "the server's certificate has expired";
+            if (cause instanceof java.security.cert.CertificateNotYetValidException) return "the server's certificate is not valid yet";
+        }
+        for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
+            String text = String.valueOf(cause.getMessage());
+            if (text.contains("No subject alternative") || text.contains("No name matching"))
+                return "the server's certificate is for a different host name";
+            if (text.contains("PKIX") || text.contains("unable to find valid certification path"))
+                return "the server's certificate is not issued by a trusted authority";
+        }
+        return "the TLS handshake failed (" + failure.getMessage() + ")";
+    }
+
+    private static void closeQuietly(Socket socket) {
+        try {
+            socket.close();
+        } catch (IOException ignored) {
+            // Already failed; nothing else to release.
+        }
     }
 
     /** Pings the server and drops the connection when it stayed silent too long. */

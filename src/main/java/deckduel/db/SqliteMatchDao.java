@@ -42,8 +42,8 @@ public final class SqliteMatchDao implements MatchDao {
         try (PreparedStatement insert = connection.prepareStatement(
                 "INSERT INTO matches (blue_user_id, red_user_id, winner_user_id, end_reason, "
                         + "move_count, played_at, "
-                        + "rules_version, started_turns, completed_turns) "
-                        + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        + "rules_version, started_turns, completed_turns, match_key) "
+                        + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 Statement.RETURN_GENERATED_KEYS)) {
             insert.setLong(1, blueId);
             insert.setLong(2, redId);
@@ -59,6 +59,7 @@ public final class SqliteMatchDao implements MatchDao {
             insert.setString(7, result.rulesVersion());
             insert.setInt(8, result.startedTurns());
             insert.setInt(9, result.completedTurns());
+            insert.setString(10, result.roomCode());
             insert.executeUpdate();
             try (ResultSet keys = insert.getGeneratedKeys()) {
                 keys.next();
@@ -134,7 +135,7 @@ public final class SqliteMatchDao implements MatchDao {
             try (PreparedStatement select = connection.prepareStatement("""
                     SELECT m.id, ub.username AS blue, ur.username AS red, uw.username AS winner,
                            m.end_reason, m.move_count,
-                           m.played_at, m.rules_version, m.started_turns, m.completed_turns
+                           m.played_at, m.rules_version, m.started_turns, m.completed_turns, m.match_key
                     FROM matches m
                     JOIN users ub ON ub.id = m.blue_user_id
                     JOIN users ur ON ur.id = m.red_user_id
@@ -156,7 +157,7 @@ public final class SqliteMatchDao implements MatchDao {
                                 row.getString("red"), row.getString("winner"),
                                 row.getString("end_reason"), row.getInt("move_count"),
                                 row.getString("played_at"), row.getString("rules_version"),
-                                startedTurns, completedTurns));
+                                startedTurns, completedTurns, row.getString("match_key")));
                     }
                 }
             }

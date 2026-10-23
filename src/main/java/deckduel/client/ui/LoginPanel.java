@@ -1,6 +1,7 @@
 package deckduel.client.ui;
 
 import deckduel.client.ClientSettings;
+import deckduel.client.startup.ServerRoute;
 import deckduel.client.state.ClientModel;
 import deckduel.client.state.ClientModelListener;
 import deckduel.client.state.Screen;
@@ -31,7 +32,8 @@ public final class LoginPanel extends BattlefieldMenuPanel {
     private static final int MIN_CREDENTIAL_LENGTH = 3;
 
     private final ClientModel model;
-    private final ClientSettings settings;
+    // The server chosen at launch (docs/connections.md); credentials go nowhere else.
+    private final ServerRoute route;
 
     private final JTextField usernameField = new JTextField(14);
     private final JPasswordField passwordField = new JPasswordField(14);
@@ -43,15 +45,14 @@ public final class LoginPanel extends BattlefieldMenuPanel {
     private javax.swing.Timer shakeTimer;
 
     /** Builds the panel and subscribes it to the model. */
-    public LoginPanel(ClientModel model, ClientSettings settings) {
+    public LoginPanel(ClientModel model, ClientSettings settings, ServerRoute route) {
         super(model, Screen.LOGIN, settings);
         this.model = model;
-        this.settings = settings;
+        this.route = route;
         setLayout(new GridBagLayout());
         setBackground(Theme.BG);
 
-        // Connection target comes from the saved settings (CLI overrides are
-        // merged by ClientFrame); the form only asks for credentials.
+        // The form only asks for credentials; the server was chosen at launch.
         styleField(usernameField);
         styleField(passwordField);
         passwordField.setEchoChar(BULLET);
@@ -117,8 +118,7 @@ public final class LoginPanel extends BattlefieldMenuPanel {
 
         constraints.gridx = 0;
         constraints.gridy = 5;
-        JLabel serverHint = new JLabel("SERVER  "
-                + settings.host() + ":" + settings.port());
+        JLabel serverHint = new JLabel((route.tls() ? "SECURE SERVER  " : "SERVER  ") + route.host() + ":" + route.port());
         serverHint.setFont(Theme.normal(10f));
         serverHint.setForeground(Theme.withAlpha(Theme.FADED, 150));
         serverHint.setHorizontalAlignment(JLabel.CENTER);
@@ -132,9 +132,10 @@ public final class LoginPanel extends BattlefieldMenuPanel {
                 errorLabel.setText(reason);
             }
 
+            // Cleared on leaving, so a failure that opens this screen (offline sign-in) stays readable.
             @Override
             public void onScreenChanged(Screen screen) {
-                if (screen == Screen.LOGIN) {
+                if (screen != Screen.LOGIN) {
                     errorLabel.setText(" ");
                 }
             }
@@ -220,12 +221,10 @@ public final class LoginPanel extends BattlefieldMenuPanel {
             shakeCard();
             return;
         }
-        String host = settings.host();
-        int port = settings.port();
         if (isLogin) {
-            model.login(host, port, username, password);
+            model.login(route, username, password);
         } else {
-            model.register(host, port, username, password);
+            model.register(route, username, password);
         }
     }
 

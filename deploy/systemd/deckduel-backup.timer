@@ -1,0 +1,11 @@
+# Runs deckduel-backup.service daily; a missed run (instance stopped) happens at the next boot.
+[Unit]
+Description=Daily Deck Duel database backup
+
+[Timer]
+OnCalendar=*-*-* 03:30:00
+RandomizedDelaySec=15m
+Persistent=true
+
+[Install]
+WantedBy=timers.target

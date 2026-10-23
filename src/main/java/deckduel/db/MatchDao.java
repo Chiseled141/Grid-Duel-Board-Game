@@ -38,10 +38,13 @@ public interface MatchDao {
     /** Recent matches in which the user played either seat, newest first. */
     List<MatchRecord> recentMatchesFor(String username, int limit) throws SQLException;
 
-    /** One row of the matches table joined with the players' names. */
+    /**
+     * One row of the matches table joined with the players' names; {@code matchKey} links it to
+     * its players' replays and is null for rows recorded before replays existed.
+     */
     record MatchRecord(long id, String blueUsername, String redUsername,
                        String winnerUsername, String endReason, int moveCount,
                        String playedAt,
-                       String rulesVersion, Integer startedTurns, Integer completedTurns) {
+                       String rulesVersion, Integer startedTurns, Integer completedTurns, String matchKey) {
     }
 }

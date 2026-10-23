@@ -38,6 +38,7 @@ final class FxScreens {
     private StackPane root;
     private Button music;
     private CardTableView table;
+    private LoadingScreen loading;
     // Set on the EDT; read by the JavaFX thread to drop a hand-over that a newer screen change replaced.
     private volatile Screen showing;
 
@@ -70,6 +71,7 @@ final class FxScreens {
             @Override public void rematch() { SwingUtilities.invokeLater(model::requestRematch); }
             @Override public void leave() { SwingUtilities.invokeLater(model::leaveMatch); }
         }, settings, sounds);
+        loading = new LoadingScreen();
         music = musicToggle(musicOn);
         root = new StackPane();
         root.setStyle("-fx-background-color: #2C2925;");
@@ -85,7 +87,7 @@ final class FxScreens {
         });
     }
 
-    /** The speaker in the top-right corner, matching the Swing frame's floating toggle. */
+    /** The brass music tile in the top-right corner, matching the Swing frame's toggle. */
     private Button musicToggle(boolean on) {
         Button button = new Button();
         button.setId("menuMusicToggle");
@@ -98,20 +100,20 @@ final class FxScreens {
             Platform.runLater(() -> showMusic(now));
         }));
         StackPane.setAlignment(button, Pos.TOP_RIGHT);
-        StackPane.setMargin(button, new javafx.geometry.Insets(12, 12, 0, 0));
+        StackPane.setMargin(button, new javafx.geometry.Insets(16, 16, 0, 0));
         this.music = button;
         showMusic(on);
         return button;
     }
 
     private void showMusic(boolean on) {
-        SVGPath speaker = new SVGPath();
-        speaker.setContent(on ? "M2 7 H6 L11 3 V17 L6 13 H2 Z M14 6 Q17 10 14 14 M16.5 3.5 Q22 10 16.5 16.5"
-                : "M2 7 H6 L11 3 V17 L6 13 H2 Z M15 5 L23 15");
-        speaker.setFill(Color.web("#FFEEC8"));
-        speaker.setStroke(Color.web("#FFEEC8"));
-        speaker.setStrokeWidth(1.5);
-        music.setGraphic(speaker);
+        SVGPath notes = new SVGPath();
+        notes.setContent("M7 17 V5 L19 2 V14 M7 8 L19 5 M7 17 C7 21 0 21 0 18 C0 15 7 14 7 17 Z "
+                + "M19 14 C19 18 12 18 12 15 C12 12 19 11 19 14 Z" + (on ? "" : " M0 1 L22 23"));
+        notes.setFill(Color.TRANSPARENT);
+        notes.setStroke(Color.web(on ? "#D9B56A" : "#B4A890"));
+        notes.setStrokeWidth(1.8);
+        music.setGraphic(notes);
         music.setTooltip(new javafx.scene.control.Tooltip("Menu music: " + (on ? "On" : "Off")));
     }
 
@@ -141,12 +143,19 @@ final class FxScreens {
             showing = screen;
             Platform.runLater(() -> {
                 if (previous != null) table.hidden();
+                // Coming from the menus, the loading screen covers the table while it gets ready;
+                // the opening deal starts once it closes.
+                boolean entering = previous == null;
                 root.getChildren().setAll(table, music);
+                if (entering) root.getChildren().add(1, loading);
                 showMusic(musicNow);
                 if (!stage.isShowing()) place(bounds);
                 stage.show();
                 stage.toFront();
-                table.shown();
+                if (entering) {
+                    table.shown(LoadingScreen.HOLD_MILLIS);
+                    loading.play(() -> root.getChildren().remove(loading));
+                } else table.shown();
                 // The menu window goes only once the JavaFX one covers it, so nothing flashes between them.
                 SwingUtilities.invokeLater(() -> { if (showing != null) frame.setVisible(false); });
             });

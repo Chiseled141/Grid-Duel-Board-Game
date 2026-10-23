@@ -61,13 +61,15 @@ import javafx.scene.text.TextAlignment;
  * The live card match in JavaFX, over the room background. It renders only the latest
  * authoritative {@link MatchUpdate}; choosing a destination, a draw or a card to keep
  * sends a move through {@link Actions}, and nothing changes on screen until the server's next view
- * arrives. Previews are labeled and computed from public information only. Every play is staged by {@link PlayAnimator} and performed by
+ * arrives. Every play is staged by {@link PlayAnimator} and performed by
  * {@link TableEffects} under a perspective camera. Used on the JavaFX Application Thread only.
  */
 final class CardTableView extends Pane {
     private static final int GAP = 10;
     /** How long the pointer rests on a row card before its large preview appears, and the preview's height. */
     private static final int PREVIEW_DELAY_MS = 350, PREVIEW_H = 420;
+    /** How long a scoring card's hop lasts, in animation milliseconds. */
+    private static final int JUMP_MS = 300;
     /** A light veil over row cards the player is not pointing at, so busy art does not all compete at once. */
     private static final Color QUIET = Color.rgb(0, 0, 0, .16);
     private static final long GAIN_MILLIS = 1200, NOTICE_MILLIS = 4500;
@@ -1154,13 +1156,42 @@ final class CardTableView extends Pane {
             Rectangle r = rowCardBounds(zone, slot);
             boolean destination = rearranging ? slot != pressedSlot : playAt(active, new Hit(zone, slot)) != null;
             boolean hovered = hover != null && hover.zone() == zone && hover.index() == slot;
+            double jump = jump(zone, slot);
+            g.save();
+            // A card whose pair just connected hops up from its bottom edge. It is scaled on the
+            // canvas rather than redrawn at a new size, so its cached face is reused every frame.
+            if (jump > 0) {
+                double cx = r.getCenterX(), base = r.getMaxY(), grow = 1 + .08 * jump;
+                g.translate(cx, base - 14 * jump);
+                g.scale(grow, grow);
+                g.translate(-cx, -base);
+            }
             FxKit.drawFace(g, card.def(), card.suppressed(), r.width, r.height, destination && hovered,
                     pixelScale(), r.x, r.y);
             if (destination) outline(g, r, hovered ? FxKit.AMBER : FxKit.AMBER.deriveColor(0, 1, 1, .6));
             else if (!hovered) { g.setFill(QUIET); g.fillRoundRect(r.x, r.y, r.width, r.height, 9, 9); }
             drawTriggers(g, zone, slot, r);
+            if (jump > 0) glow(g, r, jump);
+            g.restore();
         }
         drawLinks(g, zone, side.score().pairs(), top + cardH);
+    }
+
+    /**
+     * How far a row card is into its hop, 0 at rest to 1 at the top: both cards of a pair hop as
+     * its link reaches them, quick up and a softer fall.
+     */
+    private double jump(TableZone zone, int slot) {
+        if (trace == null) return 0;
+        long elapsed = traceElapsed();
+        double jump = 0;
+        for (ScoringTrace.Link link : trace.links) {
+            if (link.zone() != zone || link.pair().slotA() != slot && link.pair().slotB() != slot) continue;
+            double p = (elapsed - link.at() - ScoringTrace.CHIP_POP_MS) / (double) JUMP_MS;
+            if (p < 0 || p >= 1) continue;
+            jump = Math.max(jump, p < .25 ? 1 - Math.pow(1 - p / .25, 2) : 1 - Math.pow((p - .25) / .75, 2));
+        }
+        return jump;
     }
 
     /** The trace's warm glow on cards that just changed on a row. */
@@ -1224,10 +1255,12 @@ final class CardTableView extends Pane {
         if (age < 0 || gain == 0 || age > GAIN_MILLIS) return;
         double fade = 1 - age / (double) GAIN_MILLIS;
         String text = (gain > 0 ? "+" : "−") + Math.abs(gain);
-        Font font = FxKit.bold(18);
+        // The play's total pops in with an overshoot, larger the more it gained, then drifts up and fades.
+        double pop = age < 220 ? TableEffects.easeOutBack(age / 220.0) : 1;
+        Font font = FxKit.display((22 + Math.min(16, Math.abs(gain) / 6.0)) * Math.max(.2, pop));
         int right = rowLeft + Row.SIZE * cardW + (Row.SIZE - 1) * GAP;
-        text(g, text, right - FxKit.width(text, font), top - 10 - 12 * (1 - fade), font,
-                (gain > 0 ? FxKit.CREAM : FxKit.CORAL).deriveColor(0, 1, 1, fade), false);
+        Color colour = gain >= 40 ? Color.web("#F2C35E") : gain > 0 ? FxKit.CREAM : FxKit.CORAL;
+        text(g, text, right - FxKit.width(text, font), top - 10 - 14 * (1 - fade), font, colour.deriveColor(0, 1, 1, fade), true);
     }
 
     /** A deck, face down, and its counts. */
@@ -1323,25 +1356,14 @@ final class CardTableView extends Pane {
         return "Choose a target for " + card.def().name();
     }
 
-    /** Hover details or a labeled preview of the hovered destination. */
+    /** Hovered card details, hidden while choosing a legal play destination. */
     String detailText() {
         CardInstance card = handCard(dragging ? pressed : selected);
-        PlayCard preview = card == null ? null : playAt(card.id(), hover);
-        if (preview != null) return previewText(card, preview);
+        if (card != null && playAt(card.id(), hover) != null) return null;
         CardDef hovered = cardAt(hover);
         if (hovered != null) return CardFace.details(hovered);
         return null;
     }
-
-    private String previewText(CardInstance card, PlayCard play) {
-        PlayerView view = shown.view();
-        Rules.Resolution after = Rules.resolve(card, play, view.hand(), view.board());
-        long own = after.board().ownScore().total() - view.you().score().total();
-        long theirs = after.board().opponentScore().total() - view.opponent().score().total();
-        return "PREVIEW · " + after.description() + " · you " + signed(own) + ", " + shown.opponentName() + " " + signed(theirs);
-    }
-
-    private static String signed(long value) { return (value >= 0 ? "+" : "−") + Math.abs(value); }
 
     private void drawHand(GraphicsContext g) {
         // A hand still waiting to be dealt stays in the deck; showing it first would spoil the deal.

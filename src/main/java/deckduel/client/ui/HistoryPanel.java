@@ -10,7 +10,10 @@ import javax.swing.*;
 import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.DefaultTableModel;
 
-/** The account's recorded matches, newest first, over the animated main-menu scenery. */
+/**
+ * The account's recorded matches, newest first, over the animated main-menu scenery. Selecting a
+ * match with a recording and pressing Watch replay (or double-clicking it) opens its replay.
+ */
 public final class HistoryPanel extends BattlefieldMenuPanel {
     private final ClientModel model;
     private final JPanel ledger;
@@ -23,8 +26,13 @@ public final class HistoryPanel extends BattlefieldMenuPanel {
             g.dispose();
         }
     };
+    private final JTable table;
+    private final JButton watch = UiKit.pill("Watch replay", UiKit.Pill.GOLD);
+    private final JLabel replayStatus = menuLabel(" ", 12, false);
+    // The entries behind the table's rows, in the same order.
+    private java.util.List<HistoryEntry> shown = java.util.List.of();
     private final DefaultTableModel rows = new DefaultTableModel(
-            new Object[]{"DATE", "OPPONENT", "RESULT", "SCORE", "ROUNDS"}, 0) {
+            new Object[]{"DATE", "OPPONENT", "RESULT", "SCORE", "ROUNDS", "REPLAY"}, 0) {
         @Override public boolean isCellEditable(int row, int column) { return false; }
     };
 
@@ -45,7 +53,7 @@ public final class HistoryPanel extends BattlefieldMenuPanel {
         heading.add(menuLabel("Match history", 32, true));
         heading.add(Box.createVerticalStrut(6)); heading.add(summary);
         ledger.add(heading, BorderLayout.NORTH);
-        JTable table = new JTable(rows);
+        table = new JTable(rows);
         table.setName("historyTable");
         table.setRowHeight(48); table.setFont(Theme.normal(15));
         table.setForeground(Theme.CREAM); table.setBackground(Theme.IRON_DARK); table.setOpaque(false);
@@ -80,7 +88,7 @@ public final class HistoryPanel extends BattlefieldMenuPanel {
                 return this;
             }
         });
-        int[] widths = {120, 130, 110, 90, 200};
+        int[] widths = {120, 130, 110, 90, 200, 110};
         for (int i = 0; i < widths.length; i++) {
             table.getColumnModel().getColumn(i).setPreferredWidth(widths[i]);
             if (i != 1 && i != 4) table.getColumnModel().getColumn(i).setMaxWidth(widths[i]);
@@ -105,7 +113,7 @@ public final class HistoryPanel extends BattlefieldMenuPanel {
         emptyCopy.setLayout(new BoxLayout(emptyCopy, BoxLayout.Y_AXIS));
         emptyCopy.add(menuLabel("No recorded matches yet", 19, false));
         emptyCopy.add(Box.createVerticalStrut(8));
-        emptyCopy.add(menuLabel("Online matches appear here; practice is not recorded.", 13, false));
+        emptyCopy.add(menuLabel("Online and practice matches appear here.", 13, false));
         empty.add(emptyCopy);
         views.setOpaque(false);
         // Room inside the plate's trim and studs, and for its shadow on the right and bottom.
@@ -121,9 +129,24 @@ public final class HistoryPanel extends BattlefieldMenuPanel {
         // Extra right inset: the shadowed text paints slightly wider than the label measures.
         footnote.setBorder(BorderFactory.createEmptyBorder(2, 0, 4, 16));
         footer.add(footnote, BorderLayout.EAST);
+        JPanel replayControls = new JPanel(new FlowLayout(FlowLayout.LEFT, 12, 0));
+        replayControls.setOpaque(false);
+        watch.setName("watchReplay");
+        watch.addActionListener(event -> watchSelected());
+        replayStatus.setName("replayStatus");
+        replayControls.add(watch);
+        replayControls.add(replayStatus);
+        footer.add(replayControls, BorderLayout.WEST);
+        table.getSelectionModel().addListSelectionListener(event -> updateReplayControls());
+        table.addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override public void mouseClicked(java.awt.event.MouseEvent event) {
+                if (event.getClickCount() == 2) watchSelected();
+            }
+        });
         ledger.add(footer, BorderLayout.SOUTH); add(ledger);
         model.addListener(new ClientModelListener() {
             @Override public void onHistoryChanged() { refresh(); }
+            @Override public void onLobbyChanged() { updateReplayControls(); }
         });
         refresh();
     }
@@ -145,24 +168,59 @@ public final class HistoryPanel extends BattlefieldMenuPanel {
 
     private void refresh() {
         rows.setRowCount(0);
-        int wins = 0, losses = 0, draws = 0;
+        shown = model.history();
+        int wins = 0, losses = 0, draws = 0, practice = 0;
         boolean legacy = false;
-        for (HistoryEntry match : model.history()) {
+        for (HistoryEntry match : shown) {
             boolean scored = !match.yourRounds().isEmpty();
             legacy |= !scored;
             String result = label(match.result()) + ("FORFEIT".equals(match.endReason()) ? " (forfeit)" : "");
             rows.addRow(new Object[]{date(match.playedAt()), match.opponent(), result,
-                    scored ? match.yourTotal() + "–" + match.opponentTotal() : "—", rounds(match)});
+                    scored ? match.yourTotal() + "–" + match.opponentTotal() : "—", rounds(match), replayLabel(match.replay())});
+            // Practice games never change wins or losses, so the summary counts them apart.
+            if (match.practice()) { practice++; continue; }
             switch (match.result()) {
                 case WIN -> wins++;
                 case LOSS -> losses++;
                 case DRAW -> draws++;
             }
         }
-        summary.setText(rows.getRowCount() + " matches · " + wins + " won · " + losses + " lost · " + draws + " drawn");
-        footnote.setText(legacy ? "Matches from the retired board game have no card scores." : "Round scores are banked into the match total.");
+        summary.setText(rows.getRowCount() + " matches · " + wins + " won · " + losses + " lost · " + draws + " drawn"
+                + (practice == 0 ? "" : " · " + practice + " practice"));
+        footnote.setText(model.isOffline() ? "Offline: history and replays last only for this session."
+                : legacy ? "Matches from the retired board game have no card scores." : "Round scores are banked into the match total.");
+        updateReplayControls();
         ((CardLayout) views.getLayout()).show(views, rows.getRowCount() == 0 ? "empty" : "table");
         revalidate(); repaint();
+    }
+
+    private HistoryEntry selected() {
+        int row = table.getSelectedRow();
+        return row < 0 || row >= shown.size() ? null : shown.get(row);
+    }
+
+    private void updateReplayControls() {
+        HistoryEntry match = selected();
+        watch.setEnabled(match != null && match.replay() != HistoryEntry.Replay.UNAVAILABLE);
+        replayStatus.setText(match == null ? "Select a match to watch it again."
+                : switch (match.replay()) {
+                    case AVAILABLE -> "Replay ready.";
+                    case INCOMPLETE -> "Incomplete recording: some actions are missing.";
+                    case UNAVAILABLE -> "Replay unavailable.";
+                });
+    }
+
+    private void watchSelected() {
+        HistoryEntry match = selected();
+        if (match != null && match.replayId() != null) model.requestReplay(match.replayId());
+    }
+
+    private static String replayLabel(HistoryEntry.Replay replay) {
+        return switch (replay) {
+            case AVAILABLE -> "Watch";
+            case INCOMPLETE -> "Incomplete";
+            case UNAVAILABLE -> "Unavailable";
+        };
     }
 
     private static String label(HistoryEntry.Result result) {

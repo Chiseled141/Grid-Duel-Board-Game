@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# Run inside EC2: sudo /opt/deckduel/bin/deckduel-install-certificate <fullchain.pem> <privkey.pem>
+# Copies a certificate and its unencrypted PKCS#8 key into /etc/deckduel/tls (root:deckduel 0640)
+# and, if the server is running, makes it serve the new certificate to new connections
+# without a restart. Also usable as a certbot deploy hook:
+#   --deploy-hook '/opt/deckduel/bin/deckduel-install-certificate "$RENEWED_LINEAGE/fullchain.pem" "$RENEWED_LINEAGE/privkey.pem"'
+set -euo pipefail
+[ "$(id -u)" -eq 0 ] || { echo "Run with sudo." >&2; exit 1; }
+CHAIN=${1:?usage: deckduel-install-certificate <fullchain.pem> <privkey.pem>}
+KEY=${2:?usage: deckduel-install-certificate <fullchain.pem> <privkey.pem>}
+grep -q "BEGIN CERTIFICATE" "$CHAIN" || { echo "$CHAIN is not a PEM certificate chain" >&2; exit 1; }
+grep -q "BEGIN PRIVATE KEY" "$KEY" || { echo "$KEY is not a PKCS#8 PEM key (convert: openssl pkcs8 -topk8 -nocrypt -in key -out privkey.pem)" >&2; exit 1; }
+openssl x509 -in "$CHAIN" -noout -subject -ext subjectAltName -enddate
+install -d -o root -g deckduel -m 0750 /etc/deckduel/tls
+install -o root -g deckduel -m 0640 "$CHAIN" /etc/deckduel/tls/fullchain.pem.new
+install -o root -g deckduel -m 0640 "$KEY" /etc/deckduel/tls/privkey.pem.new
+mv -f /etc/deckduel/tls/fullchain.pem.new /etc/deckduel/tls/fullchain.pem
+mv -f /etc/deckduel/tls/privkey.pem.new /etc/deckduel/tls/privkey.pem
+if systemctl is-active --quiet deckduel; then /opt/deckduel/bin/deckduel-ctl reload-tls; fi
+echo "Certificate installed."

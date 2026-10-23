@@ -32,11 +32,22 @@ import java.util.logging.Logger;
  * One match between two seats. Every state change runs on the session's own single-thread
  * executor, so moves, timers and reconnects never interleave. The server builds both decks,
  * owns seeds, hidden cards and validation; each participant only ever receives their own
- * {@link MatchUpdate}.
+ * {@link MatchUpdate}. Each human seat's own view is also recorded for their replay once per state
+ * revision, whether or not it reached them, so reconnects and retried requests add no frames.
  */
 final class MatchSession {
     private static final Logger LOG = Logger.getLogger(MatchSession.class.getName());
     static final String EASY_BOT = "Practice bot (easy)", HARD_BOT = "Practice bot (hard)";
+
+    /** One account's recording of the current game. */
+    private static final class Recording {
+        final long id;
+        int revision = -1;
+        // Set when a frame could not be stored; the replay is then marked incomplete.
+        boolean missing;
+
+        Recording(long id) { this.id = id; }
+    }
 
     private static final class Participant {
         final Seat seat;
@@ -50,6 +61,7 @@ final class MatchSession {
         boolean rematch;
         long lastAccepted = Long.MIN_VALUE;
         ScheduledFuture<?> grace;
+        Recording recording;
 
         Participant(Seat seat, String username, ClientHandler handler, java.util.function.Function<PlayerView, Move> brain) {
             this.seat = seat;
@@ -68,6 +80,9 @@ final class MatchSession {
     private final ExecutorService executor;
     private MatchState state;
     private int game = 1;
+    // Published for the operator's status from the match thread; read from any thread.
+    private volatile boolean inProgress = true;
+    private volatile int heldSeats;
 
     private MatchSession(GameServer server, boolean practice, Participant first, Participant second) {
         this.server = server;
@@ -155,9 +170,11 @@ final class MatchSession {
             if (p == null || state.phase() != MatchPhase.FINISHED) return;
             Participant other = other(p);
             if (other.left) { handler.send(new ErrorMessage("Your opponent has left; a rematch is not possible.")); return; }
+            if (server.draining()) { handler.send(new ErrorMessage(ClientHandler.MAINTENANCE)); return; }
             p.rematch = true;
             if (other.bot) other.rematch = true;
             if (other.rematch) {
+                if (!server.reserveRematch(this)) { handler.send(new ErrorMessage(ClientHandler.MAINTENANCE)); return; }
                 game++;
                 newGame();
             } else broadcast();
@@ -174,6 +191,7 @@ final class MatchSession {
             p.grace = null;
             p.handler = handler;
             LOG.info(() -> username + " rejoined match " + id);
+            publishStatus();
             broadcast();
         });
     }
@@ -187,7 +205,22 @@ final class MatchSession {
     }
 
     /** Stops the session's thread during server shutdown. */
-    void close() { executor.shutdownNow(); }
+    void close() { executor.shutdownNow(); inProgress = false; }
+
+    /** Whether a game or its final persistence is still in progress, for the restart check. */
+    boolean inProgress() { return inProgress; }
+
+    /** Seats held for players who dropped and may still reconnect. */
+    int heldSeats() { return heldSeats; }
+
+    /** Called under the admission barrier before a rematch is queued as active. */
+    void reserveGame() { inProgress = true; }
+
+    private void publishStatus() {
+        inProgress = state != null && state.phase() != MatchPhase.FINISHED;
+        // A finished game holds nothing worth waiting for, even if a grace timer is still pending.
+        heldSeats = !inProgress ? 0 : (first.grace != null ? 1 : 0) + (second.grace != null ? 1 : 0);
+    }
 
     private void disconnect(Participant p) {
         p.handler = null;
@@ -196,6 +229,7 @@ final class MatchSession {
         int forGame = game;
         p.grace = later(() -> graceExpired(p, forGame), TimeUnit.SECONDS.toMillis(seconds));
         LOG.info(() -> p.username + " disconnected from match " + id + "; holding the seat for " + seconds + "s");
+        publishStatus();
         broadcast();
     }
 
@@ -207,11 +241,14 @@ final class MatchSession {
     private void depart(Participant p) {
         p.left = true;
         p.rematch = false;
-        server.matches().release(p.username, this);
+        p.grace = null;
         if (state.phase() != MatchPhase.FINISHED) {
             state = state.forfeit(p.seat);
             changed();
         } else broadcast();
+        publishStatus();
+        // Keep the session discoverable until a forfeit's replay and result have been saved.
+        server.matches().release(p.username, this);
         if ((first.bot || first.left) && (second.bot || second.left)) close();
     }
 
@@ -221,22 +258,50 @@ final class MatchSession {
         var deck = DeckRules.deck(server.catalog());
         state = MatchState.start(deck, deck, seeds.nextLong());
         LOG.info(() -> "match " + id + " game " + game + ": " + first.username + " vs " + second.username);
+        for (Participant p : List.of(first, second)) {
+            long replay = p.bot ? -1 : server.replays().begin(p.username, gameKey(), other(p).username, practice,
+                    server.catalog().version());
+            p.recording = replay < 0 ? null : new Recording(replay);
+        }
         changed();
     }
 
     /** Publishes an accepted change, then records a finished match or lets a waited-on bot move. */
     private void changed() {
+        capture();
         broadcast();
         if (state.phase() == MatchPhase.FINISHED) {
             if (!practice) record();
+            // wait-safe must include the final replay writes and result transaction.
+            publishStatus();
             return;
         }
+        publishStatus();
         for (Participant p : List.of(first, second)) {
             if (!p.bot || !state.awaits(p.seat)) continue;
             int revision = state.revision(), forGame = game;
             later(() -> botMove(p, revision, forGame), server.config().botDelayMillis());
         }
     }
+
+    /** Stores each recording human's view of a new revision, and closes the recordings when the game ends. */
+    private void capture() {
+        for (Participant p : List.of(first, second)) {
+            Recording recording = p.recording;
+            if (recording == null) continue;
+            if (state.revision() != recording.revision) {
+                recording.revision = state.revision();
+                if (!server.replays().frame(recording.id, state.view(p.seat))) recording.missing = true;
+            }
+            if (state.phase() == MatchPhase.FINISHED) {
+                server.replays().finish(recording.id, state.view(p.seat), !recording.missing);
+                p.recording = null;
+            }
+        }
+    }
+
+    /** Names this game for its result row and replays: the session id and the rematch number. */
+    private String gameKey() { return id + "-" + game; }
 
     private void botMove(Participant bot, int revision, int forGame) {
         if (game != forGame || state.revision() != revision || !state.awaits(bot.seat)) return;
@@ -249,7 +314,7 @@ final class MatchSession {
             MatchOutcome outcome = state.outcome();
             PlayerColor winner = outcome.winner() == null ? null : outcome.winner() == Seat.FIRST ? PlayerColor.BLUE : PlayerColor.RED;
             EndReason way = outcome.forfeit() ? EndReason.FORFEIT : winner == null ? EndReason.DRAW : EndReason.SCORE;
-            server.recorder().record(new MatchResult(id + "-" + game, first.username, second.username, winner, way,
+            server.recorder().record(new MatchResult(gameKey(), first.username, second.username, winner, way,
                     server.catalog().version(), state.round(), state.rounds().size()), state.rounds());
             for (Participant p : List.of(first, second))
                 if (p.handler != null) p.handler.send(new ProfileUpdate(server.userDao().profileOf(p.username)));

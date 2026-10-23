@@ -1,5 +1,6 @@
 package deckduel.client;
 
+import deckduel.client.startup.ServerRoute;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -22,8 +23,9 @@ public final class ClientSettings {
     private static final Path FILE = Path.of(System.getProperty("user.home"),
             ".deckduel", "client.properties");
 
-    private String host = "127.0.0.1";
-    private int port = 5555;
+    // Until a production server exists, the default is the local development route.
+    private String host = ServerRoute.LOCAL_DEVELOPMENT.host();
+    private int port = ServerRoute.LOCAL_DEVELOPMENT.port();
     private int windowWidth = 1100;
     private int windowHeight = 880;
     private boolean soundEnabled = true;
