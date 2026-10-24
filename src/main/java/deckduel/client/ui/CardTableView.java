@@ -66,7 +66,7 @@ import javafx.scene.text.TextAlignment;
  */
 final class CardTableView extends Pane {
     private static final int GAP = 10;
-    /** How long the pointer rests on a row card before its large preview appears, and the preview's height. */
+    /** Hover delay for card details, and the height of an enlarged row card. */
     private static final int PREVIEW_DELAY_MS = 350, PREVIEW_H = 420;
     /** A light veil over row cards the player is not pointing at, so busy art does not all compete at once. */
     private static final Color QUIET = Color.rgb(0, 0, 0, .16);
@@ -91,6 +91,8 @@ final class CardTableView extends Pane {
     private final ImageView backdrop = new ImageView();
     private final javafx.scene.shape.Rectangle headerShade = new javafx.scene.shape.Rectangle();
     private final Canvas board = new Canvas();
+    private final Label spellName = new Label(), spellEffect = new Label();
+    private final VBox spellTip = new VBox(8, spellName, spellEffect);
     private final Pane effectsLayer = new Pane();
     private final SubScene effectsScene = new SubScene(effectsLayer, 1, 1, false, SceneAntialiasing.DISABLED);
     private final TableEffects effects;
@@ -194,6 +196,8 @@ final class CardTableView extends Pane {
         leave.setOnAction(event -> confirmLeave());
         // The rail sits under the effects, so scoring chips are seen landing on it.
         getChildren().addAll(backdrop, headerShade, board, rail, effectsScene, leave);
+        buildSpellTip();
+        getChildren().add(spellTip);
         buildResult();
         buildConfirm();
         getChildren().add(cardDetails);
@@ -231,6 +235,8 @@ final class CardTableView extends Pane {
 
     /** Puts {@code next} on the table and stages the change that produced it. */
     private void present(State next) {
+        // Hover indices may identify different cards after a draw, play or private reveal update.
+        clearPreview();
         state = next;
         MatchUpdate update = next.match();
         if (update == null) {
@@ -318,6 +324,7 @@ final class CardTableView extends Pane {
 
     /** Called when another screen replaces the table. */
     void hidden() {
+        clearPreview();
         onScreen = false;
         while (!held.isEmpty()) present(held.poll());
         settle.stop();
@@ -551,9 +558,13 @@ final class CardTableView extends Pane {
         wake();
     }
 
-    /** {@code hit} when it is a row card worth previewing now, otherwise null; hand cards are already large. */
+    /** Previews public row Units and readable text for Spells in recipient-visible card areas. */
     private Hit previewable(Hit hit) {
-        if (hit == null || shown == null || dragging || selected != null) return null;
+        if (hit == null || shown == null || dragging || result.isVisible()
+                || confirm.isVisible() || cardDetails.isVisible()) return null;
+        CardDef card = cardAt(hit);
+        if (card != null && !card.occupiesSpace()) return hit;
+        if (selected != null) return null;
         PlayerView view = shown.view();
         if (view.keeping()) return null;
         if (hit.zone() == TableZone.OWN) return view.you().row().at(hit.index()) != null ? hit : null;
@@ -568,6 +579,51 @@ final class CardTableView extends Pane {
         previewDelay.stop();
         previewTarget = null;
         preview = null;
+        spellTip.setVisible(false);
+    }
+
+    private void buildSpellTip() {
+        spellTip.setId("spellHoverDetails");
+        spellName.setId("spellHoverName");
+        spellEffect.setId("spellHoverEffect");
+        spellName.setFont(FxKit.bold(20));
+        spellName.setTextFill(FxKit.AMBER);
+        spellEffect.setFont(FxKit.normal(17));
+        spellEffect.setTextFill(FxKit.CREAM);
+        spellName.setWrapText(true);
+        spellEffect.setWrapText(true);
+        spellTip.setPadding(new javafx.geometry.Insets(16));
+        spellTip.setStyle("-fx-background-color: rgba(22, 16, 11, 0.97);"
+                + "-fx-background-radius: 8; -fx-border-radius: 8; -fx-border-color: #d3aa61;");
+        // The pointer must keep reaching the canvas, including clicks and drag gestures.
+        spellTip.setMouseTransparent(true);
+        spellTip.setManaged(false);
+        spellTip.setVisible(false);
+    }
+
+    /** Uses current visible definitions rather than the small rules text baked into the artwork. */
+    private void refreshSpellTip() {
+        spellTip.setVisible(false);
+        if (preview == null || previewable(preview) == null) return;
+        CardDef card = cardAt(preview);
+        if (card == null || card.occupiesSpace()) return;
+        Rectangle at = switch (preview.zone()) {
+            case HAND -> handBounds(preview.index());
+            case LOOK -> lookBounds(preview.index(), shown.view().looking().size());
+            case REVEALED -> revealedBounds(preview.index());
+            default -> null;
+        };
+        if (at == null) return;
+        spellName.setText(card.name());
+        spellEffect.setText(card.text());
+        double width = Math.min(360, board.getWidth() - 16);
+        double height = spellTip.prefHeight(width);
+        double x = Math.max(8, Math.min(at.getCenterX() - width / 2, board.getWidth() - width - 8));
+        double y = at.y - height - 14;
+        if (y < 8) y = at.getMaxY() + 14;
+        y = Math.max(8, Math.min(y, board.getHeight() - height - 8));
+        spellTip.resizeRelocate(x, y, width, height);
+        spellTip.setVisible(true);
     }
 
     void pressAt(Point2D point) {
@@ -1062,6 +1118,7 @@ final class CardTableView extends Pane {
     // ---------------------------------------------------------------- drawing
 
     private void redraw() {
+        refreshSpellTip();
         GraphicsContext g = board.getGraphicsContext2D();
         g.clearRect(-20, -20, board.getWidth() + 40, board.getHeight() + 40);
         if (shown == null) { centered(g, "Waiting for the match to start…", FxKit.bold(18), FxKit.CREAM, getHeight() / 2); return; }
@@ -1085,6 +1142,7 @@ final class CardTableView extends Pane {
     /** A large copy of the row card the pointer rests on, beside it, so small printed text never needs squinting at. */
     private void drawPreview(GraphicsContext g) {
         if (preview == null || previewable(preview) == null) return;
+        if (preview.zone() != TableZone.OWN && preview.zone() != TableZone.OPPONENT) return;
         RowCard unit = (preview.zone() == TableZone.OWN ? shown.view().you() : shown.view().opponent()).row().at(preview.index());
         Rectangle at = rowCardBounds(preview.zone(), preview.index());
         int h = (int) Math.min(PREVIEW_H, board.getHeight() * .55), w = h * 2 / 3;

@@ -108,13 +108,66 @@ class CardTableViewTest {
             Rectangle card = t.view.rowCardBounds(TableZone.OWN, unit);
             t.view.moveTo(centre(card));
             assertEquals(new CardTableView.Hit(TableZone.OWN, unit), t.view.previewTarget());
-            t.view.moveTo(centre(t.view.handBounds(0)));
-            assertNull(t.view.previewTarget(), "hand cards are already large");
+            int handUnit = 0;
+            while (!view.hand().get(handUnit).def().occupiesSpace()) handUnit++;
+            t.view.moveTo(centre(t.view.handBounds(handUnit)));
+            assertNull(t.view.previewTarget(), "hand Units are already large");
             t.view.moveTo(centre(t.view.slotBounds(TableZone.OWN, empty)));
             assertNull(t.view.previewTarget(), "an empty space has nothing to preview");
             t.view.moveTo(centre(card));
             t.view.pressAt(centre(card));
             assertNull(t.view.previewTarget(), "picking the card up dismisses its preview");
+        });
+    }
+
+    @Test void hoveringEverySpellShowsReadableRulesWithoutSendingAMove() throws Exception {
+        var spells = DECK.stream().filter(card -> !card.occupiesSpace())
+                .map(card -> new deckduel.core.card.CardInstance(DECK.indexOf(card) + 1L, card)).toList();
+        PlayerView base = state().view(Seat.FIRST);
+        PlayerView view = new PlayerView(base.seat(), base.revision(), base.phase(), base.round(), base.turn(),
+                base.you(), base.opponent(), spells, base.rounds(), base.events(), base.outcome(),
+                base.lastPlay(), List.of(), List.of());
+        Table t = FxTesting.call(() -> {
+            var table = table(new ClientSettings(), true);
+            table.view.show(shown(view, true));
+            return table;
+        });
+        for (int i = 0; i < spells.size(); i++) {
+            int index = i;
+            FxTesting.run(() -> {
+                t.view.moveTo(centre(t.view.handBounds(index)));
+                assertFalse(t.view.lookup("#spellHoverDetails").isVisible(), "wait for the hover delay");
+            });
+            Thread.sleep(550);
+            FxTesting.run(() -> {
+                var tip = t.view.lookup("#spellHoverDetails");
+                assertTrue(tip.isVisible(), spells.get(index).def().name());
+                assertTrue(tip.isMouseTransparent(), "details must not intercept card input");
+                assertEquals(spells.get(index).def().name(),
+                        ((javafx.scene.control.Label) t.view.lookup("#spellHoverName")).getText());
+                assertEquals(spells.get(index).def().text(),
+                        ((javafx.scene.control.Label) t.view.lookup("#spellHoverEffect")).getText());
+                var bounds = tip.getBoundsInParent();
+                assertTrue(bounds.getMinX() >= 0 && bounds.getMaxX() <= t.view.getWidth());
+                assertTrue(bounds.getMinY() >= 0 && bounds.getMaxY() <= t.view.getHeight());
+                t.view.moveTo(new Point2D(1, 700));
+                assertFalse(tip.isVisible(), "leaving the card dismisses its details");
+                assertTrue(t.actions.calls.isEmpty(), "hover is read-only");
+            });
+        }
+        FxTesting.run(() -> t.view.moveTo(centre(t.view.handBounds(0))));
+        Thread.sleep(550);
+        FxTesting.run(() -> {
+            assertTrue(t.view.lookup("#spellHoverDetails").isVisible());
+            t.view.pressAt(centre(t.view.handBounds(0)));
+            assertFalse(t.view.lookup("#spellHoverDetails").isVisible(), "picking up a card dismisses details");
+            t.view.moveTo(centre(t.view.handBounds(0)));
+            t.view.show(shown(base, true));
+        });
+        Thread.sleep(550);
+        FxTesting.run(() -> {
+            assertFalse(t.view.lookup("#spellHoverDetails").isVisible(), "a newer view cancels stale hover details");
+            t.view.hidden();
         });
     }
 
