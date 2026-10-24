@@ -110,7 +110,7 @@ public final class ClientModel {
     /** The server's maintenance message while it prepares for a restart, or null. */
     public String maintenance() { return maintenance; }
     /** Whether a match is being played (not finished, left or absent). */
-    public boolean matchInProgress() { return match != null && match.view().phase() == MatchPhase.IN_PROGRESS; }
+    public boolean matchInProgress() { return match != null && match.view().phase() != MatchPhase.FINISHED; }
     /**
      * Runs {@code action} now when no match is in progress, otherwise once the current match
      * finishes or is left. A later request replaces an earlier one that is still waiting.
@@ -156,7 +156,7 @@ public final class ClientModel {
     /** Sends one move (card play, manual draw, keep or skip) against the revision currently shown. */
     public void move(Move move) {
         if (match == null || reconnecting || awaitingAnswer) return;
-        if (!match.view().yourTurn()) return;
+        if (!match.view().needsAction()) return;
         awaitingAnswer = true;
         connection.send(new MoveRequest(nextRequestId++, match.view().revision(), move));
     }
@@ -256,7 +256,7 @@ public final class ClientModel {
 
     /** Reconnects during a live match; otherwise clears identity and returns to login. */
     public void handleConnectionLost() {
-        if (match != null && match.view().phase() == MatchPhase.IN_PROGRESS && credentials != null && !reconnecting) {
+        if (match != null && match.view().phase() != MatchPhase.FINISHED && credentials != null && !reconnecting) {
             reconnecting = true;
             fire(ClientModelListener::onMatchChanged);
             reconnect(credentials);

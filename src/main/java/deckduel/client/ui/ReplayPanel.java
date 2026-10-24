@@ -216,7 +216,14 @@ final class ReplayPanel extends JPanel {
     }
 
     private void paintBoard(Graphics2D g, PlayerView view, Rectangle board) {
-        int cardWidth = (int) Math.max(40, Math.min((board.width - 6 * GAP) / 7.0, board.height * .29 / 1.4));
+        if (view.phase() == deckduel.core.card.MatchPhase.KING_SELECTION) {
+            caption(g, board.x, board.y, view.selectedKing() == null ? "KING OFFER · choose one" : "CONFIRMED " + view.selectedKing().title() + " · waiting");
+            int height = Math.min(170, board.height / 4), width = height * 1060 / 1482;
+            for (int i = 0; i < view.kingOffer().size(); i++)
+                KingArt.paint(g, view.kingOffer().get(i), new Rectangle(board.x + i * (width + 12), board.y + 24, width, height));
+            board = new Rectangle(board.x, board.y + height + 36, board.width, board.height - height - 36);
+        }
+        int cardWidth = (int) Math.max(40, Math.min((board.width - 104 - 6 * GAP) / 7.0, board.height * .29 / 1.4));
         int cardHeight = (int) Math.round(cardWidth * 1.4);
         int handWidth = (int) Math.round(cardWidth * .72), handHeight = (int) Math.round(handWidth * 1.4);
         Long latest = view.lastPlay() == null ? null : view.lastPlay().card().id();
@@ -227,9 +234,12 @@ final class ReplayPanel extends JPanel {
             paintCards(g, view.revealed(), board.x, y, handWidth / 2, handHeight / 2, null, board.width);
             y += handHeight / 2 + 8;
         }
-        paintRow(g, view.opponent().row(), board, y, cardWidth, cardHeight, latest);
+        Rectangle units = new Rectangle(board.x + 104, board.y, board.width - 104, board.height);
+        paintKings(g, view.opponent(), board.x, y, cardHeight);
+        paintRow(g, view.opponent().row(), units, y, cardWidth, cardHeight, latest);
         y = caption(g, board.x, y + cardHeight + 4, "YOUR ROW") + 2;
-        paintRow(g, view.you().row(), board, y, cardWidth, cardHeight, latest);
+        paintKings(g, view.you(), board.x, y, cardHeight);
+        paintRow(g, view.you().row(), units, y, cardWidth, cardHeight, latest);
         y += cardHeight + 18;
         y = caption(g, board.x, y, "YOUR HAND  ·  deck " + view.you().deckCount() + "  ·  plays left "
                 + view.you().playsRemaining() + "  ·  draws left " + view.you().drawsRemaining());
@@ -237,9 +247,15 @@ final class ReplayPanel extends JPanel {
         if (!view.looking().isEmpty()) {
             g.setFont(Theme.bold(11f));
             g.setColor(Theme.BRASS_LIGHT);
-            g.drawString("RECONNAISSANCE", handEnd + 16, y + 12);
+            g.drawString((view.choiceKind() == deckduel.core.card.ChoiceKind.SECRET_EDICT ? "SECRET EDICT" : "RECONNAISSANCE"), handEnd + 16, y + 12);
             paintCards(g, view.looking(), handEnd + 16, y + 18, handWidth * 3 / 4, handHeight * 3 / 4, null, board.width);
         }
+    }
+
+    private static void paintKings(Graphics2D g, SideView side, int x, int y, int room) {
+        int height = Math.min(68, room), width = height * 1060 / 1482;
+        for (int i = 0; i < side.kings().kings().size(); i++)
+            KingArt.paint(g, side.kings().kings().get(i), new Rectangle(x + i * (width + 4), y, width, height));
     }
 
     private int caption(Graphics2D g, int x, int y, String text) {
@@ -334,10 +350,15 @@ final class ReplayPanel extends JPanel {
         g.drawString(total, x + width - g.getFontMetrics().stringWidth(total), y + 4);
         g.setFont(Theme.normal(12f));
         g.setColor(Theme.FADED);
+        String kings = side.kings().kings().stream().map(k -> k.title()).collect(java.util.stream.Collectors.joining(", "));
+        if (!kings.isEmpty()) y = line(g, "Kings: " + kings, x, y + 22) - 4;
         y = line(g, "Units " + score.units() + "   ·   Combos " + score.combos(), x, y + 22);
         y = line(g, score.formation() == null ? "No formation"
                 : score.formation().title() + "  +" + score.formationBonus() + "  ×" + score.multiplier(), x, y);
         if (score.bonus() != 0) y = line(g, "Bonus +" + score.bonus() + " (added after ×)", x, y);
+        for (var king : score.kings()) y = line(g, king.king().title() + " +" + king.points() + " (after ×)", x, y);
+        if (side.kings().kings().contains(deckduel.core.card.King.NETHRION))
+            y = line(g, "Secret Edict: " + (side.kings().edictUsed() ? "used" : "ready"), x, y);
         return line(g, "Match total " + side.matchTotal(), x, y);
     }
 

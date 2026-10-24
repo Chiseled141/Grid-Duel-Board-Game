@@ -54,6 +54,16 @@ off the same way has no result row, so it does not appear in history either. Fra
 incompatible build are refused with "This replay was recorded by another version and cannot be
 shown." rather than partly shown.
 
+## King compatibility (2026-10-25, protocol 17)
+
+Frames now include shared offers, the owner's private confirmation, public King ownership,
+round Spell/Edict counters and per-King score contributions. Pending Secret Edict cards are
+recorded only in their owner's view and labelled separately from Reconnaissance in playback.
+The opponent's recording has no pending card faces or unannounced King identity. Retry and
+reconnect still do not add revisions. Old serialized frames lack required King/choice fields,
+and are refused through the existing incompatible-version response, preserving all stored
+replay data, accounts and results. See [King Cards](kings.md).
+
 ## Privacy
 
 - Frames are the owner's own `PlayerView`: their hand, their Reconnaissance cards and the cards

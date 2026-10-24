@@ -59,7 +59,7 @@ class ReplayJourneySystemTest {
                 if (!(inbox.poll(10, TimeUnit.SECONDS) instanceof MatchUpdate update) || update.view().revision() <= shown) continue;
                 shown = update.view().revision();
                 if (update.view().phase() == MatchPhase.FINISHED) return;
-                if (update.view().yourTurn()) {
+                if (update.view().needsAction()) {
                     out.writeObject(new MoveRequest(request++, shown, GreedyBot.choose(update.view())));
                     out.flush(); out.reset();
                 }

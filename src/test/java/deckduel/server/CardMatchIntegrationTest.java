@@ -100,7 +100,18 @@ class CardMatchIntegrationTest {
         return new MatchUpdate[] {host.update(any -> true), joiner.update(any -> true)};
     }
 
-    private static boolean waitedOn(MatchUpdate update) { return update.view().yourTurn(); }
+    private MatchUpdate[] confirmKings(Peer a, Peer b, MatchUpdate[] opened) throws Exception {
+        MatchUpdate ua = opened[0], ub = opened[1];
+        while (ua.view().phase() == MatchPhase.KING_SELECTION) {
+            int revision = ua.view().revision();
+            if (ua.view().choosingKing()) a.move(ua); else b.move(ub);
+            ua = a.update(u -> u.view().revision() > revision);
+            ub = b.update(u -> u.view().revision() > revision);
+        }
+        return new MatchUpdate[] {ua, ub};
+    }
+
+    private static boolean waitedOn(MatchUpdate update) { return update.view().needsAction(); }
 
     /** Drives both peers with the greedy bot until each sees the finished view. */
     private MatchUpdate[] playOut(Peer a, Peer b, MatchUpdate first, MatchUpdate second) throws Exception {
@@ -118,11 +129,11 @@ class CardMatchIntegrationTest {
         try (var alice = new Peer("alice", true); var bob = new Peer("bob", true)) {
             MatchUpdate[] opened = hostAndJoin(alice, bob);
             assertEquals("bob", opened[0].opponentName()); assertEquals("alice", opened[1].opponentName());
-            assertEquals(MatchPhase.IN_PROGRESS, opened[0].view().phase(), "round one is dealt at once");
+            assertEquals(MatchPhase.KING_SELECTION, opened[0].view().phase(), "round one is dealt at once");
             alice.send(new ListMatchesRequest());
             assertTrue(alice.expect(ListMatchesResponse.class, any -> true).openMatches().isEmpty(), "the room was consumed");
 
-            MatchUpdate[] start = opened;
+            MatchUpdate[] start = confirmKings(alice, bob, opened);
             assertEquals(10, start[0].view().hand().size()); assertEquals(10, start[0].view().opponent().handCount());
             assertEquals(45 - 10, start[0].view().you().deckCount(), "every Unit and Spell");
             assertNotEquals(start[0].view().hand(), start[1].view().hand(), "each player only sees their own hand");
@@ -148,11 +159,13 @@ class CardMatchIntegrationTest {
     @Test void staleIllegalAndRetriedPlaysChangeNothing() throws Exception {
         try (var alice = new Peer("alice", true); var bob = new Peer("bob", true)) {
             MatchUpdate[] opened = hostAndJoin(alice, bob);
-            MatchUpdate[] start = opened;
+            MatchUpdate[] start = confirmKings(alice, bob, opened);
             Peer mover = start[0].view().yourTurn() ? alice : bob, waiter = mover == alice ? bob : alice;
             MatchUpdate view = mover == alice ? start[0] : start[1];
             MatchUpdate waiting = mover == alice ? start[1] : start[0];
-            PlayCard play = view.view().legalPlays().get(0);
+            PlayCard play = view.view().legalPlays().stream().filter(p -> view.view().hand().stream()
+                    .anyMatch(c -> c.id() == p.cardId() && c.def().kind() == deckduel.core.card.CardKind.SPELL))
+                    .findFirst().orElse(view.view().legalPlays().get(0));
 
             waiter.send(new MoveRequest(101, waiting.view().revision(), PlayCard.place(waiting.view().hand().get(0).id(), 0)));
             assertTrue(waiter.expect(ActionRejected.class, any -> true).reason().contains("not your turn"));
@@ -167,13 +180,14 @@ class CardMatchIntegrationTest {
             MatchUpdate retried = mover.update(any -> true);
             assertEquals(accepted.view(), retried.view(), "a retried accepted play is not applied twice");
             assertEquals(1, retried.view().you().playsUsed());
+            assertEquals(accepted.view().you().kings().spellsPlayed(), retried.view().you().kings().spellsPlayed());
         }
     }
 
     @Test void skippingIsBroadcastAndStaleOutOfTurnAndRetriedSkipsDoNotConsumeAnotherPlay() throws Exception {
         try (var alice = new Peer("alice", true); var bob = new Peer("bob", true)) {
             MatchUpdate[] opened = hostAndJoin(alice, bob);
-            MatchUpdate[] start = opened;
+            MatchUpdate[] start = confirmKings(alice, bob, opened);
             Peer mover = start[0].view().yourTurn() ? alice : bob, waiter = mover == alice ? bob : alice;
             MatchUpdate view = mover == alice ? start[0] : start[1];
             int revision = view.view().revision();
@@ -206,7 +220,7 @@ class CardMatchIntegrationTest {
     @Test void aDroppedPlayerReconnectsToTheSameSeatWithinTheGracePeriod() throws Exception {
         try (var alice = new Peer("alice", true); var bob = new Peer("bob", true)) {
             MatchUpdate[] opened = hostAndJoin(alice, bob);
-            MatchUpdate[] start = opened;
+            MatchUpdate[] start = confirmKings(alice, bob, opened);
             bob.close();
             assertFalse(alice.update(u -> !u.opponentConnected()).opponentLeft());
             try (var bobAgain = new Peer("bob", false)) {
@@ -239,7 +253,7 @@ class CardMatchIntegrationTest {
             assertTrue(bob.update(MatchUpdate::opponentWantsRematch).opponentWantsRematch());
             bob.send(new RematchRequest());
             MatchUpdate second = alice.update(u -> u.game() == 2);
-            assertEquals(MatchPhase.IN_PROGRESS, second.view().phase(), "a rematch deals a fresh round one");
+            assertEquals(MatchPhase.KING_SELECTION, second.view().phase(), "a rematch deals a fresh round one");
             assertEquals(1, second.view().round());
             assertEquals(10, second.view().hand().size());
             assertEquals(0, second.view().you().matchTotal());
@@ -507,7 +521,8 @@ class CardMatchIntegrationTest {
         Path folder = Files.createTempDirectory(Path.of("/tmp"), "dd");
         Path socket = folder.resolve("control.sock");
         try (ControlServer control = ControlServer.start(socket, server)) {
-            assertEquals("rw-rw----", java.nio.file.attribute.PosixFilePermissions.toString(Files.getPosixFilePermissions(socket)));
+            if (Files.getFileStore(socket).supportsFileAttributeView("posix"))
+                assertEquals("rw-rw----", java.nio.file.attribute.PosixFilePermissions.toString(Files.getPosixFilePermissions(socket)));
             assertTrue(ControlClient.send(socket, "status").startsWith("ok state=open"));
             assertTrue(ControlClient.send(socket, "drain").contains("state=draining"));
             assertTrue(server.draining());
@@ -563,6 +578,94 @@ class CardMatchIntegrationTest {
             assertEquals(update.view(), replay.frames().get(replay.frames().size() - 1), "the final result is the last frame");
             var profile = server.userDao().profileOf("alice");
             assertEquals(0, profile.wins() + profile.losses());
+        }
+    }
+
+    @Test void kingConfirmationIsPrivateIdempotentAndRestoredAfterDisconnect() throws Exception {
+        try (var alice = new Peer("alice", true); var bob = new Peer("bob", true)) {
+            MatchUpdate[] opened = hostAndJoin(alice, bob);
+            var offer = opened[0].view().kingOffer();
+            assertEquals(offer, opened[1].view().kingOffer());
+            var chosen = offer.get(0);
+            var request = new MoveRequest(alice.requests++, opened[0].view().revision(), new deckduel.core.card.ChooseKing(chosen));
+            alice.send(request);
+            MatchUpdate privateChoice = alice.update(u -> u.view().selectedKing() != null);
+            MatchUpdate hidden = bob.update(u -> u.view().revision() == privateChoice.view().revision());
+            assertNull(hidden.view().selectedKing());
+            assertTrue(hidden.view().opponent().kings().kings().isEmpty());
+            alice.send(request);
+            assertEquals(privateChoice.view(), alice.update(any -> true).view());
+            bob.send(new MoveRequest(bob.requests++, opened[1].view().revision(), new deckduel.core.card.ChooseKing(chosen)));
+            bob.expect(ActionRejected.class, any -> true);
+            MatchUpdate fresh = bob.update(u -> u.view().revision() == hidden.view().revision());
+            alice.close();
+            bob.update(u -> !u.opponentConnected());
+            try (var again = new Peer("alice", false)) {
+                MatchUpdate restored = again.update(any -> true);
+                assertEquals(privateChoice.view(), restored.view());
+                MatchUpdate connected = bob.update(MatchUpdate::opponentConnected);
+                bob.send(new MoveRequest(bob.requests++, fresh.view().revision(), new deckduel.core.card.ChooseKing(chosen)));
+                MatchUpdate ready = again.update(u -> u.view().phase() == MatchPhase.IN_PROGRESS);
+                assertEquals(List.of(chosen), ready.view().you().kings().kings());
+                assertEquals(List.of(chosen), ready.view().opponent().kings().kings());
+                assertEquals(0, ready.view().you().playsUsed());
+                assertEquals(opened[0].view().turn(), ready.view().turn());
+                bob.send(new LeaveMatchRequest());
+                again.update(u -> u.view().phase() == MatchPhase.FINISHED);
+                ReplayResponse replay = replayOf(again);
+                assertTrue(replay.frames().contains(privateChoice.view()), "owner replay retains its unannounced confirmation");
+            }
+        }
+    }
+
+    @Test void secretEdictPendingChoiceSurvivesRetryReconnectAndPrivateReplay() throws Exception {
+        try (var alice = new Peer("alice", true); var bob = new Peer("bob", true)) {
+            MatchUpdate[] opened = hostAndJoin(alice, bob);
+            // Offers use live secure randomness. New games are requested through the real rematch route.
+            for (int attempts = 0; !opened[0].view().kingOffer().contains(deckduel.core.card.King.NETHRION); attempts++) {
+                assertTrue(attempts < 40, "Nethrion should appear in a shared offer");
+                int game = opened[0].game();
+                alice.send(new LeaveMatchRequest()); bob.update(u -> u.view().phase() == MatchPhase.FINISHED);
+                bob.send(new LeaveMatchRequest());
+                opened = hostAndJoin(alice, bob);
+            }
+            var king = deckduel.core.card.King.NETHRION;
+            alice.send(new MoveRequest(alice.requests++, opened[0].view().revision(), new deckduel.core.card.ChooseKing(king)));
+            MatchUpdate confirmed = alice.update(u -> u.view().selectedKing() == king);
+            MatchUpdate bobChoice = bob.update(u -> u.view().revision() == confirmed.view().revision());
+            bob.send(new MoveRequest(bob.requests++, bobChoice.view().revision(), new deckduel.core.card.ChooseKing(king)));
+            MatchUpdate mine = alice.update(u -> u.view().phase() == MatchPhase.IN_PROGRESS);
+            int openedRevision = mine.view().revision();
+            MatchUpdate theirs = bob.update(u -> u.view().revision() == openedRevision);
+            if (!mine.view().yourTurn()) {
+                bob.send(new MoveRequest(bob.requests++, theirs.view().revision(), new deckduel.core.card.SkipTurn()));
+                mine = alice.update(u -> u.view().yourTurn());
+                int rev = mine.view().revision(); bob.update(u -> u.view().revision() == rev);
+            }
+            var draw = new MoveRequest(alice.requests++, mine.view().revision(), new deckduel.core.card.DrawCard());
+            alice.send(draw);
+            MatchUpdate pending = alice.update(u -> u.view().choiceKind() == deckduel.core.card.ChoiceKind.SECRET_EDICT);
+            MatchUpdate hidden = bob.update(u -> u.view().revision() == pending.view().revision());
+            assertTrue(hidden.view().looking().isEmpty()); assertEquals(10, pending.view().hand().size());
+            assertEquals(1, pending.view().you().drawsUsed());
+            alice.send(draw); assertEquals(pending.view(), alice.update(any -> true).view());
+            alice.close(); bob.update(u -> !u.opponentConnected());
+            try (var again = new Peer("alice", false)) {
+                MatchUpdate restored = again.update(any -> true);
+                assertEquals(pending.view(), restored.view());
+                bob.update(MatchUpdate::opponentConnected);
+                var keep = new MoveRequest(700, restored.view().revision(), new deckduel.core.card.KeepEdictCard(restored.view().looking().get(0).id()));
+                again.send(keep);
+                MatchUpdate kept = again.update(u -> u.view().revision() > restored.view().revision());
+                bob.update(u -> u.view().revision() == kept.view().revision());
+                assertTrue(kept.view().yourTurn()); assertEquals(11, kept.view().hand().size());
+                assertEquals(1, kept.view().you().drawsUsed()); assertEquals(0, kept.view().you().playsUsed());
+                again.send(keep); assertEquals(kept.view(), again.update(any -> true).view());
+                bob.send(new LeaveMatchRequest()); again.update(u -> u.view().phase() == MatchPhase.FINISHED);
+                ReplayResponse owner = replayOf(again), opponent = replayOf(bob);
+                assertTrue(owner.frames().contains(pending.view()));
+                assertTrue(opponent.frames().stream().allMatch(f -> f.looking().isEmpty()), "opponent recording contains no Edict cards");
+            }
         }
     }
 }

@@ -59,7 +59,7 @@ class FxScreensTest {
         try {
             var catalog = CatalogLoader.loadBundled();
             var deck = DeckRules.deck(catalog);
-            MatchState state = MatchState.start(deck, deck, 3);
+            MatchState state = deckduel.TestMatches.start(deck, deck, 3);
             PlayerView view = state.view(state.turn());
             SwingUtilities.invokeAndWait(() -> model[0].handleMessage(
                     new MatchUpdate("M1", 1, "alice", "bob", false, true, false, false, false, view)));

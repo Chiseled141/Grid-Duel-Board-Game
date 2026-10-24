@@ -31,6 +31,12 @@ public final class GreedyBot {
      * the bot should choose a card play.
      */
     static Move routine(PlayerView view) {
+        if (view.choosingKing()) return new ChooseKing(view.kingOffer().stream().max(Comparator.comparingLong(king ->
+                Scoring.score(view.you().row(), new KingStatus(List.of(king), view.you().kings().spellsPlayed(), false)).kingPoints()
+                + view.hand().stream().filter(c -> c.def().kind() == CardKind.UNIT).mapToLong(c ->
+                Scoring.score(Row.EMPTY.place(0, c), new KingStatus(List.of(king), 0, false)).kingPoints()).sum())).orElseThrow());
+        if (view.keeping() && view.choiceKind() == ChoiceKind.SECRET_EDICT)
+            return new KeepEdictCard(view.looking().stream().max(Comparator.comparingInt(c -> c.def().points())).orElseThrow().id());
         if (view.keeping()) return new KeepCard(view.looking().stream().max(Comparator.comparingInt(c -> c.def().points())).orElseThrow().id());
         boolean shortHanded = view.hand().size() < view.you().playsRemaining();
         if (view.canDraw() && (shortHanded || view.legalPlays().isEmpty())) return new DrawCard();
@@ -41,6 +47,12 @@ public final class GreedyBot {
     /** The bot's score minus the opponent's after a play, computed from public tables only. */
     static long leadAfter(PlayerView view, PlayCard play) {
         CardInstance card = view.hand().stream().filter(c -> c.id() == play.cardId()).findFirst().orElseThrow();
-        return Rules.resolve(card, play, view.hand(), view.board()).board().lead();
+        Rules.Board result = Rules.resolve(card, play, view.hand(), view.board()).board();
+        return lead(view, result, card.def().kind() == CardKind.SPELL ? 1 : 0);
+    }
+    static long lead(PlayerView view, Rules.Board board, int extraSpells) {
+        KingStatus own = view.you().kings();
+        return Scoring.score(board.own(), new KingStatus(own.kings(), own.spellsPlayed() + extraSpells, own.edictUsed())).total()
+                - Scoring.score(board.opponent(), view.opponent().kings()).total();
     }
 }

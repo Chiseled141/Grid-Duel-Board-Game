@@ -11,12 +11,13 @@ public sealed interface Message extends Serializable permits ActionRejected, Can
         PracticeRequest, ProfileUpdate, ProtocolHello, ProtocolReady, RegisterRequest, RematchRequest,
         ReplayRequest, ReplayResponse, UpdateRequired {
     /**
-     * Version 16 adds the client's release version to ProtocolHello, UpdateRequired (the server's
+     * Version 17 adds simultaneous King choices, ownership, bonus breakdown and private Secret Edict.
+     * Version 16 added the client's release version to ProtocolHello, UpdateRequired (the server's
      * minimum client version, answered before login) and MaintenanceNotice (drain before a
      * restart). Version 15 added CancelRoomRequest, 14 personal replays, and 13 removed the
      * matchmaking queue. Older peers are rejected at the handshake.
      */
-    int PROTOCOL_VERSION = 16;
+    int PROTOCOL_VERSION = 17;
     /** Greeting shared by both peers. */
     String GREETING = "DECK_DUEL_PROTOCOL:" + PROTOCOL_VERSION;
     /** Restricts deserialization to protocol records, card view contracts and bounded collections. */
@@ -55,6 +56,8 @@ public sealed interface Message extends Serializable permits ActionRejected, Can
                     + "deckduel.net.UpdateRequired;"
                     + "deckduel.net.UserProfile;"
                     + "deckduel.core.card.CardDef;deckduel.core.card.CardInstance;deckduel.core.card.CardKind;"
+                    + "deckduel.core.card.King;deckduel.core.card.KingStatus;deckduel.core.card.KingBonus;"
+                    + "deckduel.core.card.ChooseKing;deckduel.core.card.KeepEdictCard;deckduel.core.card.ChoiceKind;"
                     + "deckduel.core.card.DrawCard;deckduel.core.card.KeepCard;"
                     + "deckduel.core.card.PlayCard;deckduel.core.card.SkipTurn;deckduel.core.card.Formation;"
                     + "deckduel.core.card.Effect$Disable;deckduel.core.card.Effect$Destroy;"

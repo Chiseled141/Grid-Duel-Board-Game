@@ -11,13 +11,13 @@ What works: the startup journey (Launch → Check for updates → Connect → Lo
 See `docs/claude-handoff.md` for boundaries and what remains open.
 
 **Implemented rules (2026-10-21):** each player is dealt ten cards as the match opens, and every
-later round deals ten fresh cards; there is no setup choice. Every player's draw deck is all 35
+later round deals ten fresh cards; King selection follows the deal in rounds 1 and 2 (see §5.7 and `docs/kings.md`). Every player's draw deck is all 35
 Units (seven nations × Assassin 2, Bowman 3, Guardman 4, Knight 5, Wizard 6) plus one copy of
 each of the 10 neutral Spells: 45 cards, independently shuffled by the server. Unit rows have seven
 spaces; ten plays per player per round (a voluntary skip uses one); no automatic replacement draw;
 three manual draws per round; full rows do not end the round. Each row's best Balatro-style
 formation adds bonus points and a multiplier (§5.3). Landmarks, Sabotage, Chaplain, Envoy, the
-national Spells, the eight-space row and the 37-card deck are retired. The protocol is version 16 (client version in the hello, UpdateRequired, MaintenanceNotice; 2026-10-23).
+national Spells, the eight-space row and the 37-card deck are retired. The protocol is version 17 (King selection, ownership, bonuses and private Secret Edict; 2026-10-25).
 
 ## Development requirements
 
@@ -61,8 +61,9 @@ Tests use temporary SQLite files and ephemeral localhost ports. Desktop tests re
 - Updates: `client/update` implements the real update check, download, staging and hand-over behind the `client/startup` seams; `launcher` is a JDK-only package built into its own `deck-duel-launcher.jar` (launch, activate after the game exits, install) and must not import other `deckduel` packages; `release` is local release tooling. The client reaches only a static HTTPS location (such as S3) for updates, with no credentials; the private signing key never enters the repository or a package. See `docs/updates.md`.
 - `client/state/ClientModel` owns account, lobby and match state on the EDT. Socket callbacks hand messages to it through SwingUtilities.invokeLater; panels observe `ClientModelListener`. Never block the EDT for I/O.
 - JavaFX screens update their scene graph on the JavaFX Application Thread and marshal updates across Swing/JavaFX thread boundaries. Keep I/O and long-running work off both UI threads; preserve the existing EDT ownership of `ClientModel` unless an explicit architecture change replaces it.
+- Kings (2026-10-25): `King` is the structured seven-King catalog, `KingStatus` contains ownership and round counters, and `KingScoring` derives flat bonuses after formation. `MatchState` privately holds simultaneous confirmations and Edict choices; only recipient-visible facts enter `PlayerView`. See `docs/kings.md`.
 - `client/ui/CardTableView` (JavaFX) is the live match screen over `assets/match-room.png`; it renders only server `MatchUpdate`s and never applies a play locally. An opponent's update that arrives while a play is still animating waits, in order, until that animation finishes (2026-10-23), so the bot's reply follows a Spell's effects instead of playing over them; your own updates, a new game and reduced motion show at once. `ScoreRail` is reusable presentation code; its `Display` is a UI snapshot, not a core state or network contract.
-- The protocol is **DECK_DUEL_PROTOCOL:16**, shared through `Message.PROTOCOL_VERSION`; older peers (version 15 had a one-field `ProtocolHello` and no `UpdateRequired`/`MaintenanceNotice`; version 14 had no `CancelRoomRequest`; version 13 had no replays or replay status on history entries; version 12 had the matchmaking queue's `FindMatchRequest`/`MatchmakingStatus`; version 11 had Landmarks and no formations; version 10 has no voluntary skip; version 9 sent deck choices and expected eight-space rows) are rejected. Every match action is a `MoveRequest` carrying a `core.card.Move` (`PlayCard`, `DrawCard`, `KeepCard`, `SkipTurn`); lobby requests carry no deck. The sealed Message hierarchy and explicit deserialization allowlist list every message and every `core.card` record/enum that crosses the wire. Keep serialVersionUID=1L, flush/reset each write, heartbeat Ping every 30 seconds, and 90-second silence limits.
+- The protocol is **DECK_DUEL_PROTOCOL:17**, shared through `Message.PROTOCOL_VERSION`; older peers (version 16 had no Kings or Secret Edict; version 15 had a one-field `ProtocolHello` and no `UpdateRequired`/`MaintenanceNotice`; version 14 had no `CancelRoomRequest`; version 13 had no replays or replay status on history entries; version 12 had the matchmaking queue's `FindMatchRequest`/`MatchmakingStatus`; version 11 had Landmarks and no formations; version 10 has no voluntary skip; version 9 sent deck choices and expected eight-space rows) are rejected. Every match action is a `MoveRequest` carrying a `core.card.Move` (`PlayCard`, `DrawCard`, `KeepCard`, `SkipTurn`, `ChooseKing`, `KeepEdictCard`); lobby requests carry no deck. The sealed Message hierarchy and explicit deserialization allowlist list every message and every `core.card` record/enum that crosses the wire. Keep serialVersionUID=1L, flush/reset each write, heartbeat Ping every 30 seconds, and 90-second silence limits.
 - Server deployment: `server/ServerMain` is the headless entry point of `target/deck-duel-server.jar` (no JavaFX or client code) with `server --config`, `ctl`, `probe`, `backup`, `restore` and `backup-keygen`. `ServerSettings` reads `/etc/deckduel/server.properties`; `TlsMaterial` serves PEM certificates and reloads them; a public bind without TLS is refused; `minimumClientVersion` is enforced before login; drain mode and the local control socket (`ControlServer`) let an operator restart only when no match is in progress. Scripts, systemd units and the manual EC2 procedure are in `deploy/` and `docs/deployment.md`; nothing in the repository touches AWS.
 - `server/GameServer` owns an accept loop and a handler pool. `ClientHandler` owns each connection; its output monitor serializes writes. Room directory and account registry remain concurrency-safe. Duplicate login closes the previous connection; stale cleanup must not remove a newer identity or room. Require authentication before lobby, match, history and replay operations; replays are read only by their owner. Never log passwords or authentication request records.
 - The server owns decks, RNG, hidden hands, validation, scoring and match results. Rejections change nothing. Clients and bots receive only their own `PlayerView`: their own hand and Reconnaissance cards, the opponent cards their own Spy revealed, and the public rows, scores and counters.
@@ -188,6 +189,35 @@ the numbers in `Scoring.ALL_NATIONS_BONUS` or `Formation`.
   discarded or stolen card is shown to both players.
 - **Clear Disable** targets one of your Units with a disabled part and clears both points and tags.
 - **Disable Tags / Disable Points / Destroy Unit** target enemy Units only.
+
+### 5.7 King Cards (approved and implemented 2026-10-25)
+
+Kings live outside the unchanged 45-card deck, hand and Unit row, with at most two distinct
+Kings per player. After dealing rounds 1 and 2, both players choose one from the same three
+distinct Kings. Round 2 offers three of the four Kings never offered in round 1. Each new
+choice is private until both confirm, then public. Both players may choose the same King.
+Choices cost no play/draw, block ordinary actions and preserve the normal starter. Round 3
+keeps both Kings; rematch clears everything and generates fresh offers. No shop, currency,
+reroll, upgrade or auto-selection timer.
+
+King row conditions require active tags; Disable Points does not suppress them. Bonuses:
+Varkhan +2 per Assassin/Bowman (cap 10); Altharion +2 per distinct class (cap 10);
+Mordraven `min(10, 3 * max(0, largest active class group - 2))`, starting at the THIRD Unit,
+tied groups counted once; Aurendor +3 per accepted Spell this round (cap 9) while at least one
+friendly Unit has active tags; Thalvaren +2 per distinct nation (cap 10); Vaelthor +5 per nation
+with at least two active Units (cap 10), counting each nation once. No generic authority bonus.
+All King points are added AFTER formation and the existing unmultiplied seven-nation bonus.
+
+Nethrion's first accepted manual draw each round privately looks at two, keeps one and bottoms
+the other, spending exactly one manual draw and keeping the turn. One remaining card draws
+normally and spends the ability; zero rejects without spending anything. Spell draws/deals do
+not trigger it. A pending `KeepEdictCard` blocks other normal moves. Reset Edict and Spell
+counters each round; retain Kings. Rejections/retries do not count another Spell or draw.
+
+Use the original seven PNGs at `assets/cards/kings/` without cropping or redrawing. Identity,
+descriptions and parameters live in `King`, never OCR or renderer gameplay. Full module flow,
+privacy, artwork and replay compatibility are documented in `docs/kings.md`. Values match the
+provided art and require playtesting; existing provisional values remain unchanged.
 
 ## Implementation direction
 

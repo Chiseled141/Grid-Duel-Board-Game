@@ -2,6 +2,16 @@
 
 The live screen is the JavaFX `CardTableView`.
 
+King Cards (2026-10-25): a reserved strip between the seven-space rows and the deck/discard
+piles contains two King positions per side. `KingTableControls` uses the original uncropped art,
+a three-card selection/confirmation overlay and an original-art inspector with current flat
+contribution and Nethrion's round status. Selection waits for opening-deal staging; reduced
+motion displays it immediately. `KingArt` caches background decoding. The score rail has a
+separate Kings line below formation; scoring chips tally it after the multiplier. Secret Edict
+uses the private keep overlay with its own heading and `KeepEdictCard` move, preserving the
+turn; Reconnaissance remains separately labelled and ends the cast's turn. All these facts come
+from the recipient's server view. See [King Cards](../kings.md).
+
 Use the existing `/assets/match-room.png` across the entire game screen. Keep the room and wooden tabletop visible; cards sit directly over the scene. Remove the chess grid when the card-game screen replaces the legacy screen. Use subtle brass outlines, warm ivory text, soft card shadows, and restrained local shading for contrast rather than a large opaque board panel.
 
 - Top: round number, opponent's concealed hand, and quiet settings/leave controls.
@@ -16,7 +26,7 @@ Scale spacing and card size with the window while preserving readable text, all 
 
 `CardTableView` implements this layout for live matches and feeds `ScoreRail` from each recipient-specific view. Selecting a card highlights its legal spaces or targets; hovering one keeps the placement prompt without a play-preview line. An accepted card play or **Skip turn** advances the turn. Skip turn (also S), below Draw, uses one of the ten plays and preserves the hand, rows and draw allowance. Its cost is shown below the button. It is unavailable outside your turn, while reconnecting, and during a Reconnaissance choice.
 
-Match start: the ten-card opening deal follows as soon as the table has appeared; there is no setup choice. Under each player's own deck a **DRAW n/3** button makes a manual draw (also clicking the deck, or D). Reconnaissance shows its cards privately over a dimmed table until one is kept. Cards a Spy revealed appear as small faces marked SPIED beside the opponent's hand count. Clicking a revealed face opens the same large inspector with its points, nation/class or Spell text. Only cards in the recipient's current revealed list are inspectable; an open Spy inspector closes and clears its private description when that card leaves the enemy hand or the round ends. Card faces add only what the art lacks: the selection outline and disable markers (the art prints points, nation, class and Spell text).
+Match start: the ten-card opening deal follows as soon as the table has appeared; the shared King offer appears after the opening deal animation in rounds 1 and 2. Under each player's own deck a **DRAW n/3** button makes a manual draw (also clicking the deck, or D). Reconnaissance shows its cards privately over a dimmed table until one is kept. Cards a Spy revealed appear as small faces marked SPIED beside the opponent's hand count. Clicking a revealed face opens the same large inspector with its points, nation/class or Spell text. Only cards in the recipient's current revealed list are inspectable; an open Spy inspector closes and clears its private description when that card leaves the enemy hand or the round ends. Card faces add only what the art lacks: the selection outline and disable markers (the art prints points, nation, class and Spell text).
 
 Hand cards use separate dimensions up to 1.5 times the row cards, limited by available vertical room. They sit higher with bottom clearance for the fan and shadows; overlapping spacing accommodates larger hands. Drawing, hit testing, dragging and deal animations share these hand dimensions.
 

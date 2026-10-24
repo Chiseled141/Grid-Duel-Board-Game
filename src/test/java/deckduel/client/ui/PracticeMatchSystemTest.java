@@ -62,8 +62,17 @@ class PracticeMatchSystemTest {
                 waitFor(() -> model[0].me() != null, "signed in");
                 SwingUtilities.invokeAndWait(() -> model[0].startPractice(false));
                 waitFor(() -> model[0].match() != null, "the practice match arrived");
-                assertEquals(MatchPhase.IN_PROGRESS, model[0].match().view().phase(), "no setup step before round one");
+                assertEquals(MatchPhase.KING_SELECTION, model[0].match().view().phase(), "the dealt hand precedes King selection");
                 waitFor(() -> { try { return FxTesting.call(screens[0]::stageShowing); } catch (Exception e) { return false; } }, "the table shows");
+                waitFor(() -> { try { return FxTesting.call(() -> {
+                    var controls = (KingTableControls) screens[0].table().lookup("#kingControls");
+                    return controls.choosingVisible();
+                }); } catch (Exception e) { return false; } }, "the King offer follows the opening deal");
+                FxTesting.run(() -> {
+                    var king = model[0].match().view().kingOffer().get(0);
+                    var button = (javafx.scene.control.Button) screens[0].table().lookup("#confirm-" + king.id());
+                    button.fire(); button.fire();
+                });
                 waitFor(() -> model[0].match().view().yourTurn(), "the player's turn");
                 // A bot that moved first is shown only after the opening deal, so wait for the table too.
                 waitFor(() -> { try { return FxTesting.call(() -> screens[0].table().shownRevision()) == model[0].match().view().revision(); }

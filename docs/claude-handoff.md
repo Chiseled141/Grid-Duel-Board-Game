@@ -7,6 +7,12 @@ Wizard 6, adopted 2026-10-22) and 45-card automatic deck with 10 neutral Spells,
 formations. Landmarks and Sabotage were removed on 2026-10-21. Formation values, the
 seven-nation bonus and some edge cases are provisional (AGENTS.md lists them).
 
+King Cards are implemented across all routes (2026-10-25, protocol 17). After opening deals
+in rounds 1 and 2, both seats confirm a King from a shared disjoint offer; choices remain private
+until both confirm. Kings stay outside the deck/hand/row, persist through round 3 and reset on
+rematch. King bonuses are flat after formation; Secret Edict is a private manual-draw choice.
+See `docs/kings.md` for the complete rules, modules, privacy and verification evidence.
+
 ## Where things live
 
 - `core/card`: immutable contracts (`CardDef`, `Effect`, `Row`, `RowCard`, the `Move` family
@@ -63,7 +69,7 @@ In-match chat was removed entirely: no table controls, client history/callbacks,
 or chat protocol messages remain. Reconnect, errors/notices and rematch remain supported.
 
 The deck builder and Deck menu were removed at the user’s request. No client sends a deck
-(protocol 16 has no deck field or matchmaking queue, supports voluntary skips, carries formations, personal replays, room cancellation, the client version in the hello, UpdateRequired and MaintenanceNotice); `MatchSession` builds the same 45-card deck for both seats every
+(protocol 17 adds Kings/Secret Edict, has no deck field or matchmaking queue, supports voluntary skips, carries formations, personal replays, room cancellation, the client version in the hello, UpdateRequired and MaintenanceNotice); `MatchSession` builds the same 45-card deck for both seats every
 game and shuffles each independently. Deck entries saved in `client.properties` by older clients
 are preserved unchanged and never read.
 

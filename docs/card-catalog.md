@@ -75,12 +75,21 @@ Units with disabled tags do not count toward a formation. Values are in `core/ca
 ## Score order
 
 Row total = (printed points + pair bonuses + formation bonus) × formation multiplier, then the
-all-seven-nations combo (+15, `Scoring.ALL_NATIONS_BONUS`, provisional) is added unmultiplied.
+all-seven-nations combo (+15, `Scoring.ALL_NATIONS_BONUS`, provisional) and King bonuses are added unmultiplied.
 A Unit with disabled tags makes no pairs, does not count toward a formation and does not count
 toward the seven nations; disabled points remove its printed points. Example: Ashkar's
 Assassin, Bowman and Guardman with Nerath's Assassin and Bowman make a Full Muster: 14 printed
 points and 18 pair points (three Ashkar pairs, one Nerath pair, two class pairs) score
 (14 + 18 + 20) × 2 = 104.
+
+## Kings — separate catalog, never in the deck
+
+`core/card/King` defines the seven Kings, IDs, nations, ability names, descriptions and numerical
+parameters copied from the supplied paintings. `KingStatus` stores at most two distinct owned
+Kings and accepted round counters; `KingScoring` derives the live per-King breakdown. Kings
+are offered after the deals of rounds 1 and 2 and remain in round 3. See [King Cards](kings.md)
+for all formulas, simultaneous selection, Secret Edict and privacy. The draw catalog version
+remains `cards-neutral-5` because its 35 Units and 10 Spells are unchanged; wire protocol is 17.
 
 ## Artwork
 
@@ -99,6 +108,9 @@ Card faces are chosen in `CardFace`:
    They are fitted to the card like the Units. The Clear Disable and Reconnaissance files have a
    thin black band along their top edge (25 and 17 rows), which shows on the table.
 3. Any other card falls back to a procedural face (`CardArt`).
+
+King paintings are unmodified PNG copies in `assets/cards/kings/`, fitted at their original
+aspect ratio, cached and decoded off the UI threads by `KingArt`. No image text is parsed at runtime.
 
 The Unit paintings add about 28 MB to the jar and the Spell paintings about 4 MB.
 The menu and match-room background artwork are retained. The Atlas section is removed.

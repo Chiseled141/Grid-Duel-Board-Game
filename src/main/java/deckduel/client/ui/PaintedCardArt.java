@@ -77,6 +77,7 @@ final class PaintedCardArt {
      * about 30 ms per painting, which would otherwise stall the table's first frames.
      */
     static void preload(List<CardDef> cards) {
+        KingArt.preload();
         Thread thread = new Thread(() -> {
             try {
                 painting(BACK);

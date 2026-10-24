@@ -7,6 +7,8 @@ import deckduel.core.card.CardInstance;
 import deckduel.core.card.DrawCard;
 import deckduel.core.card.Effect;
 import deckduel.core.card.KeepCard;
+import deckduel.core.card.KeepEdictCard;
+import deckduel.core.card.ChoiceKind;
 import deckduel.core.card.MatchPhase;
 import deckduel.core.card.Move;
 import deckduel.core.card.PairBonus;
@@ -98,6 +100,7 @@ final class CardTableView extends Pane {
     private final Pane effectsLayer = new Pane();
     private final SubScene effectsScene = new SubScene(effectsLayer, 1, 1, false, SceneAntialiasing.DISABLED);
     private final TableEffects effects;
+    private final KingTableControls kings;
     private final ScoreRail rail = new ScoreRail();
     private final Button leave = FxKit.pill("Menu", "gold-outline");
     private final VBox result = new VBox(8);
@@ -177,6 +180,7 @@ final class CardTableView extends Pane {
     /** Builds the table; it shows a match once {@link #show} receives one. */
     CardTableView(Actions actions, ClientSettings settings, ScoringSounds sounds) {
         this.actions = actions;
+        kings = new KingTableControls(choice -> actions.move(choice));
         this.settings = settings;
         this.sounds = sounds;
         setId("cardTable");
@@ -202,7 +206,7 @@ final class CardTableView extends Pane {
         getChildren().add(spellTip);
         buildResult();
         buildConfirm();
-        getChildren().add(cardDetails);
+        getChildren().addAll(kings, cardDetails);
         installMouse();
         addEventHandler(KeyEvent.KEY_PRESSED, this::keyPressed);
     }
@@ -243,6 +247,7 @@ final class CardTableView extends Pane {
         MatchUpdate update = next.match();
         if (update == null) {
             cardDetails.close();
+            kings.setVisible(false);
             shown = null; selected = null; rail.reset(); result.setVisible(false);
             effects.clear(); staged = false; trace = null;
             rowPose.clear(); handPose.clear();
@@ -270,6 +275,7 @@ final class CardTableView extends Pane {
         announceRounds(update);
         if (selected != null && update.view().hand().stream().noneMatch(card -> card.id() == selected)) selected = null;
         shown = update;
+        kings.setVisible(true);
         handOrder = arranged(update.view().hand()).stream().map(CardInstance::id).toList();
         int delay = plan == null ? 0 : plan.scoringDelay();
         startTrace(change, delay);
@@ -286,6 +292,7 @@ final class CardTableView extends Pane {
     /** Shows a short line in place of the status, as for a rejected play or a server error. */
     void notice(String text) {
         notice = text;
+        kings.notice(text);
         noticeUntil = System.currentTimeMillis() + NOTICE_MILLIS;
         wake();
     }
@@ -298,12 +305,14 @@ final class CardTableView extends Pane {
      * window has appeared first; its card faces are drawn meanwhile, not on its first frames.
      */
     void shown(int settleMillis) {
-        onScreen = true;
+        // Layout can call startPendingOpening; keep it gated until the window's settle timer is set.
+        onScreen = false;
         requestFocus();
         if (getScene() != null) { getScene().getRoot().applyCss(); getScene().getRoot().layout(); }
         if (shown != null && cardW > 0)
             for (CardInstance card : shown.view().hand()) FxKit.face(card.def(), List.of(), handW, handH, false, pixelScale());
         settle.stop();
+        onScreen = true;
         if (settleMillis <= 0) { startPendingOpening(); return; }
         settle.setDuration(javafx.util.Duration.millis(settleMillis));
         settle.setOnFinished(event -> startPendingOpening());
@@ -321,7 +330,7 @@ final class CardTableView extends Pane {
 
     /** Whether {@code next} starts dealing: a new game under way. */
     private boolean deals(boolean newGame, MatchUpdate next) {
-        return newGame && next.view().phase() == MatchPhase.IN_PROGRESS;
+        return newGame && next.view().phase() != MatchPhase.FINISHED;
     }
 
     /** Called when another screen replaces the table. */
@@ -338,6 +347,7 @@ final class CardTableView extends Pane {
         settle.stop();
         confirm.setVisible(false);
         cardDetails.close();
+        kings.closeInspector();
     }
 
     /** Starts performing {@code next} alongside anything still playing. */
@@ -384,7 +394,7 @@ final class CardTableView extends Pane {
 
     private void announceRounds(MatchUpdate next) {
         List<RoundResult> rounds = next.view().rounds();
-        if (rounds.size() > roundsSeen && next.view().phase() == MatchPhase.IN_PROGRESS) {
+        if (rounds.size() > roundsSeen && next.view().phase() != MatchPhase.FINISHED) {
             RoundResult last = rounds.get(rounds.size() - 1);
             notice("Round " + last.round() + " banked: you " + last.scoreOf(next.view().seat()) + " – "
                     + last.scoreOf(next.view().seat().other()) + " " + next.opponentName());
@@ -397,7 +407,7 @@ final class CardTableView extends Pane {
         var formation = you.score().formation();
         return new ScoreRail.Display(you.score().total(), view.opponent().score().total(), you.score().units(),
                 you.score().combos(), you.matchTotal(), you.playsRemaining(), view.opponent().playsRemaining(), view.round(), formation == null ? null
-                : formation.title() + "  +" + formation.bonus() + "  ×" + formation.multiplier());
+                : formation.title() + "  +" + formation.bonus() + "  ×" + formation.multiplier(), you.score().kingPoints());
     }
 
     // ---------------------------------------------------------------- frames
@@ -693,7 +703,11 @@ final class CardTableView extends Pane {
     /** Handles a click on a revealed card to keep, a Spy-revealed card, or the draw or skip button; false for anything else. */
     private boolean button(Hit hit) {
         switch (hit.zone()) {
-            case LOOK -> { actions.move(new KeepCard(shown.view().looking().get(hit.index()).id())); wake(); }
+            case LOOK -> {
+                long id = shown.view().looking().get(hit.index()).id();
+                actions.move(shown.view().choiceKind() == ChoiceKind.SECRET_EDICT ? new KeepEdictCard(id) : new KeepCard(id));
+                wake();
+            }
             case DRAW -> draw();
             case SKIP -> skipTurn();
             case REVEALED -> {
@@ -964,7 +978,7 @@ final class CardTableView extends Pane {
         // The window's floating music toggle occupies the top-right corner.
         tableLeft = 20 + railWidth + 28;
         pilesX = w - 110;
-        tableWidth = Math.max(0, pilesX - 16 - tableLeft);
+        tableWidth = Math.max(0, pilesX - 170 - tableLeft);
         int across = Row.SIZE;
         cardW = Math.max(40, (tableWidth - (across - 1) * GAP) / across);
         // Cards use the artwork's 2:3 proportions.
@@ -984,6 +998,7 @@ final class CardTableView extends Pane {
         result.resizeRelocate((w - 560) / 2.0, (h - 290) / 2.0, 560, 290);
         confirm.resizeRelocate(0, 0, w, h);
         cardDetails.resizeRelocate(0, 0, w, h);
+        kings.position(tableLeft + tableWidth + 10, opponentTop, ownTop, w, h);
         startPendingOpening();
         redraw();
         if (staged) wake();
@@ -1072,6 +1087,7 @@ final class CardTableView extends Pane {
         if (shown == null || result.isVisible() || cardDetails.isVisible()) return null;
         int x = (int) point.getX(), y = (int) point.getY();
         PlayerView view = shown.view();
+        if (view.phase() == MatchPhase.KING_SELECTION) return null;
         // While keeping a revealed card, only that choice is on offer.
         if (view.keeping()) {
             for (int i = 0; i < view.looking().size(); i++)
@@ -1127,6 +1143,7 @@ final class CardTableView extends Pane {
 
     private void redraw() {
         refreshSpellTip();
+        if (shown != null) kings.update(shown.view(), state.reconnecting(), openingPending || staged);
         GraphicsContext g = board.getGraphicsContext2D();
         g.clearRect(-20, -20, board.getWidth() + 40, board.getHeight() + 40);
         if (shown == null) { centered(g, "Waiting for the match to start…", FxKit.bold(18), FxKit.CREAM, getHeight() / 2); return; }
@@ -1368,7 +1385,7 @@ final class CardTableView extends Pane {
         dimTable(g);
         List<CardInstance> looking = shown.view().looking();
         Rectangle first = lookBounds(0, looking.size());
-        centered(g, "Reconnaissance: keep one card", FxKit.decorative(26), FxKit.AMBER, first.y - 40);
+        centered(g, (shown.view().choiceKind() == ChoiceKind.SECRET_EDICT ? "Secret Edict: keep one card" : "Reconnaissance: keep one card"), FxKit.decorative(26), FxKit.AMBER, first.y - 40);
         centered(g, "The others go to the bottom of your deck. Only you see these.", FxKit.normal(14), FxKit.CREAM, first.y - 16);
         for (int i = 0; i < looking.size(); i++) {
             Rectangle r = lookBounds(i, looking.size());
@@ -1404,6 +1421,7 @@ final class CardTableView extends Pane {
         if (System.currentTimeMillis() < noticeUntil && notice != null) return notice;
         PlayerView view = shown.view();
         if (view.phase() == MatchPhase.FINISHED) return "Match over";
+        if (view.phase() == MatchPhase.KING_SELECTION) return "Both players are choosing a King";
         if (!shown.opponentConnected()) return shown.opponentName() + " disconnected — their seat is held for now";
         if (view.keeping()) return "Keep one of the cards your Reconnaissance revealed";
         if (!view.yourTurn()) return shown.opponentName() + " is choosing a card…";

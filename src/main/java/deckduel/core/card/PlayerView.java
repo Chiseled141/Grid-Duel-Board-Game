@@ -15,7 +15,7 @@ import java.util.Objects;
 public record PlayerView(Seat seat, int revision, MatchPhase phase, int round, Seat turn,
                          SideView you, SideView opponent, List<CardInstance> hand,
                          List<RoundResult> rounds, List<MatchEvent> events, MatchOutcome outcome,
-                         PlayRecord lastPlay, List<CardInstance> looking, List<CardInstance> revealed)
+                         PlayRecord lastPlay, List<CardInstance> looking, List<CardInstance> revealed, List<King> kingOffer, King selectedKing, ChoiceKind choiceKind)
         implements Serializable {
     @Serial private static final long serialVersionUID = 1L;
 
@@ -23,6 +23,8 @@ public record PlayerView(Seat seat, int revision, MatchPhase phase, int round, S
     public PlayerView {
         Objects.requireNonNull(seat, "seat");
         Objects.requireNonNull(phase, "phase");
+        kingOffer = List.copyOf(kingOffer);
+        Objects.requireNonNull(choiceKind, "choiceKind");
         hand = List.copyOf(hand);
         rounds = List.copyOf(rounds);
         events = List.copyOf(events);
@@ -31,6 +33,20 @@ public record PlayerView(Seat seat, int revision, MatchPhase phase, int round, S
         if ((phase == MatchPhase.FINISHED) != (outcome != null))
             throw new IllegalArgumentException("Only finished matches have an outcome");
     }
+
+    /** View fixture with no pending King choice. Old serialized frames lack required King fields and are refused. */
+    public PlayerView(Seat seat, int revision, MatchPhase phase, int round, Seat turn, SideView you, SideView opponent,
+                      List<CardInstance> hand, List<RoundResult> rounds, List<MatchEvent> events, MatchOutcome outcome,
+                      PlayRecord lastPlay, List<CardInstance> looking, List<CardInstance> revealed) {
+        this(seat, revision, phase, round, turn, you, opponent, hand, rounds, events, outcome, lastPlay, looking,
+                revealed, List.of(), null, looking.isEmpty() ? ChoiceKind.NONE : ChoiceKind.RECONNAISSANCE);
+    }
+
+    /** Whether this seat still needs to confirm its King. */
+    public boolean choosingKing() { return phase == MatchPhase.KING_SELECTION && selectedKing == null; }
+
+    /** Whether this recipient can send a choice or a normal move. */
+    public boolean needsAction() { return choosingKing() || yourTurn(); }
 
     /** Whether it is the recipient's turn. */
     public boolean yourTurn() { return phase == MatchPhase.IN_PROGRESS && turn == seat; }

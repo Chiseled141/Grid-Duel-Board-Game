@@ -34,6 +34,8 @@ class MessageSerializationTest {
                 new PracticeRequest(true), new MoveRequest(3, 7, PlayCard.cast(4, 9L)), new MoveRequest(4, 7, new DrawCard()),
                 new MoveRequest(6, 8, new KeepCard(12)),
                 new MoveRequest(7, 9, new SkipTurn()),
+                new MoveRequest(8, 10, new deckduel.core.card.ChooseKing(deckduel.core.card.King.NETHRION)),
+                new MoveRequest(9, 11, new deckduel.core.card.KeepEdictCard(12)),
                 new ActionRejected(3, "Not your turn"),
                 new LeaveMatchRequest(), new RematchRequest(), new ProfileUpdate(user),
                 new MatchUpdate("M1", 1, "alice", "bob", false, true, false, false, true, view),

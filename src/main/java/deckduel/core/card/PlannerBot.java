@@ -42,17 +42,17 @@ public final class PlannerBot {
         CardInstance card = find(view.hand(), play.cardId());
         Rules.Board after = Rules.resolve(card, play, view.hand(), view.board()).board();
         int ownLeft = view.you().playsRemaining() - 1, opponentLeft = view.opponent().playsRemaining();
-        if (ownLeft == 0 && opponentLeft == 0) return after.lead();
+        if (ownLeft == 0 && opponentLeft == 0) return GreedyBot.leadAfter(view, play);
         List<CardInstance> hand = new ArrayList<>(view.hand());
         hand.remove(card);
-        long now = after.lead();
-        double value = now + FUTURE_WEIGHT * (rollout(hand, after, ownLeft) - now);
+        long now = GreedyBot.leadAfter(view, play);
+        double value = now + FUTURE_WEIGHT * (rollout(hand, after, ownLeft, view, card.def().kind() == CardKind.SPELL ? 1 : 0) - now);
         if (disruptsOpponent(card.def())) value -= SPELL_PATIENCE * opponentLeft;
         return value;
     }
 
     /** Greedily plays the remaining known hand against a static opponent table; returns the final lead. */
-    private static long rollout(List<CardInstance> hand, Rules.Board board, int playsLeft) {
+    private static long rollout(List<CardInstance> hand, Rules.Board board, int playsLeft, PlayerView view, int extraSpells) {
         List<CardInstance> remaining = new ArrayList<>(hand);
         for (int step = 0; step < playsLeft && !remaining.isEmpty(); step++) {
             Rules.Board best = null;
@@ -61,12 +61,14 @@ public final class PlannerBot {
             for (PlayCard play : candidates(remaining, board)) {
                 CardInstance card = find(remaining, play.cardId());
                 Rules.Board result = Rules.resolve(card, play, remaining, board).board();
-                if (result.lead() > bestLead) { bestLead = result.lead(); best = result; used = card; }
+                long lead = GreedyBot.lead(view, result, extraSpells + (card.def().kind() == CardKind.SPELL ? 1 : 0));
+                if (lead > bestLead) { bestLead = lead; best = result; used = card; }
             }
             board = best;
             remaining.remove(used);
+            if (used.def().kind() == CardKind.SPELL) extraSpells++;
         }
-        return board.lead();
+        return GreedyBot.lead(view, board, extraSpells);
     }
 
     /**

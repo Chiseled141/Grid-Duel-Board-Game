@@ -138,6 +138,19 @@ class ReplayPersistenceTest {
         assertEquals(ReplayStore.UNAVAILABLE, ((ErrorMessage) persistence.replay("alice", empty)).text());
     }
 
+    @Test void realProtocol16FrameIsRefusedWithoutDeletingHistoryOrReplayBytes() throws Exception {
+        users.register("alice", "alicepw");
+        long id = persistence.begin("alice", "pre-kings", "bob", false, "cards-neutral-5");
+        byte[] original;
+        try (var in = getClass().getResourceAsStream("/replays/protocol16-frame.ser")) {
+            assertNotNull(in); original = in.readAllBytes();
+        }
+        replays.addFrame(id, 0, original);
+        assertTrue(((ErrorMessage) persistence.replay("alice", id)).text().contains("another version"));
+        assertEquals(1, replays.frames(id).size(), "the stored legacy frame is retained");
+        assertNotNull(users.profileOf("alice"));
+    }
+
     @Test void aDatabaseFromBeforeReplaysMigratesAdditivelyAndKeepsItsHistory() throws Exception {
         database.close();
         Path old = temporary.resolve("before-replays.db");

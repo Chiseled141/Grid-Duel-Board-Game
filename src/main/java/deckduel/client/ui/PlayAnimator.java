@@ -102,7 +102,7 @@ final class PlayAnimator {
 
     /** A manual draw or a kept Reconnaissance card: only the hands changed. Null when nothing moved. */
     static Plan handChanges(PlayerView before, PlayerView after, Layout layout) {
-        if (before.round() != after.round() || after.phase() != MatchPhase.IN_PROGRESS) return null;
+        if (before.round() != after.round() || after.phase() == MatchPhase.FINISHED) return null;
         Staging s = new Staging();
         after.hand().forEach(card -> s.uses(card.def()));
         handMoves(s, before, after, null, layout, 0);
@@ -463,6 +463,15 @@ final class PlayAnimator {
             }
             Formation formation = trace.formations.get(zone);
             if (formation != null) formation(s, tallies, layout, zone, formation, delay + trace.formationAt, step);
+            long kings = trace.kingGain.get(zone);
+            if (kings != 0) {
+                Rectangle row = rowSpan(zone, layout);
+                s.add(delay + trace.kingsAt, ScoringTrace.CHIP_MS,
+                        new Staging.Callout("Kings · after ×", (kings > 0 ? "+" : "") + kings, 1,
+                                new Point2D.Double(row.getCenterX(), row.y - 8), Tone.GOLD));
+                chip(s, tallies, layout, delay + trace.kingsAt, own ? ScoreRail.Pocket.KINGS : ScoreRail.Pocket.OPPONENT,
+                        kings, new Point2D.Double(row.getCenterX(), row.y - 8), Tone.GOLD, false, step);
+            }
         }
         return tallies;
     }

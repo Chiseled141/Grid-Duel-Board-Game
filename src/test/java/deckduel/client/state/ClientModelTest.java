@@ -55,7 +55,7 @@ class ClientModelTest {
     static MatchUpdate update(String id, deckduel.core.card.Seat seat) {
         var catalog = deckduel.cards.CatalogLoader.loadBundled();
         var deck = deckduel.core.card.DeckRules.deck(catalog);
-        var state = deckduel.core.card.MatchState.start(deck, deck, 1);
+        var state = deckduel.TestMatches.start(deck, deck, 1);
         return new MatchUpdate(id, 1, "alice", "bob", false, true, false, false, false, state.view(seat));
     }
 

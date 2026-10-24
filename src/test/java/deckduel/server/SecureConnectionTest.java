@@ -110,6 +110,7 @@ class SecureConnectionTest {
         int port = startTls(foreign);
         assertTrue(refused(trustTestAuthority(), port, "localhost").getMessage().contains("not issued by a trusted authority"));
         server.stop();
+        database.close(); // startTls replaces the field; release the previous Windows file handle first.
         int again = startTls(good);
         assertTrue(refused(ClientTls.systemTrust(), again, "localhost").getMessage().contains("not issued by a trusted authority"),
                 "players' default trust does not accept local test certificates");

@@ -49,6 +49,13 @@ public final class Scoring {
         return new ScoreBreakdown(unitPoints, comboPoints, formation, bonus, pairs, effects);
     }
 
+    /** Scores the current row with public ownership and accepted round counters. */
+    public static ScoreBreakdown score(Row row, KingStatus kings) {
+        ScoreBreakdown base = score(row);
+        return new ScoreBreakdown(base.units(), base.combos(), base.formation(), base.bonus(), base.pairs(),
+                base.effects(), KingScoring.bonuses(row, kings));
+    }
+
     /** Whether every nation is represented by an active nationality tag on the row. */
     public static boolean allNations(Row row) {
         Set<String> nations = new HashSet<>();

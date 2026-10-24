@@ -69,7 +69,7 @@ class OfflineServerTest {
             MatchUpdate update = peer.expect(MatchUpdate.class, any -> true);
             long request = 1;
             while (update.view().phase() != MatchPhase.FINISHED) {
-                if (update.view().yourTurn())
+                if (update.view().needsAction())
                     peer.send(new MoveRequest(request++, update.view().revision(), GreedyBot.choose(update.view())));
                 int revision = update.view().revision();
                 update = peer.expect(MatchUpdate.class, u -> u.view().revision() > revision);

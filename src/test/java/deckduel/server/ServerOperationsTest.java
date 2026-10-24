@@ -59,7 +59,7 @@ class ServerOperationsTest {
         assertNotNull(production.config().tls());
         assertEquals("1.2.0", production.config().minimumClientVersion());
         assertEquals(5_000, production.config().handshakeTimeoutMillis());
-        assertEquals(Path.of("/run/deckduel/control.sock"), production.controlSocket());
+        assertEquals(Path.of("/run/deckduel/control.sock").toAbsolutePath().normalize(), production.controlSocket());
         assertNull(Compatibility.check("1.2.0", "1.2.0"));
         assertNotNull(Compatibility.check("1.1.9", "1.2.0"));
         assertNull(Compatibility.check("development build", null), "no minimum: anything is accepted");
@@ -109,7 +109,8 @@ class ServerOperationsTest {
             backup = Backups.backup(live, out, key, 14);
             new SqliteUserDao(running).register("carol", "carolpw");
         }
-        assertEquals("rw-------", java.nio.file.attribute.PosixFilePermissions.toString(Files.getPosixFilePermissions(backup)));
+        if (Files.getFileStore(backup).supportsFileAttributeView("posix"))
+            assertEquals("rw-------", java.nio.file.attribute.PosixFilePermissions.toString(Files.getPosixFilePermissions(backup)));
         byte[] sealed = Files.readAllBytes(backup);
         assertFalse(new String(sealed, java.nio.charset.StandardCharsets.ISO_8859_1).contains("SQLite format"), "the file is encrypted");
         try (var left = Files.list(out)) { assertEquals(1, left.count(), "no plaintext copy is left behind"); }

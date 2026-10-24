@@ -43,7 +43,8 @@ final class ScoringTrace {
     /** Each row's change in Unit points, and the changed space its chip rises from (-1: the row as a whole). */
     final Map<TableZone, Long> unitGain = new EnumMap<>(TableZone.class);
     final Map<TableZone, Integer> unitSlot = new EnumMap<>(TableZone.class);
-    final int formationAt, finishAt;
+    final Map<TableZone, Long> kingGain = new EnumMap<>(TableZone.class);
+    final int formationAt, kingsAt, finishAt;
     final long ownGain, opponentGain;
 
     private ScoringTrace(PlayerView before, PlayerView after) {
@@ -54,6 +55,7 @@ final class ScoringTrace {
             SideView was = zone == TableZone.OWN ? before.you() : before.opponent();
             SideView now = zone == TableZone.OWN ? after.you() : after.opponent();
             changed.put(zone, changedSlots(was.row(), now.row()));
+            kingGain.put(zone, now.score().kingPoints() - was.score().kingPoints());
             unitGain.put(zone, now.score().units() - was.score().units());
             unitSlot.put(zone, changed.get(zone).stream().min(Integer::compare).orElse(-1));
             Set<String> old = new HashSet<>();
@@ -73,6 +75,8 @@ final class ScoringTrace {
         // The score counts once the last chip has reached the rail.
         int landed = unitGain.values().stream().anyMatch(gain -> gain != 0) ? CHIP_MS : 0;
         for (Link link : links) landed = Math.max(landed, link.at() + CHIP_POP_MS + CHIP_MS);
+        kingsAt = Math.max(formationAt + (formationChanged.isEmpty() ? 0 : FORMATION_MS), landed);
+        if (kingGain.values().stream().anyMatch(gain -> gain != 0)) landed = kingsAt + CHIP_MS;
         finishAt = Math.max(formationAt + (formationChanged.isEmpty() ? 0 : FORMATION_MS) + 80, landed + 60);
         beats.add(0, new Beat(0, new ScoringSounds.Cue(ScoringSounds.Cue.Kind.CARD, 0)));
         if (ownGain != 0) beats.add(new Beat(finishAt, new ScoringSounds.Cue(
@@ -83,7 +87,8 @@ final class ScoringTrace {
     /** The trace of a change within one round, or null when neither table changed. */
     static ScoringTrace between(PlayerView before, PlayerView after) {
         if (before.round() != after.round()) return null;
-        boolean same = before.you().row().equals(after.you().row()) && before.opponent().row().equals(after.opponent().row());
+        boolean same = before.you().row().equals(after.you().row()) && before.opponent().row().equals(after.opponent().row())
+                && before.you().score().equals(after.you().score()) && before.opponent().score().equals(after.opponent().score());
         return same ? null : new ScoringTrace(before, after);
     }
 

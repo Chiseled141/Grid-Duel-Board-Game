@@ -34,7 +34,12 @@ public final class ScoreRail extends Region {
      * names your row's formation with its bonus and multiplier, or is null without one.
      */
     public record Display(long score, long opponentScore, long unitPoints, long comboPoints,
-                   long matchTotal, int playsRemaining, int opponentPlaysRemaining, int round, String formation) {
+                   long matchTotal, int playsRemaining, int opponentPlaysRemaining, int round, String formation, long kingPoints) {
+        /** Snapshot without King contributions. */
+        public Display(long score, long opponentScore, long unitPoints, long comboPoints, long matchTotal,
+                       int playsRemaining, int opponentPlaysRemaining, int round, String formation) {
+            this(score, opponentScore, unitPoints, comboPoints, matchTotal, playsRemaining, opponentPlaysRemaining, round, formation, 0);
+        }
         /** Rejects invalid counters before replacing the displayed snapshot. */
         public Display {
             if (playsRemaining < 0 || playsRemaining > 10 || opponentPlaysRemaining < 0
@@ -44,7 +49,7 @@ public final class ScoreRail extends Region {
     }
 
     /** Where a scoring chip from the table lands; a formation chip lands on the formation line. */
-    public enum Pocket { UNITS, COMBOS, FORMATION, OPPONENT }
+    public enum Pocket { UNITS, COMBOS, FORMATION, KINGS, OPPONENT }
 
     /** A chip worth {@code points} landing in {@code pocket} {@code atMillis} after the update. */
     public record Tally(int atMillis, Pocket pocket, long points) { }
@@ -52,7 +57,7 @@ public final class ScoreRail extends Region {
     private final Canvas canvas = new Canvas();
     private Display display;
     /** The values shown when the running change began, and when it began. */
-    private long fromScore, fromUnits, fromCombos, fromOpponent, startedAt;
+    private long fromScore, fromUnits, fromCombos, fromKings, fromOpponent, startedAt;
     // The formation shown before the change, kept on the ribbon until the new one's chip lands.
     private String fromFormation;
     private List<Tally> tallies = List.of();
@@ -92,6 +97,7 @@ public final class ScoreRail extends Region {
             // A change arriving mid-count carries on from what is on screen, so nothing jumps back.
             fromFormation = formationShown(now);
             fromScore = shownScore(now); fromUnits = shown(Pocket.UNITS, now);
+            fromKings = shown(Pocket.KINGS, now);
             fromCombos = shown(Pocket.COMBOS, now); fromOpponent = shown(Pocket.OPPONENT, now);
             startedAt = now;
             tallies = List.copyOf(chips);
@@ -106,7 +112,7 @@ public final class ScoreRail extends Region {
                 + ". Opponent " + next.opponentScore() + ". Unit points " + next.unitPoints()
                 + ", combo points " + next.comboPoints()
                 + (next.formation() == null ? "" : ". Formation " + next.formation())
-                + ". Plays remaining " + next.playsRemaining() + ". Opponent plays remaining "
+                + ". Kings +" + next.kingPoints() + " after multiplier. Plays remaining " + next.playsRemaining() + ". Opponent plays remaining "
                 + next.opponentPlaysRemaining() + ". Match total " + next.matchTotal();
         setAccessibleText(description);
         draw();
@@ -139,6 +145,7 @@ public final class ScoreRail extends Region {
             case UNITS -> new Point2D(205, 256);
             case COMBOS -> new Point2D(205, 300);
             case FORMATION -> new Point2D(185, 347);
+            case KINGS -> new Point2D(205, 382);
             case OPPONENT -> new Point2D(205, 156);
         };
         return new Point2D((getWidth() - 260 * scale) / 2 + at.getX() * scale, at.getY() * scale);
@@ -155,6 +162,7 @@ public final class ScoreRail extends Region {
         return switch (pocket) {
             case UNITS -> display.unitPoints();
             case COMBOS -> display.comboPoints();
+            case KINGS -> display.kingPoints();
             case FORMATION -> 0;
             case OPPONENT -> display.opponentScore();
         };
@@ -164,6 +172,7 @@ public final class ScoreRail extends Region {
         return switch (pocket) {
             case UNITS -> fromUnits;
             case COMBOS -> fromCombos;
+            case KINGS -> fromKings;
             case FORMATION -> 0;
             case OPPONENT -> fromOpponent;
         };
@@ -200,7 +209,7 @@ public final class ScoreRail extends Region {
     /** The painted score: climbing with the Units and Combos wells, then counting to the accepted value. */
     private long shownScore(long now) {
         if (!animating) return display.score();
-        long climbed = fromScore + told(Pocket.UNITS, now) - fromUnits + told(Pocket.COMBOS, now) - fromCombos;
+        long climbed = fromScore + told(Pocket.UNITS, now) - fromUnits + told(Pocket.COMBOS, now) - fromCombos + told(Pocket.KINGS, now) - fromKings;
         if (now < finishAt) return climbed;
         long elapsed = now - finishAt;
         if (elapsed >= COUNT_NANOS) return display.score();
@@ -263,6 +272,8 @@ public final class ScoreRail extends Region {
         row(g, 238, "Units", TablePlaque.UNITS, display == null ? "—" : number(shown(Pocket.UNITS, now)), hit(Pocket.UNITS, now));
         row(g, 282, "Combos", TablePlaque.COMBOS, display == null ? "—" : number(shown(Pocket.COMBOS, now)), hit(Pocket.COMBOS, now));
         drawFormation(g, now);
+        left(g, "Kings (after ×)", 34, 382, FxKit.normal(12), TablePlaque.CREAM);
+        value(g, display == null ? "—" : "+" + number(shown(Pocket.KINGS, now)), 222, 382, FxKit.bold(14), TablePlaque.GOLD);
         TablePlaque.groove(g, 22, 392, 212);
         stat(g, 30, 404, "PLAYS: YOU / FOE", display == null ? "—" : display.playsRemaining() + " / " + display.opponentPlaysRemaining());
         stat(g, 146, 404, "ROUND", display == null ? "—" : display.round() + " of 3");

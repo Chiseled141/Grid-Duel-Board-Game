@@ -20,7 +20,7 @@ public final class MatchState {
 
     /** One player's complete private and public state. */
     private record Side(List<CardInstance> library, List<CardInstance> drawPile, List<CardInstance> hand, Row row,
-                        int playsUsed, int drawsUsed, long matchTotal, int discardCount, List<CardInstance> looking, List<Long> known) {
+                        int playsUsed, int drawsUsed, long matchTotal, int discardCount, List<CardInstance> looking, List<Long> known, KingStatus kings, King selectedKing, ChoiceKind choiceKind) {
         Side {
             drawPile = List.copyOf(drawPile);
             hand = List.copyOf(hand);
@@ -43,8 +43,14 @@ public final class MatchState {
         Row row;
         int playsUsed, drawsUsed, discardCount;
         long matchTotal;
+        KingStatus kings;
+        King selectedKing;
+        ChoiceKind choiceKind;
 
         Draft(Side side) {
+            kings = side.kings();
+            selectedKing = side.selectedKing();
+            choiceKind = side.choiceKind();
             library = side.library();
             drawPile = new ArrayList<>(side.drawPile());
             hand = new ArrayList<>(side.hand());
@@ -66,7 +72,7 @@ public final class MatchState {
 
         Side build() {
             return new Side(library, drawPile, hand, row, playsUsed, drawsUsed, matchTotal, discardCount, looking,
-                    List.copyOf(known));
+                    List.copyOf(known), kings, selectedKing, choiceKind);
         }
     }
 
@@ -107,7 +113,7 @@ public final class MatchState {
         if (deck.isEmpty() || deck.size() >= SEAT_IDS) throw new IllegalArgumentException("Invalid deck size " + deck.size());
         List<CardInstance> library = new ArrayList<>();
         for (int i = 0; i < deck.size(); i++) library.add(new CardInstance(firstId + i, deck.get(i)));
-        return new Side(List.copyOf(library), List.of(), List.of(), Row.EMPTY, 0, 0, 0, 0, List.of(), List.of());
+        return new Side(List.copyOf(library), List.of(), List.of(), Row.EMPTY, 0, 0, 0, 0, List.of(), List.of(), KingStatus.EMPTY, null, ChoiceKind.NONE);
     }
 
     /** Clears the row, reshuffles the whole deck and deals ten fresh cards. */
@@ -116,7 +122,8 @@ public final class MatchState {
         Collections.shuffle(shuffled, new Random(seed * 31 + round * 2L + seat.ordinal()));
         int hand = Math.min(Rules.HAND_SIZE, shuffled.size());
         return new Side(side.library(), shuffled.subList(hand, shuffled.size()), shuffled.subList(0, hand), Row.EMPTY,
-                0, 0, side.matchTotal(), 0, List.of(), List.of());
+                0, 0, side.matchTotal(), 0, List.of(), List.of(),
+                new KingStatus(side.kings().kings(), 0, false), null, ChoiceKind.NONE);
     }
 
     // ------------------------------------------------------------------ moves
@@ -124,9 +131,12 @@ public final class MatchState {
     /** Applies one move by {@code actor}, or throws without changing anything. */
     public MatchState apply(Seat actor, Move move) {
         if (outcome != null) throw new RuleViolation("The match is over.");
+        if (move instanceof ChooseKing choice) return chooseKing(actor, choice);
+        if (phase() == MatchPhase.KING_SELECTION) throw new RuleViolation("Both players must confirm a King first.");
         if (actor != turn) throw new RuleViolation("It is not your turn.");
-        if (move instanceof KeepCard keep) return keep(actor, keep);
-        if (!side(actor).looking().isEmpty()) throw new RuleViolation("Keep one of the cards your Reconnaissance revealed first.");
+        if (move instanceof KeepEdictCard keep) return keep(actor, keep.cardId(), ChoiceKind.SECRET_EDICT);
+        if (move instanceof KeepCard keep) return keep(actor, keep.cardId(), ChoiceKind.RECONNAISSANCE);
+        if (!side(actor).looking().isEmpty()) throw new RuleViolation("Finish your private card choice first.");
         if (move instanceof DrawCard) return draw(actor);
         if (move instanceof SkipTurn) return skip(actor);
         return playCard(actor, (PlayCard) move);
@@ -158,6 +168,8 @@ public final class MatchState {
         me.row = resolution.board().own();
         them.row = resolution.board().opponent();
         me.playsUsed++;
+        if (card.def().kind() == CardKind.SPELL)
+            me.kings = new KingStatus(me.kings.kings(), me.kings.spellsPlayed() + 1, me.kings.edictUsed());
         List<CardInstance> discarded = new ArrayList<>(resolution.discarded());
         Outcome extra = card.def().kind() == CardKind.SPELL ? cast(card, play, me, them, discarded) : Outcome.NONE;
         for (CardInstance gone : discarded) (mine.library().contains(gone) ? me : them).discardCount++;
@@ -204,6 +216,7 @@ public final class MatchState {
             }
             detail = handCard == null ? ": the enemy hand was empty" : ", taking " + handCard.def().name();
         } else if (effect instanceof Effect.Reconnaissance recon) {
+            me.choiceKind = ChoiceKind.RECONNAISSANCE;
             for (int i = 0; i < recon.look() && !me.drawPile.isEmpty(); i++) me.looking.add(me.drawPile.remove(0));
         } else if (effect instanceof Effect.Spy spy) {
             List<CardInstance> shown = new ArrayList<>(them.hand);
@@ -229,7 +242,14 @@ public final class MatchState {
         if (mine.drawsUsed() >= Rules.MANUAL_DRAWS) throw new RuleViolation("You have no manual draws left this round.");
         if (mine.drawPile().isEmpty()) throw new RuleViolation("Your deck is empty.");
         Draft me = new Draft(mine);
-        me.draw(1);
+        boolean edict = me.kings.kings().contains(King.NETHRION) && !me.kings.edictUsed();
+        if (edict) {
+            me.kings = new KingStatus(me.kings.kings(), me.kings.spellsPlayed(), true);
+            if (me.drawPile.size() > 1) {
+                me.choiceKind = ChoiceKind.SECRET_EDICT;
+                for (int i = 0; i < King.NETHRION.threshold(); i++) me.looking.add(me.drawPile.remove(0));
+            } else me.draw(1);
+        } else me.draw(1);
         me.drawsUsed++;
         List<MatchEvent> log = new ArrayList<>(events);
         log.add(new MatchEvent(actor, "drew a card"));
@@ -237,18 +257,20 @@ public final class MatchState {
     }
 
     /** Keeps one card a Reconnaissance revealed; the others go to the bottom of the deck in their order. */
-    private MatchState keep(Seat actor, KeepCard keep) {
+    private MatchState keep(Seat actor, long cardId, ChoiceKind kind) {
         Side mine = side(actor);
-        if (mine.looking().isEmpty()) throw new RuleViolation("There is nothing to keep.");
-        CardInstance kept = mine.looking().stream().filter(c -> c.id() == keep.cardId()).findFirst()
+        if (mine.choiceKind() != kind || mine.looking().isEmpty()) throw new RuleViolation("There is nothing to keep.");
+        CardInstance kept = mine.looking().stream().filter(c -> c.id() == cardId).findFirst()
                 .orElseThrow(() -> new RuleViolation("Keep one of the revealed cards."));
         Draft me = new Draft(mine);
         me.looking.remove(kept);
         me.hand.add(kept);
         me.drawPile.addAll(me.looking);
         me.looking.clear();
+        me.choiceKind = ChoiceKind.NONE;
         List<MatchEvent> log = new ArrayList<>(events);
-        log.add(new MatchEvent(actor, "kept a card from Reconnaissance"));
+        log.add(new MatchEvent(actor, "kept a card from " + (kind == ChoiceKind.SECRET_EDICT ? "Secret Edict" : "Reconnaissance")));
+        if (kind == ChoiceKind.SECRET_EDICT) return with(actor, me.build(), log, actor);
         Side nextMine = me.build(), other = side(actor.other());
         return advance(actor, actor == Seat.FIRST ? nextMine : other, actor == Seat.FIRST ? other : nextMine, log, null);
     }
@@ -272,8 +294,8 @@ public final class MatchState {
 
     /** Banks both live scores, then deals the next round or finishes the match. */
     private MatchState endRound(Side first, Side second, List<MatchEvent> log, PlayRecord record) {
-        long firstScore = Scoring.score(first.row()).total();
-        long secondScore = Scoring.score(second.row()).total();
+        long firstScore = Scoring.score(first.row(), first.kings()).total();
+        long secondScore = Scoring.score(second.row(), second.kings()).total();
         RoundResult result = new RoundResult(round, starter, firstScore, secondScore);
         List<RoundResult> history = new ArrayList<>(rounds);
         history.add(result);
@@ -320,13 +342,46 @@ public final class MatchState {
         Side mine = side(seat), theirs = side(seat.other());
         List<CardInstance> revealed = theirs.hand().stream().filter(card -> mine.known().contains(card.id())).toList();
         return new PlayerView(seat, revision, phase(), round, turn, sideView(mine), sideView(theirs),
-                mine.hand(), rounds, events, outcome, lastPlay, mine.looking(), revealed);
+                mine.hand(), rounds, events, outcome, lastPlay, mine.looking(), revealed,
+                phase() == MatchPhase.KING_SELECTION ? kingOffer() : List.of(), mine.selectedKing(),
+                mine.looking().isEmpty() ? ChoiceKind.NONE : mine.choiceKind());
     }
 
     /** One side's public facts. */
     private static SideView sideView(Side side) {
-        return new SideView(side.row(), Scoring.score(side.row()), side.playsUsed(), side.drawsUsed(),
-                side.hand().size(), side.drawPile().size(), side.discardCount(), side.matchTotal());
+        return new SideView(side.row(), Scoring.score(side.row(), side.kings()), side.playsUsed(), side.drawsUsed(),
+                side.hand().size(), side.drawPile().size(), side.discardCount(), side.matchTotal(), side.kings());
+    }
+
+    /** Shared deterministic offers: the first six of seven shuffled Kings, in disjoint groups of three. */
+    private List<King> kingOffer() {
+        List<King> kings = new ArrayList<>(List.of(King.values()));
+        Collections.shuffle(kings, new Random(seed ^ 0x4B494E47534CL));
+        return List.copyOf(kings.subList((round - 1) * 3, round * 3));
+    }
+
+    private MatchState chooseKing(Seat actor, ChooseKing choice) {
+        Side mine = side(actor);
+        if (phase() != MatchPhase.KING_SELECTION || mine.selectedKing() != null)
+            throw new RuleViolation("You cannot choose a King now.");
+        if (choice.king() == null || !kingOffer().contains(choice.king()) || mine.kings().kings().contains(choice.king()) || mine.kings().kings().size() >= 2)
+            throw new RuleViolation("Choose a new King from the current offer.");
+        Draft me = new Draft(mine), them = new Draft(side(actor.other()));
+        me.selectedKing = choice.king();
+        List<MatchEvent> log = new ArrayList<>(events);
+        log.add(new MatchEvent(actor, "confirmed a King"));
+        if (them.selectedKing != null) {
+            for (Draft side : List.of(me, them)) {
+                List<King> owned = new ArrayList<>(side.kings.kings());
+                owned.add(side.selectedKing);
+                side.kings = new KingStatus(owned, side.kings.spellsPlayed(), side.kings.edictUsed());
+                side.selectedKing = null;
+            }
+            log.add(new MatchEvent(null, "Both Kings are revealed. Normal turns begin."));
+        }
+        return new MatchState(seed, round, revision + 1, starter, turn,
+                actor == Seat.FIRST ? me.build() : them.build(), actor == Seat.FIRST ? them.build() : me.build(),
+                rounds, log, null, null);
     }
 
     private Rules.Board board(Seat seat) { return new Rules.Board(side(seat).row(), side(seat.other()).row()); }
@@ -335,11 +390,14 @@ public final class MatchState {
 
     /** Where the match is. */
     public MatchPhase phase() {
-        return outcome != null ? MatchPhase.FINISHED : MatchPhase.IN_PROGRESS;
+        if (outcome != null) return MatchPhase.FINISHED;
+        return round <= 2 && (first.kings().kings().size() < round || second.kings().kings().size() < round)
+                ? MatchPhase.KING_SELECTION : MatchPhase.IN_PROGRESS;
     }
 
     /** Whether {@code seat} holds the turn. */
-    public boolean awaits(Seat seat) { return phase() == MatchPhase.IN_PROGRESS && turn == seat; }
+    public boolean awaits(Seat seat) { return phase() == MatchPhase.KING_SELECTION ? side(seat).selectedKing() == null
+            : phase() == MatchPhase.IN_PROGRESS && turn == seat; }
 
     /** Increases with every accepted change; clients quote it to reject stale actions. */
     public int revision() { return revision; }

@@ -40,9 +40,9 @@ class MatchStateTest {
 
     // ------------------------------------------------------------------ setup
 
-    @Test void theMatchDealsTenCardsToEachPlayerAtOnceWithNoSetupStep() {
+    @Test void theMatchDealsTenCardsBeforeKingSelection() {
         MatchState state = MatchState.start(fullDeck(), fullDeck(), 7);
-        assertEquals(MatchPhase.IN_PROGRESS, state.phase());
+        assertEquals(MatchPhase.KING_SELECTION, state.phase());
         assertNotNull(state.turn(), "someone starts round one immediately");
         assertEquals(1, state.round());
         for (Seat seat : Seat.values()) {
@@ -94,7 +94,7 @@ class MatchStateTest {
         assertEquals(Rules.HAND_SIZE, next.hand().size(), "a fresh ten-card hand, not the old one");
         assertEquals(0, next.you().drawsUsed(), "manual draws reset");
         assertTrue(next.you().row().cards().isEmpty());
-        assertEquals(MatchPhase.IN_PROGRESS, next.phase());
+        assertEquals(MatchPhase.KING_SELECTION, next.phase());
     }
 
     @Test void aPlayerWhoCannotPlayIsSkippedAndKeepsTheirUnusedPlays() {
@@ -142,6 +142,7 @@ class MatchStateTest {
     @Test void skipsCanFinishAllThreeRoundsWithoutDiscardingHands() {
         MatchState state = started(unitsOnly(20), unitsOnly(20), seedStartedBy(Seat.FIRST));
         for (int round = 1; round <= Rules.ROUNDS; round++) {
+            state = deckduel.TestMatches.ready(state);
             for (int i = 0; i < 2 * Rules.PLAYS_PER_ROUND; i++) {
                 assertEquals(round, state.round());
                 assertEquals(Rules.HAND_SIZE, state.view(state.turn()).hand().size());
@@ -295,7 +296,8 @@ class MatchStateTest {
     @Test void sameSeedReplaysIdenticallyAndTheMatchEndsAfterThreeRounds() {
         MatchState a = started(fullDeck(), fullDeck(), 42), b = started(fullDeck(), fullDeck(), 42);
         assertEquals(a.view(Seat.FIRST).hand(), b.view(Seat.FIRST).hand());
-        while (a.phase() == MatchPhase.IN_PROGRESS) {
+        while (a.phase() != MatchPhase.FINISHED) {
+            a = deckduel.TestMatches.ready(a); b = deckduel.TestMatches.ready(b);
             Move move = GreedyBot.choose(a.view(a.turn()));
             assertEquals(move, GreedyBot.choose(b.view(b.turn())));
             a = a.apply(a.turn(), move);

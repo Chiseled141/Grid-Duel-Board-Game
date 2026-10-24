@@ -43,6 +43,6 @@ final class Cards {
 
     /** Opens a match; round one is dealt at once. */
     static MatchState started(List<CardDef> first, List<CardDef> second, long seed) {
-        return MatchState.start(first, second, seed);
+        return deckduel.TestMatches.start(first, second, seed);
     }
 }

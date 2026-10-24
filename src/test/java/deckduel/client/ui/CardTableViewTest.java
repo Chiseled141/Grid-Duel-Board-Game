@@ -50,7 +50,7 @@ class CardTableViewTest {
     }
 
     private static MatchState state() {
-        return MatchState.start(DECK, DECK, 3);
+        return deckduel.TestMatches.start(DECK, DECK, 3);
     }
 
     private static final deckduel.core.card.Catalog CATALOG = CatalogLoader.loadBundled();
@@ -66,6 +66,60 @@ class CardTableViewTest {
     private static void click(CardTableView view, Rectangle target) {
         view.pressAt(centre(target));
         view.releaseAt(centre(target));
+    }
+
+    @Test void kingSelectionConfirmsThroughActionsThenShowsPublicArtworkAndInspector() throws Exception {
+        MatchState initial = MatchState.start(DECK, DECK, 3);
+        var king = initial.view(Seat.FIRST).kingOffer().get(0);
+        MatchState waiting = initial.apply(Seat.FIRST, new deckduel.core.card.ChooseKing(king));
+        MatchState ready = waiting.apply(Seat.SECOND, new deckduel.core.card.ChooseKing(king));
+        FxTesting.run(() -> {
+            var t = table(new ClientSettings(), true);
+            t.view.show(shown(initial.view(Seat.FIRST), true));
+            var controls = (KingTableControls) t.view.lookup("#kingControls");
+            assertTrue(controls.choosingVisible());
+            var confirm = (javafx.scene.control.Button) controls.lookup("#confirm-" + king.id());
+            confirm.fire(); assertTrue(t.actions.calls.isEmpty(), "select before confirm");
+            confirm.fire(); assertEquals(List.of(new deckduel.core.card.ChooseKing(king)), t.actions.calls);
+            assertEquals(0, t.view.shownRevision(), "selection waits for the server");
+            t.view.show(shown(waiting.view(Seat.FIRST), true));
+            assertTrue(controls.choosingVisible());
+            assertTrue(((javafx.scene.control.Button) controls.lookup("#confirm-" + king.id())).isDisabled());
+            t.view.show(shown(ready.view(Seat.FIRST), true));
+            assertFalse(controls.choosingVisible());
+            var own = (javafx.scene.control.Button) controls.lookup("#yourKing0");
+            assertInstanceOf(javafx.scene.image.ImageView.class, own.getGraphic());
+            assertTrue(((javafx.scene.image.ImageView) own.getGraphic()).isPreserveRatio());
+            assertTrue(own.getAccessibleText().contains(king.title()));
+            own.fire();
+            assertTrue(controls.lookupAll(".label").stream().anyMatch(n -> ((javafx.scene.control.Label) n).getText().contains("Current contribution")));
+            assertEquals(1, t.actions.calls.size(), "inspection sends no move");
+            assertTrue(t.view.rail().description().contains("Kings +0 after multiplier"));
+            controls.closeInspector();
+            t.view.hidden();
+        });
+    }
+
+    @Test void secretEdictUsesItsOwnPrivateChoiceAndKeepMoveWithReducedMotion() throws Exception {
+        MatchState initial = null;
+        for (int seed = 0; initial == null; seed++) {
+            MatchState candidate = MatchState.start(DECK, DECK, seed);
+            if (candidate.view(Seat.FIRST).kingOffer().contains(deckduel.core.card.King.NETHRION)) initial = candidate;
+        }
+        var king = deckduel.core.card.King.NETHRION;
+        initial = initial.apply(Seat.FIRST, new deckduel.core.card.ChooseKing(king)).apply(Seat.SECOND, new deckduel.core.card.ChooseKing(king));
+        PlayerView pending = initial.apply(initial.turn(), new deckduel.core.card.DrawCard()).view(initial.turn());
+        FxTesting.run(() -> {
+            var t = table(new ClientSettings(), true);
+            t.view.show(shown(pending, true));
+            assertFalse(t.view.animating());
+            t.view.keyPressed(key(javafx.scene.input.KeyCode.S));
+            assertTrue(t.actions.calls.isEmpty());
+            click(t.view, t.view.lookBounds(1, 2));
+            assertEquals(List.of(new deckduel.core.card.KeepEdictCard(pending.looking().get(1).id())), t.actions.calls);
+            assertEquals(2, pending.looking().size(), "UI never changes the snapshot");
+            t.view.hidden();
+        });
     }
 
     @Test void waitsWithoutInventingScoresUntilTheServerSendsAMatch() throws Exception {
@@ -233,8 +287,10 @@ class CardTableViewTest {
 
     @Test void draggingACardOnYourRowMovesItOnScreenOnly() throws Exception {
         MatchState state = state();
-        while (state.view(Seat.FIRST).you().row().cards().size() < 2 || state.turn() != Seat.FIRST)
+        while (state.view(Seat.FIRST).you().row().cards().size() < 2 || state.turn() != Seat.FIRST) {
+            state = deckduel.TestMatches.ready(state);
             state = state.apply(state.turn(), GreedyBot.choose(state.view(state.turn())));
+        }
         PlayerView view = state.view(Seat.FIRST);
         int real = view.you().row().cards().get(0).slot(), empty = 0;
         while (view.you().row().at(empty) != null) empty++;
@@ -318,8 +374,10 @@ class CardTableViewTest {
 
     private static PlayerView rowView() {
         MatchState state = state();
-        while (state.view(Seat.FIRST).you().row().cards().size() < 2 || state.turn() != Seat.FIRST)
+        while (state.view(Seat.FIRST).you().row().cards().size() < 2 || state.turn() != Seat.FIRST) {
+            state = deckduel.TestMatches.ready(state);
             state = state.apply(state.turn(), GreedyBot.choose(state.view(state.turn())));
+        }
         return state.view(Seat.FIRST);
     }
 
@@ -418,7 +476,7 @@ class CardTableViewTest {
     /** A round-one view in which the starting player is choosing which Reconnaissance card to keep. */
     private static PlayerView reconnoitring() {
         for (long seed = 1; seed < 100; seed++) {
-            MatchState state = MatchState.start(DECK, DECK, seed);
+            MatchState state = deckduel.TestMatches.start(DECK, DECK, seed);
             Seat seat = state.turn();
             while (state.round() == 1 && state.view(seat).looking().isEmpty()) {
                 PlayerView view = state.view(state.turn());
@@ -462,7 +520,7 @@ class CardTableViewTest {
     @Test void spiedCardsCanBeEnlargedAndDisappearFromTheInspectorWhenTheyLeaveTheEnemyHand() throws Exception {
         MatchState spied = null;
         for (long seed = 1; seed <= 100 && spied == null; seed++) {
-            MatchState candidate = MatchState.start(DECK, DECK, seed);
+            MatchState candidate = deckduel.TestMatches.start(DECK, DECK, seed);
             var spy = candidate.view(Seat.FIRST).hand().stream()
                     .filter(c -> c.def().effect() instanceof deckduel.core.card.Effect.Spy).findFirst();
             if (spy.isEmpty()) continue;
@@ -509,7 +567,10 @@ class CardTableViewTest {
         FxTesting.run(() -> {
             var t = table(new ClientSettings(), true);
             MatchState state = state();
-            while (state.phase() == MatchPhase.IN_PROGRESS) state = state.apply(state.turn(), GreedyBot.choose(state.view(state.turn())));
+            while (state.phase() != MatchPhase.FINISHED) {
+                state = deckduel.TestMatches.ready(state);
+                state = state.apply(state.turn(), GreedyBot.choose(state.view(state.turn())));
+            }
             t.view.show(shown(state.view(Seat.FIRST), true));
             assertTrue(t.view.resultShowing());
             assertEquals("REMATCH", t.view.rematchButton().getText());
@@ -527,6 +588,7 @@ class CardTableViewTest {
         MatchState state = state();
         while (true) {
             MatchState before = state;
+            state = deckduel.TestMatches.ready(state);
             state = state.apply(state.turn(), GreedyBot.choose(state.view(state.turn())));
             var mine = state.view(Seat.FIRST).you().score();
             if (state.round() == 1 && !mine.pairs().isEmpty()

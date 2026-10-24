@@ -92,7 +92,7 @@ public final class CardBot implements AutoCloseable {
             finished.complete(List.copyOf(results));
             return;
         }
-        if (!update.view().yourTurn() || update.view().revision() == playedRevision) return;
+        if (!update.view().needsAction() || update.view().revision() == playedRevision) return;
         playedRevision = update.view().revision();
         client.send(new MoveRequest(requests++, playedRevision, GreedyBot.choose(update.view())));
     }
