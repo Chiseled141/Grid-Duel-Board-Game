@@ -53,6 +53,8 @@ public final class ScoreRail extends Region {
     private Display display;
     /** The values shown when the running change began, and when it began. */
     private long fromScore, fromUnits, fromCombos, fromOpponent, startedAt;
+    // The formation shown before the change, kept on the ribbon until the new one's chip lands.
+    private String fromFormation;
     private List<Tally> tallies = List.of();
     private long finishAt;
     private double gain, emphasis;
@@ -88,6 +90,7 @@ public final class ScoreRail extends Region {
         long now = System.nanoTime();
         if (changed && !reducedMotion) {
             // A change arriving mid-count carries on from what is on screen, so nothing jumps back.
+            fromFormation = formationShown(now);
             fromScore = shownScore(now); fromUnits = shown(Pocket.UNITS, now);
             fromCombos = shown(Pocket.COMBOS, now); fromOpponent = shown(Pocket.OPPONENT, now);
             startedAt = now;
@@ -216,6 +219,13 @@ public final class ScoreRail extends Region {
         return strongest;
     }
 
+    /** The formation on the ribbon: the earlier one until the new formation's chip has landed, so it is not given away. */
+    private String formationShown(long now) {
+        if (display == null) return null;
+        boolean pending = animating && tallies.stream().anyMatch(tally -> tally.pocket() == Pocket.FORMATION && !landedBy(tally, now));
+        return pending ? fromFormation : display.formation();
+    }
+
     /** Seconds since the score settled, or -1 before then or once the punch has died away. */
     private double sinceFinish(long now) {
         if (!animating || now < finishAt || now - finishAt > PULSE_NANOS) return -1;
@@ -300,7 +310,7 @@ public final class ScoreRail extends Region {
 
     /** The row's formation on a blood-red ribbon lettered in gold, or a faded outline when the row has none. */
     private void drawFormation(GraphicsContext g, long now) {
-        String formation = display == null ? null : display.formation();
+        String formation = formationShown(now);
         double hit = display == null ? 0 : hit(Pocket.FORMATION, now);
         if (formation == null) {
             g.setStroke(TablePlaque.FADED.deriveColor(0, 1, 1, .45));

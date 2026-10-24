@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Run inside EC2: sudo /opt/deckduel/bin/deckduel-ctl status|drain|resume|reload-tls|wait-safe [--timeout SECONDS]
+# Talks to the running server over its local socket /run/deckduel/control.sock (root or group deckduel).
+set -euo pipefail
+exec /usr/bin/java -Xmx64m -Djava.awt.headless=true -jar /opt/deckduel/current/deck-duel-server.jar ctl "$@" --socket /run/deckduel/control.sock

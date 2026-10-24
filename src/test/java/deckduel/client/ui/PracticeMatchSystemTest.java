@@ -57,7 +57,7 @@ class PracticeMatchSystemTest {
                     frame[0].setVisible(true);
                     screens[0] = new FxScreens(model[0], new ClientSettings(), new ScoringSounds(() -> false), frame[0], () -> { },
                             () -> false, bounds -> { });
-                    model[0].register("127.0.0.1", port, "chooser", "secret123");
+                    model[0].register(new deckduel.client.startup.ServerRoute("127.0.0.1", port, false), "chooser", "secret123");
                 });
                 waitFor(() -> model[0].me() != null, "signed in");
                 SwingUtilities.invokeAndWait(() -> model[0].startPractice(false));

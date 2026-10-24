@@ -1,6 +1,10 @@
 package deckduel.client.bot;
 
+import deckduel.client.ClientTls;
 import deckduel.client.DeckDuelClient;
+import deckduel.client.startup.InstalledVersion;
+import deckduel.client.startup.ServerRoute;
+import javax.net.ssl.SSLContext;
 import deckduel.core.card.GreedyBot;
 import deckduel.core.card.MatchPhase;
 import deckduel.net.*;
@@ -34,17 +38,23 @@ public final class CardBot implements AutoCloseable {
      * after the first are rematches.
      */
     public CardBot(String username, String password, int games, boolean host, CompletableFuture<String> room) {
+        this(username, password, games, host, room, ClientTls.systemTrust());
+    }
+
+    /** As above, trusting {@code tls} for TLS routes (a local test authority for development). */
+    public CardBot(String username, String password, int games, boolean host, CompletableFuture<String> room, SSLContext tls) {
         this.username = username;
         this.password = password;
         this.games = games;
         this.host = host;
         this.room = room;
-        client = new DeckDuelClient(this::receive, reason -> finished.completeExceptionally(new IOException(reason)));
+        client = new DeckDuelClient(this::receive, reason -> finished.completeExceptionally(new IOException(reason)), tls,
+                InstalledVersion.current(), 10_000);
     }
 
     /** Connects, signs in (registering on first use) and hosts or joins; completes with each final view. */
-    public CompletableFuture<List<MatchUpdate>> start(String host, int port) throws IOException {
-        client.ensureConnected(host, port);
+    public CompletableFuture<List<MatchUpdate>> start(ServerRoute route) throws IOException {
+        client.ensureConnected(route);
         client.send(new RegisterRequest(username, password));
         return finished;
     }

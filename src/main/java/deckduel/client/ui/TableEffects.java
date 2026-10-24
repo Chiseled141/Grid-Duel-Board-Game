@@ -797,10 +797,10 @@ final class TableEffects {
      * clipped-corner tag instead.
      */
     private Live chip(Staging.Chip c) {
-        double radius = c.big() ? 25 : 20;
+        double radius = (c.big() ? 25 : 20) * c.scale();
         Color enamel = enamel(c.tone());
         Text label = new Text(c.text());
-        label.setFont(FxKit.bold(c.big() ? 18 : 15));
+        label.setFont(FxKit.bold((c.big() ? 18 : 15) * c.scale()));
         label.setFill(c.tone() == Tone.GOLD ? TablePlaque.INK : TablePlaque.CREAM);
         label.setEffect(new DropShadow(BlurType.GAUSSIAN, c.tone() == Tone.GOLD ? Color.rgb(255, 240, 200, .5) : Color.rgb(10, 6, 2, .9),
                 2, .6, 0, 1));
@@ -922,11 +922,54 @@ final class TableEffects {
         return toast(toast(b.title(), null, b.tone(), Math.min(26, b.size() * .56)), b.x(), b.y());
     }
 
-    /** A new formation, as the same toast with its bonus and multiplier in a badge, above its row. */
+    /**
+     * A new formation, as the same toast with its bonus in a badge, above its row. A multiplier is
+     * then stamped beside it: a big gold "×2" drops from above, lands with a burst of light and
+     * sparks while the table shakes, and stays until the toast leaves.
+     */
     private Live callout(Staging.Callout c) {
-        Group card = toast(c.title(), c.value(), c.tone(), 17);
+        Group card = toast(c.title(), c.bonus(), c.tone(), 19);
         // The callout's anchor is its bottom edge, so it rests on the row's top edge.
-        return toast(card, c.at().getX(), c.at().getY() - card.getLayoutBounds().getHeight() / 2);
+        double y = c.at().getY() - card.getLayoutBounds().getHeight() / 2;
+        Live plaque = toast(card, c.at().getX(), y);
+        if (c.multiplier() <= 1) return plaque;
+        Text stamp = new Text("×" + c.multiplier());
+        stamp.setFont(FxKit.display(52));
+        stamp.setFill(new LinearGradient(0, 0, 0, 1, true, CycleMethod.NO_CYCLE,
+                new Stop(0, Color.web("#FFF1C4")), new Stop(.5, Color.web("#F2C35E")), new Stop(1, Color.web("#B8862E"))));
+        stamp.setStroke(TablePlaque.WOOD_LINE);
+        stamp.setStrokeWidth(2);
+        stamp.setEffect(new DropShadow(BlurType.GAUSSIAN, Color.rgb(20, 10, 4, .85), 10, .35, 0, 4));
+        double sx = c.at().getX() + card.getLayoutBounds().getWidth() / 2 + 14 + stamp.getLayoutBounds().getWidth() / 2;
+        stamp.setX(-stamp.getLayoutBounds().getWidth() / 2);
+        stamp.setY(stamp.getLayoutBounds().getHeight() * .3);
+        Group mark = new Group(stamp);
+        mark.setTranslateX(sx);
+        mark.setTranslateY(y);
+        Color gold = colour(Tone.GOLD, 1);
+        VfxKit.Flash flash = new VfxKit.Flash(sx, y, 70, gold, 8, 20);
+        VfxKit.Shockwave wave = new VfxKit.Shockwave(sx, y, 150, .45, gold);
+        VfxKit.Sparks sparks = new VfxKit.Sparks(sx, y, -90, 360, 24, 120, gold, Math.round(sx));
+        double slam = PlayAnimator.SLAM_AT, drop = .07;
+        return new Live() {
+            { node.getChildren().addAll(plaque.node, wave, flash, sparks, mark); }
+            @Override void update(double p) {
+                plaque.update(p);
+                // It falls in large and tilted, lands at its size on the stamp, then gives a small rebound.
+                double fall = Math.max(0, Math.min(1, (p - slam + drop) / drop));
+                double since = Math.max(0, (p - slam) / (1 - slam));
+                double size = p < slam ? 2.4 - 1.4 * fall * fall : 1 + .12 * Math.sin(Math.min(1, since * 6) * Math.PI) * (1 - since);
+                mark.setVisible(p >= slam - drop);
+                mark.setScaleX(size);
+                mark.setScaleY(size);
+                mark.setRotate(p < slam ? -16 + 10 * fall : -6);
+                mark.setOpacity(p < slam ? fall : p > .86 ? 1 - (p - .86) / .14 : 1);
+                for (Node light : List.of(flash, wave, sparks)) light.setVisible(p >= slam);
+                flash.at(Math.min(1, since * 3));
+                wave.at(Math.min(1, since * 2.5));
+                sparks.at(Math.min(1, since * 2));
+            }
+        };
     }
 
     /**

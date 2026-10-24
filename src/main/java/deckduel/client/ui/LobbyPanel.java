@@ -1,6 +1,7 @@
 package deckduel.client.ui;
 
 import deckduel.client.ClientSettings;
+import deckduel.client.startup.UpdateFlow;
 import deckduel.client.state.ClientModel;
 import deckduel.client.state.ClientModelListener;
 import deckduel.client.state.Screen;
@@ -18,6 +19,9 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
     private final ClientSettings settings;
     private final Runnable quitGame;
     private final Runnable saveSettings;
+    private final UpdateFlow updates;
+    private final String fixture;
+    private final boolean restarts;
     private final JPanel surface = new JPanel(new BorderLayout()) {
         @Override public Dimension getPreferredSize() {
             Dimension natural = super.getPreferredSize();
@@ -25,7 +29,14 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
         }
 
     };
-    private final JLabel profile = caption(" ");
+    private final JLabel profile = new JLabel(" ", SwingConstants.CENTER) {
+        @Override protected void paintComponent(Graphics graphics) {
+            Graphics2D g = UiKit.nice(graphics);
+            UiKit.paintTile(g, getWidth(), getHeight(), false, false);
+            g.dispose();
+            super.paintComponent(graphics);
+        }
+    };
     private final JLabel roomCode = caption("· · · · ·");
     private final JLabel roomStatus = caption("Creating your room…");
     private final JLabel noRooms = caption("No open rooms yet.");
@@ -52,6 +63,10 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
     private final JButton create = MenuSettingsOption.route("Create match", "Invite a friend with a room code.", this::createRoom);
     private final JButton practice = MenuSettingsOption.route("Practice", "Play against the practice bot.", () -> showPage("practice"));
     private final JButton browse = MenuSettingsOption.route("Join a game", "Enter a code or choose an open room.", () -> showPage("join"));
+    private final JButton history = MenuSettingsOption.route("Match history", "Your recorded matches and their replays.", this::openHistory);
+    // Gaps after Create match and Join a game, hidden with them in offline play.
+    private final Component createGap = Box.createVerticalStrut(8), browseGap = Box.createVerticalStrut(8);
+    private final JLabel playNotice = caption(" ");
     private final JButton[] cardControls = new JButton[2];
     private final java.util.Map<String, JPanel> pages = new java.util.LinkedHashMap<>();
     private final java.util.Map<String, MenuNavigation> navigation = new java.util.HashMap<>();
@@ -65,20 +80,28 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
         repaint();
     });
 
-    /** Builds the menu; Quit uses the frame's normal save-and-close path. */
-    public LobbyPanel(ClientModel model, ClientSettings settings, Runnable quitGame) {
+    /**
+     * Builds the menu; Quit uses the frame's normal save-and-close path. Settings checks for
+     * updates through {@code updates}, labelling the result when {@code fixture} names a test fixture.
+     */
+    public LobbyPanel(ClientModel model, ClientSettings settings, Runnable quitGame, UpdateFlow updates, String fixture,
+                      boolean restarts) {
         this(model, settings, quitGame, () -> {
             Thread writer = new Thread(() -> {
                 synchronized (settings) { settings.save(); }
             }, "deck-duel-save-settings");
             writer.setDaemon(true);
             writer.start();
-        });
+        }, updates, fixture, restarts);
     }
 
     // Inject persistence in UI tests so selecting a style never writes real user preferences.
-    LobbyPanel(ClientModel model, ClientSettings settings, Runnable quitGame, Runnable saveSettings) {
+    LobbyPanel(ClientModel model, ClientSettings settings, Runnable quitGame, Runnable saveSettings,
+               UpdateFlow updates, String fixture, boolean restarts) {
         super(model, Screen.LOBBY, settings);
+        this.updates = updates;
+        this.fixture = fixture;
+        this.restarts = restarts;
         this.model = model;
         this.refreshTimer = new Timer(5000, event -> model.refreshMatches());
         this.settings = settings;
@@ -97,7 +120,10 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
         anchor.weighty = 1;
         anchor.anchor = GridBagConstraints.LINE_END;
         add(surface, anchor);
-        profile.setFont(Theme.bold(20f));
+        profile.setFont(Theme.decorative(20f));
+        profile.setForeground(Theme.BRASS_LIGHT);
+        profile.setBorder(BorderFactory.createEmptyBorder(5, 18, 5, 18));
+        profile.putClientProperty("html.disable", Boolean.TRUE);
         profile.setName("menuPlayerName");
         add(profile, anchor);
         pages.put("home", buildHome());
@@ -133,7 +159,8 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
             @Override public void onError(String text) {
                 if (creatingRoom) {
                     creatingRoom = false;
-                    roomStatus.setText("Room creation failed. Go back to try again.");
+                    roomStatus.setText(model.newMatchesBlocked() ? "Room closed: an update comes first."
+                            : "Room creation failed. Go back to try again.");
                     refreshAvailability();
                 }
             }
@@ -151,9 +178,9 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
             surface.setLocation(surface.getX(), surface.getY() + offset);
         }
         int width = Math.min(profile.getPreferredSize().width, Math.max(0, getWidth() - 122));
-        // Align the account name with the floating sound button without a header bar.
-        int right = getWidth() - 84;
-        profile.setBounds(Math.max(0, right - width), 16, width, 36);
+        // Matching iron plates keep the account and music control legible against the sky.
+        int right = getWidth() - 76;
+        profile.setBounds(Math.max(0, right - width), 16, width, 40);
     }
 
     private JPanel buildHome() {
@@ -177,11 +204,21 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
     private JPanel buildPlay() {
         JPanel page = page("Play", "Choose your next match.", "home");
         line(page, create);
-        page.add(Box.createVerticalStrut(8));
+        page.add(createGap);
         line(page, browse);
-        page.add(Box.createVerticalStrut(8));
+        page.add(browseGap);
         line(page, practice);
+        page.add(Box.createVerticalStrut(8));
+        line(page, history);
+        page.add(Box.createVerticalStrut(10));
+        playNotice.setName("playNotice");
+        playNotice.setForeground(Theme.BRASS_LIGHT);
+        line(page, playNotice);
         return page;
+    }
+
+    private void openHistory() {
+        if (history.isEnabled()) model.requestHistory();
     }
 
     private static JPanel roomSurface() {
@@ -372,10 +409,37 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
             saveSettings.run();
         });
         line(page, sounds);
+        page.add(Box.createVerticalStrut(20));
+        buildUpdates(page);
         page.add(Box.createVerticalStrut(12));
         line(page, caption("Changes saved automatically"));
         updateCardControls();
         return page;
+    }
+
+    /** The installed version, Check for updates, and Install update once a release is offered. */
+    private void buildUpdates(JPanel page) {
+        line(page, settingLabel("UPDATES"));
+        page.add(Box.createVerticalStrut(7));
+        JButton check = MenuSettingsOption.route("Check for updates",
+                "Installed version " + updates.installedVersion() + ".", updates::check);
+        check.setName("checkForUpdates");
+        line(page, check);
+        JLabel status = caption(" ");
+        status.setName("updateStatus");
+        line(page, status);
+        JButton install = MenuSettingsOption.route("Install update", "Download and install the new release.", updates::install);
+        install.setName("installUpdate");
+        line(page, install);
+        java.util.function.Consumer<UpdateFlow.State> show = state -> {
+            status.setText((fixture == null ? "" : "Test fixture · ") + StartupPanel.summary(state, restarts));
+            check.setEnabled(state.stage() != UpdateFlow.Stage.CHECKING && state.stage() != UpdateFlow.Stage.INSTALLING);
+            install.setVisible(state.canInstall());
+            install.setText(state.stage() == UpdateFlow.Stage.INSTALL_FAILED ? "Retry update" : "Install update");
+            page.revalidate();
+        };
+        updates.addListener(show);
+        show.accept(updates.state());
     }
 
     private static JLabel settingLabel(String text) {
@@ -494,20 +558,36 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
     }
 
     private void refreshAvailability() {
-        create.setEnabled(!creatingRoom);
+        // A required or installing update blocks new matches; offline play has no other players to host or join.
+        boolean updateNeeded = model.newMatchesBlocked();
+        create.setEnabled(!creatingRoom && !updateNeeded);
+        browse.setEnabled(!updateNeeded);
+        practice.setEnabled(!updateNeeded);
+        for (Component online : new Component[] {create, createGap, browse, browseGap}) online.setVisible(!model.isOffline());
+        playNotice.setText(model.requiredUpdate() != null
+                ? "Version " + model.requiredUpdate() + " is required before your next match. Install it in Settings."
+                : model.maintenance() != null ? "Server maintenance: new matches can start again after the restart."
+                : updateNeeded ? "An update is installing. New matches can start after Deck Duel restarts."
+                : model.isOffline() ? "Offline practice. History and replays last only for this session." : " ");
         join.setEnabled(joinField.getText().trim().toUpperCase(java.util.Locale.ROOT).matches("[A-Z2-9]{5}"));
         navigation.values().forEach(MenuNavigation::refresh);
     }
 
     private void refreshState() {
         if (model.me() != null) {
-            profile.setText(model.me().username());
-            profile.setToolTipText(model.me().username());
+            // Offline play names the mode, not its throwaway local account.
+            profile.setText(model.isOffline() ? "Offline play" : model.me().username());
+            profile.setToolTipText(model.isOffline() ? "Playing offline against the practice bots" : model.me().username());
         }
         String code = model.pendingRoomCode();
         if (code != null) {
             roomCode.setText(code);
             roomStatus.setText("Waiting for an opponent…");
+        } else if (model.newMatchesBlocked()) {
+            // The model closed the room when the update block began.
+            creatingRoom = false;
+            roomCode.setText("· · · · ·");
+            roomStatus.setText(model.maintenance() != null ? "Room closed for server maintenance." : "Room closed: an update comes first.");
         } else if (!creatingRoom) roomCode.setText("· · · · ·");
         roomRows.clear();
         for (MatchSummary room : model.openMatches())

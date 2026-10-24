@@ -84,4 +84,16 @@
 .scroll-bar .increment-arrow, .scroll-bar .decrement-arrow { -fx-shape: ""; -fx-padding: 0; }
 .scroll-bar .track { -fx-background-color: transparent; }
 
-.sound-toggle { -fx-background-color: transparent; -fx-cursor: hand; -fx-padding: 6; }
+.sound-toggle {
+    -fx-background-color: #0F0D0C, rgba(169, 132, 63, 0.55), linear-gradient(to bottom, #3A3431, #1A1716);
+    -fx-background-insets: 0, 2, 3;
+    -fx-background-radius: 3, 2, 1;
+    -fx-cursor: hand;
+    -fx-padding: 7 10;
+    -fx-min-width: 44; -fx-pref-width: 44; -fx-max-width: 44;
+    -fx-min-height: 40; -fx-pref-height: 40; -fx-max-height: 40;
+}
+.sound-toggle:hover, .sound-toggle:focused {
+    -fx-background-color: #0F0D0C, #D9B56A, linear-gradient(to bottom, #48403B, #25201D);
+}
+.sound-toggle:pressed { -fx-translate-y: 1; }
