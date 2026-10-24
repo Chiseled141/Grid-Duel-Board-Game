@@ -2,16 +2,20 @@ package deckduel.client;
 
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.EnumMap;
+import java.util.Map;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.sound.sampled.AudioFormat;
 import javax.sound.sampled.AudioSystem;
+import javax.sound.sampled.LineUnavailableException;
 import javax.sound.sampled.SourceDataLine;
+import javafx.scene.media.AudioClip;
 
 /**
- * Short synthesized match cues (no audio assets): a card tap, a bell per scoring pair that
+ * Match cues use bundled recordings where available and synthesized fallbacks for other cues: a card tap, a bell per scoring pair that
  * rises through a combo, a two-note coin for a gain, a falling tone for a loss, and the motion
  * cues of the table: a whoosh, a spell shimmer, a shattering impact, a chain clink, a dealing
  * tick, a round bell, and the Spells' own cues: a seal's thud, a chime, a crackle of flame, a
@@ -32,6 +36,9 @@ public final class ScoringSounds implements AutoCloseable {
 
     private final BooleanSupplier enabled;
     private final Consumer<Cue> output;
+    private final LineFactory lineFactory;
+    @FunctionalInterface
+    interface LineFactory { SourceDataLine create() throws LineUnavailableException; }
     private final ExecutorService worker = Executors.newSingleThreadExecutor(task -> {
         Thread thread = new Thread(task, "scoring-sounds");
         thread.setDaemon(true);
@@ -40,9 +47,13 @@ public final class ScoringSounds implements AutoCloseable {
     // Queuing and closing hold this lock, so no cue is handed to the worker after it shut down.
     private final Object lifecycle = new Object();
     private volatile boolean closed;
+    private volatile long generation;
     // Owned by the worker thread only.
     private SourceDataLine line;
     private boolean unavailable;
+    // AudioClip playback is asynchronous; keep handles so mute/close can stop active recordings.
+    private final Map<Cue.Kind, AudioClip> sampleClips = new EnumMap<>(Cue.Kind.class);
+    private final Map<Cue.Kind, Boolean> missingSamples = new EnumMap<>(Cue.Kind.class);
 
     /** Plays through the default audio device while {@code enabled} is true. */
     public ScoringSounds(BooleanSupplier enabled) { this(enabled, null, null); }
@@ -56,9 +67,22 @@ public final class ScoringSounds implements AutoCloseable {
     }
 
     private ScoringSounds(BooleanSupplier enabled, Consumer<Cue> output, Consumer<byte[]> device) {
+        this(enabled, output, device, () -> AudioSystem.getSourceDataLine(FORMAT));
+    }
+
+    ScoringSounds(BooleanSupplier enabled, LineFactory lineFactory) {
+        this(enabled, null, null, lineFactory);
+    }
+
+    private ScoringSounds(BooleanSupplier enabled, Consumer<Cue> output, Consumer<byte[]> device,
+                          LineFactory lineFactory) {
         this.enabled = enabled;
+        this.lineFactory = lineFactory;
         Consumer<byte[]> sink = device == null ? this::write : device;
-        this.output = output != null ? output : cue -> queue(() -> sink.accept(synthesize(cue)));
+        this.output = output != null ? output : cue -> queue(() -> {
+            if (device != null) sink.accept(synthesize(cue));
+            else playCue(cue, sink);
+        });
     }
 
     /** Plays a cue unless sounds are switched off or closed; never blocks the caller. */
@@ -68,7 +92,19 @@ public final class ScoringSounds implements AutoCloseable {
 
     private void queue(Runnable task) {
         synchronized (lifecycle) {
-            if (!closed) worker.execute(task);
+            long queuedGeneration = generation;
+            if (!closed) worker.execute(() -> {
+                if (enabled.getAsBoolean() && queuedGeneration == generation) task.run();
+            });
+        }
+    }
+
+    /** Cancels pending effects and releases the device off the UI thread; later cues may play again. */
+    public void stop() {
+        synchronized (lifecycle) {
+            if (closed) return;
+            generation++;
+            worker.execute(this::releaseLine);
         }
     }
 
@@ -76,15 +112,80 @@ public final class ScoringSounds implements AutoCloseable {
         if (unavailable) return;
         try {
             if (line == null) {
-                line = AudioSystem.getSourceDataLine(FORMAT);
+                line = lineFactory.create();
                 line.open(FORMAT, (int) RATE / 5);
-                line.start();
             }
+            line.start();
             line.write(pcm, 0, pcm.length);
+            // Stop after the tail finishes, rather than leave a running device with no data.
+            line.drain();
+            line.stop();
+            line.flush();
         } catch (Exception | LinkageError unavailableAudio) {
             unavailable = true;
+            releaseLine();
             LOG.log(Level.FINE, "Scoring sounds unavailable", unavailableAudio);
         }
+    }
+
+    private void playCue(Cue cue, Consumer<byte[]> synthesizedOutput) {
+        String resource = sampleResource(cue.kind());
+        if (resource != null && !missingSamples.containsKey(cue.kind())) {
+            try {
+                AudioClip clip = sampleClips.get(cue.kind());
+                if (clip == null) {
+                    var url = ScoringSounds.class.getResource(resource);
+                    if (url == null) {
+                        missingSamples.put(cue.kind(), true);
+                    } else {
+                        clip = new AudioClip(url.toExternalForm());
+                        sampleClips.put(cue.kind(), clip);
+                    }
+                }
+                if (clip != null) {
+                    playRecording(clip, cue);
+                    return;
+                }
+            } catch (RuntimeException | LinkageError unavailableSample) {
+                missingSamples.put(cue.kind(), true);
+                LOG.log(Level.WARNING, "Bundled sound unavailable for " + cue.kind(), unavailableSample);
+            }
+        }
+        synthesizedOutput.accept(synthesize(cue));
+    }
+
+    /** Returns the bundled recording for a cue, or {@code null} to keep its synthesized sound. */
+    static String sampleResource(Cue.Kind kind) {
+        return switch (kind) {
+            case CARD -> "/audio/sfx/card_tap.mp3";
+            case PAIR -> "/audio/sfx/pair_bell.mp3";
+            case GAIN -> "/audio/sfx/gain.mp3";
+            case IMPACT -> "/audio/sfx/impact.mp3";
+            case CHAIN -> "/audio/sfx/chain_link.mp3";
+            case SPELL -> "/audio/sfx/spell_shimmer.mp3";
+            case FLAME -> "/audio/sfx/flame_crackle.mp3";
+            case TALLY -> "/audio/sfx/tally_coin.mp3";
+            default -> null;
+        };
+    }
+
+    private static double sampleRate(Cue cue) {
+        if (cue.kind() != Cue.Kind.PAIR && cue.kind() != Cue.Kind.TALLY) return 1.0;
+        return Math.pow(2, Math.min(cue.step(), 12) * 2 / 12.0);
+    }
+
+    /** Starts a recording with the rising pitch used by combo bells and score chips. */
+    static void playRecording(AudioClip clip, Cue cue) {
+        // Named setters avoid confusing AudioClip.play's volume/balance/rate arguments.
+        clip.setRate(sampleRate(cue));
+        clip.play();
+    }
+
+    private void releaseLine() {
+        sampleClips.values().forEach(AudioClip::stop);
+        if (line == null) return;
+        try { line.stop(); line.flush(); line.close(); }
+        finally { line = null; }
     }
 
     /** 16-bit little-endian mono PCM for one cue. */
@@ -239,7 +340,7 @@ public final class ScoringSounds implements AutoCloseable {
         synchronized (lifecycle) {
             if (closed) return;
             closed = true;
-            worker.execute(() -> { if (line != null) { line.drain(); line.close(); } });
+            worker.execute(this::releaseLine);
             worker.shutdown();
         }
     }

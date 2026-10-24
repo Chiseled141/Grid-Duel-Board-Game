@@ -329,6 +329,12 @@ final class CardTableView extends Pane {
         clearPreview();
         onScreen = false;
         while (!held.isEmpty()) present(held.poll());
+        effects.clear();
+        staged = false;
+        trace = null;
+        frames.stop();
+        running = false;
+        sounds.stop();
         settle.stop();
         confirm.setVisible(false);
         cardDetails.close();

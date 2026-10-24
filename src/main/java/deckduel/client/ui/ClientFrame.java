@@ -96,8 +96,10 @@ public final class ClientFrame extends JFrame {
         content.add(new StartupPanel(model, settings, startup, version, services.fixture(), restarts, this::closeAndSave),
                 Screen.STARTUP.name());
         content.add(new LoginPanel(model, settings, server.route()), Screen.LOGIN.name());
-        content.add(new LobbyPanel(model, settings, this::closeAndSave, updates, services.fixture(), restarts), Screen.LOBBY.name());
         scoringSounds = new deckduel.client.ScoringSounds(settings::gameSounds);
+        var lobby = new LobbyPanel(model, settings, this::closeAndSave, updates, services.fixture(), restarts);
+        lobby.onGameSoundsChanged(() -> { if (!settings.gameSounds()) scoringSounds.stop(); });
+        content.add(lobby, Screen.LOBBY.name());
         content.add(new HistoryPanel(model, settings, model::leaveToLobby), Screen.HISTORY.name());
         content.add(new ReplayPanel(model), Screen.REPLAY.name());
         add(buildScene());

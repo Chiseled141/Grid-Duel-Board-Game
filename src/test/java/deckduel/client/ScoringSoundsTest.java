@@ -8,6 +8,43 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 
 class ScoringSoundsTest {
+    @Test void outputStopsAfterTheCueInsteadOfRunningWithAnEmptyBuffer() throws Exception {
+        var line = new AudioLineStub();
+        try (var sounds = new ScoringSounds(() -> true, () -> line)) {
+            sounds.play(new Cue(Cue.Kind.DEAL, 0));
+            assertTrue(line.stopped.await(3, java.util.concurrent.TimeUnit.SECONDS));
+            assertFalse(line.isRunning(), "an idle output must not keep running with no PCM data");
+            assertTrue(line.calls.indexOf("drain") < line.calls.indexOf("stop"), "finish the audible tail first");
+        }
+        assertTrue(line.closed.await(3, java.util.concurrent.TimeUnit.SECONDS));
+    }
+
+    @Test void mutingDropsQueuedCuesClosesTheDeviceAndAllowsLaterPlayback() throws Exception {
+        var on = new java.util.concurrent.atomic.AtomicBoolean(true);
+        var first = new AudioLineStub();
+        var second = new AudioLineStub();
+        first.holdWrite = new java.util.concurrent.CountDownLatch(1);
+        var opened = new java.util.concurrent.atomic.AtomicInteger();
+        try (var sounds = new ScoringSounds(on::get, () -> opened.getAndIncrement() == 0 ? first : second)) {
+            sounds.play(new Cue(Cue.Kind.DEAL, 0));
+            assertTrue(first.written.await(3, java.util.concurrent.TimeUnit.SECONDS));
+            sounds.play(new Cue(Cue.Kind.DEAL, 0));
+            sounds.play(new Cue(Cue.Kind.ROUND, 0));
+            on.set(false);
+            sounds.stop();
+            first.holdWrite.countDown();
+            assertTrue(first.closed.await(3, java.util.concurrent.TimeUnit.SECONDS));
+            assertEquals(1, first.writes, "sounds queued before mute must not play afterwards");
+            assertFalse(first.isOpen());
+            sounds.play(new Cue(Cue.Kind.LOSS, 0));
+            on.set(true);
+            sounds.play(new Cue(Cue.Kind.DEAL, 0));
+            assertTrue(second.written.await(3, java.util.concurrent.TimeUnit.SECONDS));
+            assertEquals(1, second.writes, "enabling sound starts a fresh device for new cues only");
+        } finally { first.holdWrite.countDown(); }
+        assertTrue(second.closed.await(3, java.util.concurrent.TimeUnit.SECONDS));
+    }
+
     private static int zeroCrossings(byte[] pcm) {
         int crossings = 0;
         short previous = 0;
@@ -38,6 +75,20 @@ class ScoringSoundsTest {
         on[0] = true;
         sounds.play(new Cue(Cue.Kind.LOSS, 0));
         assertEquals(List.of(new Cue(Cue.Kind.LOSS, 0)), played);
+    }
+
+    @Test void recordingsExistForTheMatchingCuesAndOtherCuesKeepTheirFallback() {
+        for (Cue.Kind kind : List.of(Cue.Kind.CARD, Cue.Kind.PAIR, Cue.Kind.GAIN,
+                Cue.Kind.IMPACT, Cue.Kind.CHAIN, Cue.Kind.SPELL, Cue.Kind.TALLY, Cue.Kind.FLAME)) {
+            String resource = ScoringSounds.sampleResource(kind);
+            assertNotNull(resource, kind + " has a bundled recording");
+            assertNotNull(ScoringSounds.class.getResource(resource), resource + " is packaged");
+        }
+        for (Cue.Kind kind : List.of(Cue.Kind.LOSS, Cue.Kind.WHOOSH, Cue.Kind.DEAL,
+                Cue.Kind.ROUND, Cue.Kind.SEAL, Cue.Kind.CHIME,
+                Cue.Kind.WARP, Cue.Kind.GLINT, Cue.Kind.RIP)) {
+            assertNull(ScoringSounds.sampleResource(kind), kind + " keeps its existing synthesized sound");
+        }
     }
 
     /** The table plays cues on the JavaFX thread while the frame closes the sounds on the EDT. */

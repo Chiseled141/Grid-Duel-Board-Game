@@ -19,6 +19,7 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
     private final ClientSettings settings;
     private final Runnable quitGame;
     private final Runnable saveSettings;
+    private Runnable gameSoundsChanged = () -> { };
     private final UpdateFlow updates;
     private final String fixture;
     private final boolean restarts;
@@ -405,6 +406,7 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
         showSounds.run();
         sounds.addActionListener(event -> {
             settings.setGameSounds(!settings.gameSounds());
+            gameSoundsChanged.run();
             showSounds.run();
             saveSettings.run();
         });
@@ -416,6 +418,9 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
         updateCardControls();
         return page;
     }
+
+    /** Notifies the frame so muting releases the audio device and cancels queued cues. */
+    void onGameSoundsChanged(Runnable listener) { gameSoundsChanged = listener; }
 
     /** The installed version, Check for updates, and Install update once a release is offered. */
     private void buildUpdates(JPanel page) {
