@@ -7,13 +7,19 @@ import deckduel.core.card.Catalog;
 import deckduel.core.card.GreedyBot;
 import deckduel.core.card.MatchPhase;
 import deckduel.core.card.PlayCard;
+import deckduel.core.card.PlayerView;
+import deckduel.core.card.Seat;
 import deckduel.db.Database;
 import deckduel.db.SqliteMatchDao;
 import deckduel.db.SqliteUserDao;
 import deckduel.net.*;
 import java.io.*;
 import java.net.Socket;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Predicate;
@@ -33,8 +39,8 @@ class CardMatchIntegrationTest {
         database = new Database(temporary.resolve("cards.db"));
         var users = new SqliteUserDao(database);
         matchDao = new SqliteMatchDao(database, users);
-        var persistence = new MatchPersistence(database, matchDao);
-        server = new GameServer(new ServerConfig(0, 90, 32, 1, 0), users, catalog, persistence, persistence);
+        var persistence = new MatchPersistence(database, matchDao, new deckduel.db.SqliteReplayDao(database));
+        server = new GameServer(new ServerConfig(0, 90, 32, 1, 0), users, catalog, persistence, persistence, persistence);
         port = server.start();
     }
     @AfterEach void close() throws Exception { server.stop(); database.close(); }
@@ -55,7 +61,7 @@ class CardMatchIntegrationTest {
             });
             reader.setDaemon(true); reader.start();
             expect(ErrorMessage.class, any -> true);
-            send(new ProtocolHello(Message.PROTOCOL_VERSION)); expect(ProtocolReady.class, any -> true);
+            send(new ProtocolHello(Message.PROTOCOL_VERSION, "1.0.0")); expect(ProtocolReady.class, any -> true);
             send(register ? new RegisterRequest(name, "secret123") : new LoginRequest(name, "secret123"));
             assertTrue(expect(LoginResponse.class, any -> true).ok());
         }
@@ -251,6 +257,288 @@ class CardMatchIntegrationTest {
         }
     }
 
+    private static ReplayResponse replayOf(Peer peer) throws Exception {
+        peer.send(new HistoryRequest());
+        HistoryEntry entry = peer.expect(HistoryResponse.class, any -> true).matches().get(0);
+        assertEquals(HistoryEntry.Replay.AVAILABLE, entry.replay());
+        peer.send(new ReplayRequest(entry.replayId()));
+        return peer.expect(ReplayResponse.class, any -> true);
+    }
+
+    /** Revisions must run without gaps or repeats from the opening deal to the finished view. */
+    private static void assertContiguous(List<PlayerView> frames) {
+        for (int i = 1; i < frames.size(); i++)
+            assertEquals(frames.get(i - 1).revision() + 1, frames.get(i).revision(), "frame " + i + " follows the one before it");
+        assertEquals(MatchPhase.FINISHED, frames.get(frames.size() - 1).phase(), "the replay ends with the result");
+    }
+
+    @Test void eachPlayerReplaysTheirOwnViewsOnceInOrderAcrossARetryAndAReconnect() throws Exception {
+        Map<Integer, PlayerView> aliceSaw = new TreeMap<>();
+        try (var alice = new Peer("alice", true)) {
+            Peer bob = new Peer("bob", true);
+            MatchUpdate[] opened = hostAndJoin(alice, bob);
+            MatchUpdate ua = opened[0], ub = opened[1];
+            aliceSaw.put(ua.view().revision(), ua.view());
+            boolean retried = false, reconnected = false;
+            while (ua.view().phase() != MatchPhase.FINISHED) {
+                int revision = Math.max(ua.view().revision(), ub.view().revision());
+                if (!reconnected && revision >= 8 && waitedOn(ua)) {
+                    // Bob drops while Alice moves, then logs back in to the held seat.
+                    bob.close();
+                    alice.move(ua);
+                    ua = alice.update(u -> u.view().revision() > revision);
+                    aliceSaw.put(ua.view().revision(), ua.view());
+                    bob = new Peer("bob", false);
+                    int now = ua.view().revision();
+                    ub = bob.update(u -> u.view().revision() == now);
+                    // The reconnect re-sends the same revision to Alice; it must not become a second frame.
+                    ua = alice.update(u -> u.view().revision() == now);
+                    reconnected = true;
+                    continue;
+                }
+                if (waitedOn(ua)) {
+                    alice.move(ua);
+                    if (!retried) {
+                        // The same request id again: answered with the current view, applied once.
+                        alice.send(new MoveRequest(alice.requests - 1, ua.view().revision(), GreedyBot.choose(ua.view())));
+                        retried = true;
+                    }
+                } else bob.move(ub);
+                ua = alice.update(u -> u.view().revision() > revision);
+                ub = bob.update(u -> u.view().revision() > revision);
+                aliceSaw.put(ua.view().revision(), ua.view());
+            }
+            assertTrue(retried && reconnected);
+
+            ReplayResponse mine = replayOf(alice), theirs = replayOf(bob);
+            assertEquals("bob", mine.opponent()); assertFalse(mine.practice()); assertTrue(mine.complete());
+            assertContiguous(mine.frames());
+            assertContiguous(theirs.frames());
+            assertEquals(mine.frames().size(), theirs.frames().size(), "Bob's recording kept going while he was away");
+            for (PlayerView frame : mine.frames()) {
+                assertEquals(Seat.FIRST, frame.seat());
+                PlayerView live = aliceSaw.get(frame.revision());
+                if (live != null) assertEquals(live, frame, "the replay holds exactly what Alice was sent");
+            }
+            for (int i = 0; i < mine.frames().size(); i++) {
+                PlayerView own = mine.frames().get(i), other = theirs.frames().get(i);
+                assertEquals(Seat.SECOND, other.seat());
+                var bobHand = other.hand().stream().map(c -> c.id()).toList();
+                assertTrue(own.hand().stream().noneMatch(c -> bobHand.contains(c.id())), "no opponent hand cards in Alice's frames");
+                assertTrue(own.revealed().stream().allMatch(c -> bobHand.contains(c.id())), "only Spy-revealed cards of Bob's hand");
+            }
+
+            // Ownership: Bob cannot open Alice's recording, and unknown ids look the same.
+            bob.send(new ReplayRequest(mine.replayId()));
+            assertEquals(ReplayStore.UNAVAILABLE, bob.expect(ErrorMessage.class, any -> true).text());
+            bob.send(new ReplayRequest(987_654));
+            assertEquals(ReplayStore.UNAVAILABLE, bob.expect(ErrorMessage.class, any -> true).text());
+            bob.close();
+        }
+    }
+
+    @Test void drainClosesRoomsRefusesNewMatchesAndLetsTheRunningMatchFinish() throws Exception {
+        try (var alice = new Peer("alice", true); var bob = new Peer("bob", true);
+             var carol = new Peer("carol", true); var dave = new Peer("dave", true)) {
+            MatchUpdate[] opened = hostAndJoin(alice, bob);
+            carol.send(new CreateMatchRequest());
+            String code = carol.expect(MatchCreated.class, any -> true).roomCode();
+            server.drain();
+            MaintenanceNotice notice = carol.expect(MaintenanceNotice.class, any -> true);
+            assertTrue(notice.active());
+            assertTrue(notice.text().contains("matches in progress finish normally"));
+            assertTrue(alice.expect(MaintenanceNotice.class, any -> true).active(), "players in a match are told too");
+            assertEquals(0, server.status().openRooms(), "waiting rooms are closed");
+            dave.send(new JoinMatchRequest(code));
+            assertEquals(ClientHandler.MAINTENANCE, dave.expect(ErrorMessage.class, any -> true).text());
+            carol.send(new CreateMatchRequest());
+            assertEquals(ClientHandler.MAINTENANCE, carol.expect(ErrorMessage.class, any -> true).text());
+            dave.send(new PracticeRequest(false));
+            assertEquals(ClientHandler.MAINTENANCE, dave.expect(ErrorMessage.class, any -> true).text());
+            ServerStatus during = server.status();
+            assertEquals(1, during.activeMatches());
+            assertFalse(during.safeToRestart(), "a match is still being played");
+
+            MatchUpdate[] end = playOut(alice, bob, opened[0], opened[1]);
+            assertEquals(3, end[0].view().rounds().size(), "the running match finished normally");
+            alice.send(new RematchRequest());
+            assertEquals(ClientHandler.MAINTENANCE, alice.expect(ErrorMessage.class, any -> true).text());
+            long deadline = System.currentTimeMillis() + 5_000;
+            while (!server.status().safeToRestart() && System.currentTimeMillis() < deadline) Thread.sleep(25);
+            assertTrue(server.status().safeToRestart(), server.status().describe());
+            assertTrue(server.status().describe().contains("safeToRestart=true"));
+
+            server.resume();
+            assertFalse(carol.expect(MaintenanceNotice.class, n -> !n.active()).active());
+            carol.send(new CreateMatchRequest());
+            assertNotNull(carol.expect(MatchCreated.class, any -> true).roomCode(), "new matches are admitted again");
+        }
+    }
+
+    @Test void maintenanceWaitsForFinalResultWrites() throws Exception {
+        checkPendingWrites(false);
+    }
+
+    @Test void maintenanceTracksDepartedPlayersUntilTheirReplayIsSaved() throws Exception {
+        checkPendingWrites(true);
+    }
+
+    private void checkPendingWrites(boolean blockReplay) throws Exception {
+        server.stop();
+        var users = new SqliteUserDao(database);
+        var persistence = new MatchPersistence(database, matchDao, new deckduel.db.SqliteReplayDao(database));
+        var writing = new java.util.concurrent.CountDownLatch(1);
+        var release = new java.util.concurrent.CountDownLatch(1);
+        Runnable pause = () -> {
+            writing.countDown();
+            try { assertTrue(release.await(10, TimeUnit.SECONDS)); }
+            catch (InterruptedException e) { Thread.currentThread().interrupt(); throw new AssertionError(e); }
+        };
+        ReplayStore replay = new ReplayStore() {
+            public long begin(String owner, String key, String opponent, boolean practice, String rules) {
+                return persistence.begin(owner, key, opponent, practice, rules);
+            }
+            public boolean frame(long id, PlayerView view) { return persistence.frame(id, view); }
+            public void finish(long id, PlayerView view, boolean complete) {
+                if (blockReplay) pause.run();
+                persistence.finish(id, view, complete);
+            }
+            public Message replay(String owner, long id) { return persistence.replay(owner, id); }
+        };
+        server = new GameServer(new ServerConfig(0, 90, 32, 1, 0), users, catalog, (result, rounds) -> {
+            if (!blockReplay) pause.run();
+            persistence.record(result, rounds);
+        }, persistence, replay);
+        port = server.start();
+        try (var alice = new Peer("alice", true); var bob = new Peer("bob", true)) {
+            MatchUpdate[] opened = hostAndJoin(alice, bob);
+            server.drain();
+            if (blockReplay) {
+                // Both seats disappear while their forfeit's replay is still being saved.
+                alice.close();
+                bob.close();
+            } else playOut(alice, bob, opened[0], opened[1]);
+            assertTrue(writing.await(5, TimeUnit.SECONDS), "the final write was reached");
+            assertEquals(1, server.status().activeMatches());
+            assertFalse(server.status().safeToRestart(), "pending persistence must block a restart");
+            release.countDown();
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+            while (!server.status().safeToRestart() && System.nanoTime() < deadline) Thread.sleep(10);
+            assertTrue(server.status().safeToRestart(), server.status().describe());
+            assertEquals(1, matchRows(), "the result is durable before restart is allowed");
+        } finally { release.countDown(); }
+    }
+
+    @Test void drainCannotOvertakeAMatchBeingRegistered() throws Exception {
+        try (var alice = new Peer("alice", true)) {
+            alice.send(new CreateMatchRequest());
+            String code = alice.expect(MatchCreated.class, any -> true).roomCode();
+            Entrant entrant = server.lobby().claim(code);
+            var failure = new java.util.concurrent.atomic.AtomicReference<Throwable>();
+            var drained = new java.util.concurrent.CountDownLatch(1);
+            Thread joining = new Thread(() -> {
+                try { assertTrue(server.startPractice(entrant, false)); }
+                catch (Throwable e) { failure.set(e); }
+            });
+            Thread maintenance = new Thread(() -> { server.drain(); drained.countDown(); });
+            try {
+                synchronized (server.matches()) {
+                    // Pause admission in bind, after the maintenance check but before registration.
+                    joining.start();
+                    awaitBlocked(joining);
+                    maintenance.start();
+                    long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+                    while (maintenance.getState() != Thread.State.BLOCKED && drained.getCount() != 0
+                            && System.nanoTime() < deadline) Thread.sleep(1);
+                    assertEquals(1, drained.getCount(), "drain must wait for the admitted match to be visible");
+                    assertEquals(Thread.State.BLOCKED, maintenance.getState());
+                }
+            } finally { joining.join(5_000); maintenance.join(5_000); }
+            assertNull(failure.get());
+            assertTrue(server.draining());
+            assertEquals(1, server.status().activeMatches());
+            assertFalse(server.status().safeToRestart());
+        }
+    }
+
+    private static void awaitBlocked(Thread thread) throws Exception {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (thread.getState() != Thread.State.BLOCKED && thread.isAlive() && System.nanoTime() < deadline) Thread.sleep(1);
+        assertEquals(Thread.State.BLOCKED, thread.getState());
+    }
+
+    @Test void aReservedRematchBlocksRestartAndDrainRefusesLaterReservations() throws Exception {
+        try (var alice = new Peer("alice", true); var bob = new Peer("bob", true)) {
+            MatchUpdate[] opened = hostAndJoin(alice, bob);
+            playOut(alice, bob, opened[0], opened[1]);
+            // A request on the same match executor completes after final persistence.
+            alice.send(new RematchRequest());
+            alice.update(u -> u.rematchRequested());
+            MatchSession session = server.matches().sessionFor("alice");
+            assertFalse(session.inProgress());
+            assertTrue(server.reserveRematch(session));
+            server.drain();
+            assertFalse(server.status().safeToRestart(), "the next game was reserved before drain");
+            assertFalse(server.reserveRematch(session), "no reservation may cross the drain barrier");
+        }
+    }
+
+    @Test void aHeldSeatKeepsARestartUnsafeUntilItsGraceEnds() throws Exception {
+        try (var alice = new Peer("alice", true)) {
+            Peer bob = new Peer("bob", true);
+            hostAndJoin(alice, bob);
+            server.drain();
+            bob.close();
+            long deadline = System.currentTimeMillis() + 5_000;
+            while (server.status().heldSeats() == 0 && System.currentTimeMillis() < deadline) Thread.sleep(10);
+            ServerStatus held = server.status();
+            assertEquals(1, held.heldSeats(), held.describe());
+            assertFalse(held.safeToRestart());
+            // The one-second grace ends, Bob forfeits, the match finishes and nothing is left to lose.
+            deadline = System.currentTimeMillis() + 10_000;
+            while (!server.status().safeToRestart() && System.currentTimeMillis() < deadline) Thread.sleep(50);
+            assertTrue(server.status().safeToRestart(), server.status().describe());
+            assertTrue(alice.update(u -> u.view().phase() == MatchPhase.FINISHED).view().outcome().forfeit());
+        }
+    }
+
+    @Test void theControlSocketReportsDrainsAndResumes() throws Exception {
+        // Unix socket paths are limited to about 100 characters, so use a short folder.
+        Path folder = Files.createTempDirectory(Path.of("/tmp"), "dd");
+        Path socket = folder.resolve("control.sock");
+        try (ControlServer control = ControlServer.start(socket, server)) {
+            assertEquals("rw-rw----", java.nio.file.attribute.PosixFilePermissions.toString(Files.getPosixFilePermissions(socket)));
+            assertTrue(ControlClient.send(socket, "status").startsWith("ok state=open"));
+            assertTrue(ControlClient.send(socket, "drain").contains("state=draining"));
+            assertTrue(server.draining());
+            assertTrue(ControlClient.send(socket, "status").contains("safeToRestart=true"));
+            assertTrue(ControlClient.send(socket, "reload-tls").startsWith("error TLS is not configured"));
+            assertTrue(ControlClient.send(socket, "shutdown now").startsWith("error unknown command"));
+            assertTrue(ControlClient.send(socket, "resume").contains("state=open"));
+            assertEquals(0, ControlClient.run(new String[] {"status", "--socket", socket.toString()}));
+            assertEquals(3, ControlClient.run(new String[] {"wait-safe", "--socket", socket.toString(), "--timeout", "1"}),
+                    "wait-safe refuses while the server is not draining");
+        } finally {
+            Files.deleteIfExists(socket);
+            Files.deleteIfExists(folder);
+        }
+        assertFalse(Files.exists(socket));
+    }
+
+    @Test void aCancelledRoomCanNoLongerBeJoined() throws Exception {
+        try (var alice = new Peer("alice", true); var bob = new Peer("bob", true)) {
+            alice.send(new CreateMatchRequest());
+            String code = alice.expect(MatchCreated.class, any -> true).roomCode();
+            alice.send(new CancelRoomRequest());
+            assertTrue(alice.expect(ListMatchesResponse.class, any -> true).openMatches().isEmpty());
+            bob.send(new JoinMatchRequest(code));
+            assertNotNull(bob.expect(ErrorMessage.class, any -> true));
+            Thread.sleep(200);
+            assertTrue(alice.inbox.stream().noneMatch(m -> m instanceof MatchUpdate), "no match started");
+            assertTrue(bob.inbox.stream().noneMatch(m -> m instanceof MatchUpdate));
+        }
+    }
+
     @Test void practiceAgainstTheBotFinishesWithoutRecordingAMatch() throws Exception {
         try (var alice = new Peer("alice", true)) {
             alice.send(new PracticeRequest(true));
@@ -263,6 +551,18 @@ class CardMatchIntegrationTest {
             }
             assertEquals(3, update.view().rounds().size());
             assertEquals(0, matchRows());
+            // The game is kept only as Alice's replay: listed as practice, with no change to wins or losses.
+            alice.send(new HistoryRequest());
+            HistoryEntry entry = alice.expect(HistoryResponse.class, any -> true).matches().get(0);
+            assertTrue(entry.practice());
+            assertEquals(MatchSession.HARD_BOT, entry.opponent());
+            assertEquals(update.view().you().matchTotal(), entry.yourTotal());
+            ReplayResponse replay = replayOf(alice);
+            assertTrue(replay.practice());
+            assertContiguous(replay.frames());
+            assertEquals(update.view(), replay.frames().get(replay.frames().size() - 1), "the final result is the last frame");
+            var profile = server.userDao().profileOf("alice");
+            assertEquals(0, profile.wins() + profile.losses());
         }
     }
 }

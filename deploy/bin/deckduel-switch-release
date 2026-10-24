@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# Run inside EC2: sudo /opt/deckduel/bin/deckduel-switch-release <version> [--force]
+# Makes an installed release current and (re)starts the service. If the service is running it is
+# drained first, and the restart happens only once no match is in progress and no seat is held
+# (deckduel-ctl wait-safe). --force skips that wait and ENDS ANY MATCH STILL IN PROGRESS.
+set -euo pipefail
+[ "$(id -u)" -eq 0 ] || { echo "Run with sudo." >&2; exit 1; }
+VERSION=${1:?usage: deckduel-switch-release <version> [--force]}
+FORCE=${2:-}
+WAIT=${DECKDUEL_WAIT_SECONDS:-3600}
+TARGET=/opt/deckduel/releases/$VERSION
+[ -f "$TARGET/deck-duel-server.jar" ] || { echo "Release $VERSION is not installed in $TARGET" >&2; exit 1; }
+(cd "$TARGET" && sha256sum --check --strict --quiet SHA256SUMS)
+[ -f /etc/deckduel/server.properties ] || { echo "Write /etc/deckduel/server.properties first" >&2; exit 1; }
+
+if systemctl is-active --quiet deckduel; then
+  if [ "$FORCE" = "--force" ]; then
+    echo "FORCED: restarting without waiting; matches in progress will end." >&2
+  else
+    /opt/deckduel/bin/deckduel-ctl drain
+    echo "Draining: waiting up to ${WAIT}s for matches and held seats to finish..."
+    if ! /opt/deckduel/bin/deckduel-ctl wait-safe --timeout "$WAIT"; then
+      echo "Not safe to restart yet; the server stays in maintenance. Run this again later, 'deckduel-ctl resume' to cancel," >&2
+      echo "or add --force to end the remaining matches." >&2
+      exit 3
+    fi
+  fi
+fi
+
+CURRENT=$(readlink /opt/deckduel/current 2>/dev/null || true)
+if [ -n "$CURRENT" ] && [ "$CURRENT" != "$TARGET" ]; then ln -sfn "$CURRENT" /opt/deckduel/previous; fi
+ln -sfn "$TARGET" /opt/deckduel/current.new && mv -T /opt/deckduel/current.new /opt/deckduel/current
+STARTED=$(date '+%Y-%m-%d %H:%M:%S')
+systemctl restart deckduel
+for _ in $(seq 1 30); do
+  journalctl -u deckduel --since "$STARTED" --no-pager | grep -q "Deck Duel server ready" && break
+  sleep 1
+done
+systemctl is-active --quiet deckduel || { echo "The service did not start; see: journalctl -u deckduel -n 100" >&2; exit 1; }
+echo "Release $VERSION is current (previous: ${CURRENT:-none})."
+/opt/deckduel/bin/deckduel-ctl status

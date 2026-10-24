@@ -23,8 +23,8 @@ class CardBotTest {
             var room = new CompletableFuture<String>();
             try (var a = new CardBot("bot_a", "bot-pass", 2, true, room);
                  var b = new CardBot("bot_b", "bot-pass", 2, false, room)) {
-                var first = a.start("127.0.0.1", port);
-                var second = b.start("127.0.0.1", port);
+                var first = a.start(new deckduel.client.startup.ServerRoute("127.0.0.1", port, false));
+                var second = b.start(new deckduel.client.startup.ServerRoute("127.0.0.1", port, false));
                 var aResults = first.get(1, TimeUnit.MINUTES);
                 var bResults = second.get(1, TimeUnit.MINUTES);
                 assertEquals(2, aResults.size());

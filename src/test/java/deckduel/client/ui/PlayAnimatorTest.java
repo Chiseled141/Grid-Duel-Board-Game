@@ -119,7 +119,8 @@ class PlayAnimatorTest {
         List<ScoreRail.Tally> tallies = PlayAnimator.combos(staging, trace, 0, LAYOUT);
         String value = "+" + formation.bonus() + "  ×" + formation.multiplier();
         assertTrue(staging.steps().stream().anyMatch(s -> s.effect() instanceof Staging.Callout c
-                && c.title().equals(formation.title()) && c.value().equals(value)
+                && c.title().equals(formation.title()) && c.bonus().equals("+" + formation.bonus())
+                && c.multiplier() == formation.multiplier()
                 && c.at().getY() <= LAYOUT.slot(TableZone.OWN, 0).y), "the formation is called out by name, above its row");
         assertTrue(staging.steps().stream().noneMatch(s -> s.effect() instanceof Staging.Banner),
                 "no banner is laid across the cards that scored");

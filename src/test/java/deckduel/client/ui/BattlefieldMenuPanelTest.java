@@ -40,7 +40,7 @@ class BattlefieldMenuPanelTest {
         return new ClientModel(new ServerConnection() {
             public void send(Message message) { }
             public boolean isConnected() { return false; }
-            public void ensureConnected(String host, int port) { }
+            public void ensureConnected(deckduel.client.startup.ServerRoute route) { }
         });
     }
 

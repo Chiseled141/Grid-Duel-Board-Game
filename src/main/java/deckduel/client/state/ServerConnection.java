@@ -1,5 +1,6 @@
 package deckduel.client.state;
 
+import deckduel.client.startup.ServerRoute;
 import java.io.IOException;
 
 /**
@@ -13,8 +14,8 @@ public interface ServerConnection extends MessageSender {
     /** Returns true while the connection is open. */
     boolean isConnected();
 
-    /** Connects to the server if not already connected. */
-    void ensureConnected(String host, int port) throws IOException;
+    /** Connects to {@code route} (with TLS when the route says so) if not already connected. */
+    void ensureConnected(ServerRoute route) throws IOException;
 
     /** Drops the current connection, if any, before a reconnect attempt. */
     default void close() { }
