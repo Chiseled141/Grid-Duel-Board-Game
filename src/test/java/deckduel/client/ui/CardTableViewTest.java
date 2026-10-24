@@ -601,6 +601,20 @@ class CardTableViewTest {
         FxTesting.run(() -> assertTrue(holder[0].view.animating(), "then the whole deal plays"));
     }
 
+    @Test void leavingTheTableStopsTheRemainingDealSounds() throws Exception {
+        Table t = FxTesting.call(() -> {
+            var table = table(new ClientSettings(), true);
+            table.view.show(shown(state().view(Seat.FIRST), false));
+            assertTrue(table.view.animating());
+            table.view.hidden();
+            assertFalse(table.view.animating(), "a hidden table must stop performing the deal");
+            return table;
+        });
+        int before = t.cues.size();
+        Thread.sleep(900);
+        FxTesting.run(() -> assertEquals(before, t.cues.size(), "no delayed table cues in the menu"));
+    }
+
     @Test void aMatchThatArrivesBeforeLayoutStillOpensWithTheDeal() throws Exception {
         FxTesting.run(() -> {
             var t = table(new ClientSettings(), false);

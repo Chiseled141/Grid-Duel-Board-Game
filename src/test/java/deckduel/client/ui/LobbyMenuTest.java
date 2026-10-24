@@ -18,6 +18,19 @@ import javax.swing.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 class LobbyMenuTest {
+    @Test void gameSoundToggleNotifiesPlaybackAfterChangingThePreference() throws Exception {
+        SwingUtilities.invokeAndWait(() -> {
+            var ui = ui();
+            var observed = new ArrayList<Boolean>();
+            ui.panel.onGameSoundsChanged(() -> observed.add(ui.settings.gameSounds()));
+            button(ui, "Settings").doClick();
+            button(ui, "Game sounds: On").doClick();
+            button(ui, "Game sounds: Off").doClick();
+            assertEquals(List.of(false, true), observed, "the audio owner sees the new mute state");
+            assertEquals(2, ui.saved.get(), "both choices remain persisted");
+        });
+    }
+
     @Test void petalTimerOnlyRunsOnTheVisibleHomeMenuAndHonorsReducedMotion() throws Exception {
         SwingUtilities.invokeAndWait(() -> {
             var ui = ui(); var frame = new JFrame(); frame.add(ui.panel); frame.setSize(1280, 720);

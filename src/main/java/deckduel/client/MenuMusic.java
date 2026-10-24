@@ -30,6 +30,16 @@ public final class MenuMusic implements AutoCloseable {
     // Clip ownership belongs exclusively to the audio worker, including loading and closing.
     private Clip clip;
     private boolean unavailable;
+    private long pausedMicros;
+    private final ClipFactory clipFactory;
+
+    @FunctionalInterface
+    interface ClipFactory { Clip create() throws LineUnavailableException; }
+
+    /** Uses the default audio output; playback remains on the audio worker. */
+    public MenuMusic() { this(AudioSystem::getClip); }
+
+    MenuMusic(ClipFactory clipFactory) { this.clipFactory = clipFactory; }
 
     /** Requests playback or pause without loading audio or waiting for a mixer on the caller. */
     public synchronized void setPlaying(boolean playing, MenuTheme theme) {
@@ -47,7 +57,8 @@ public final class MenuMusic implements AutoCloseable {
         }
         MenuTheme theme = requestedTheme;
         if (theme != loadedTheme) {
-            if (clip != null) { clip.stop(); clip.close(); clip = null; }
+            releaseClip();
+            pausedMicros = 0;
             loadedTheme = theme;
             unavailable = false;
         }
@@ -63,7 +74,9 @@ public final class MenuMusic implements AutoCloseable {
                 clip.loop(Clip.LOOP_CONTINUOUSLY);
             }
         } else {
-            clip.stop();
+            // Muting must release the output, not leave a paused native line open indefinitely.
+            pausedMicros = clip.getMicrosecondPosition();
+            releaseClip();
         }
     }
 
@@ -75,9 +88,10 @@ public final class MenuMusic implements AutoCloseable {
                 throw new IOException("Missing bundled menu music");
             }
             try (AudioInputStream input = AudioSystem.getAudioInputStream(resource)) {
-                candidate = AudioSystem.getClip();
+                candidate = clipFactory.create();
                 candidate.open(input);
             }
+            candidate.setMicrosecondPosition(Math.min(pausedMicros, Math.max(0, candidate.getMicrosecondLength() - 1)));
             if (candidate.isControlSupported(FloatControl.Type.MASTER_GAIN)) {
                 FloatControl gain = (FloatControl) candidate.getControl(FloatControl.Type.MASTER_GAIN);
                 gain.setValue(Math.max(gain.getMinimum(), Math.min(-12f, gain.getMaximum())));
@@ -94,6 +108,14 @@ public final class MenuMusic implements AutoCloseable {
         }
     }
 
+    private void releaseClip() {
+        if (clip == null) return;
+        clip.stop();
+        clip.flush();
+        clip.close();
+        clip = null;
+    }
+
     /** Releases audio resources asynchronously; later playback requests are ignored. */
     @Override
     public synchronized void close() {
@@ -102,13 +124,7 @@ public final class MenuMusic implements AutoCloseable {
         }
         closed = true;
         playingRequested = false;
-        worker.execute(() -> {
-            if (clip != null) {
-                clip.stop();
-                clip.close();
-                clip = null;
-            }
-        });
+        worker.execute(this::releaseClip);
         worker.shutdown();
     }
 }
