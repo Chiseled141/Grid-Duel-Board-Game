@@ -24,4 +24,4 @@ On the table, click a hand card and then a highlighted space or target (or drag 
 
 ## Rules
 
-The approved rules are in [AGENTS.md](AGENTS.md); the [handoff](docs/claude-handoff.md) maps them to code and lists what remains. The [board and score-panel notes](docs/design/card-table-design.md) describe the table design.
+The approved rules, architecture and open design work are in [AGENTS.md](AGENTS.md). The [board and score-panel notes](docs/design/card-table-design.md) describe the table design; [verification notes](docs/testing/README.md) list reproducible checks and current results.

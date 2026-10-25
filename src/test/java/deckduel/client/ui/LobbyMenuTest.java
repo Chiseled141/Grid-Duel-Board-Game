@@ -120,7 +120,7 @@ class LobbyMenuTest {
         SwingUtilities.invokeAndWait(() -> {
             var ui = ui();
             var texts = find(ui.panel, JButton.class).stream().filter(Component::isVisible).map(JButton::getText).toList();
-            assertEquals(List.of("Play", "Settings", "Quit game"), texts);
+            assertEquals(List.of("Play", "How to Play", "Settings", "Quit game"), texts);
             JPanel surface = find(ui.panel, JPanel.class).stream().filter(p -> "mainMenuSurface".equals(p.getName())).findFirst().orElseThrow();
             assertTrue(surface.getWidth() <= 340);
             assertTrue(surface.getHeight() < 450);
@@ -133,12 +133,22 @@ class LobbyMenuTest {
             assertTrue(profilePoint.x > ui.panel.getWidth() / 2);
             assertTrue(profilePoint.x + profile.getWidth() <= ui.panel.getWidth() - 76);
             assertTrue(profile.getHeight() >= profile.getFontMetrics(profile.getFont()).getHeight());
-            assertTrue(texts.stream().noneMatch(text -> text.equals("How to Play") || text.equals("About")));
+            assertFalse(texts.contains("About"));
             assertTrue(find(ui.panel, JLabel.class).stream()
                     .noneMatch(label -> label.getText().contains("ELO")), "no rating in the menu");
             answerQuit(ui, "No"); assertEquals(0, ui.quit.get());
             answerQuit(ui, "Quit game"); assertEquals(1, ui.quit.get());
             assertTrue(ui.sent.isEmpty());
+        });
+    }
+
+    @Test void howToPlayOpensLocallyWithoutAHistoryOrMatchRequest() throws Exception {
+        SwingUtilities.invokeAndWait(() -> {
+            var ui = ui(); ui.sent.clear();
+            button(ui, "How to Play").doClick();
+            assertEquals(Screen.HOW_TO_PLAY, ui.model.screen());
+            assertTrue(ui.sent.isEmpty()); assertNull(ui.model.match()); assertNull(ui.model.replay());
+            ui.model.leaveToLobby(); assertEquals(Screen.LOBBY, ui.model.screen());
         });
     }
 
@@ -198,6 +208,7 @@ class LobbyMenuTest {
             assertEquals(25f, button(ui, "Play").getFont().getSize2D());
             menuKey(ui, "menu-home", "S"); selected(ui, "Quit game");
             menuKey(ui, "menu-home", "W"); selected(ui, "Settings");
+            menuKey(ui, "menu-home", "LEFT"); selected(ui, "How to Play");
             menuKey(ui, "menu-home", "LEFT"); selected(ui, "Play");
             menuKey(ui, "menu-home", "ENTER"); selected(ui, "Create match");
             assertFalse(button(ui, "Create match").isSelected(), "Create match has no permanent highlight");

@@ -14,20 +14,22 @@ import deckduel.core.card.SideView;
 
 import java.awt.*;
 import java.util.List;
+import java.util.function.BooleanSupplier;
 import javax.swing.*;
 
 /**
  * Plays back one of the account's recorded matches over the match room: both Unit rows, the
  * owner's hand and the cards their Spy revealed, drawn with the painted card faces, a score
  * breakdown for both sides, and Previous, Play/Pause, Next and speed controls. It only reads the
- * model's {@link ReplayPlayback}; no control here can send a request or reach a live match.
+ * {@link ReplayPlayback}, also used for bundled training recordings; no control here can send
+ * a request or reach a live match.
  */
 final class ReplayPanel extends JPanel {
     private static final int MARGIN = 24, RAIL = 300, HEADER = 74, CONTROLS = 70, GAP = 12;
     /** How long the brass glow around the latest card fades, unless motion is reduced. */
     private static final int GLOW_MILLIS = 700;
 
-    private final ClientModel model;
+    private final BooleanSupplier reducedMotion, active;
     private final JButton back;
     private final JButton previous = UiKit.pill("Previous", UiKit.Pill.GOLD_OUTLINE);
     private final JButton play = UiKit.pill("Pause", UiKit.Pill.GOLD);
@@ -44,12 +46,25 @@ final class ReplayPanel extends JPanel {
 
     /** Builds the screen; Back returns to match history through the model. */
     ReplayPanel(ClientModel model) {
-        this.model = model;
+        this(model::reducedMotion, () -> model.screen() == Screen.REPLAY, model::closeReplay);
+        model.addListener(new ClientModelListener() {
+            @Override public void onScreenChanged(Screen screen) {
+                if (screen == Screen.REPLAY) open(model.replay());
+                else stop();
+            }
+            @Override public void onLobbyChanged() { if (reducedMotion.getAsBoolean()) glow.stop(); repaint(); }
+        });
+    }
+
+    /** Local playback surface shared by personal replays and the guide; has no server connection. */
+    ReplayPanel(BooleanSupplier reducedMotion, BooleanSupplier active, Runnable backAction) {
+        this.reducedMotion = reducedMotion; this.active = active;
+        KingArt.whenReady(this::repaint);
         setLayout(null);
         setBackground(Theme.BG);
         setFocusable(true);
         getAccessibleContext().setAccessibleName("Match replay");
-        back = LobbyPanel.smallButton("Back", model::closeReplay);
+        back = LobbyPanel.smallButton("Back", backAction);
         back.setName("replayBack");
         back.getAccessibleContext().setAccessibleDescription("Return to match history");
         previous.setName("replayPrevious");
@@ -67,13 +82,6 @@ final class ReplayPanel extends JPanel {
         for (JComponent child : new JComponent[] {back, previous, play, next, speed, title, subtitle, position, action}) add(child);
         stepper.setRepeats(true);
         bindKeys();
-        model.addListener(new ClientModelListener() {
-            @Override public void onScreenChanged(Screen screen) {
-                if (screen == Screen.REPLAY) open(model.replay());
-                else stop();
-            }
-            @Override public void onLobbyChanged() { if (model.reducedMotion()) glow.stop(); repaint(); }
-        });
     }
 
     private void bindKeys() {
@@ -89,7 +97,7 @@ final class ReplayPanel extends JPanel {
         getInputMap(WHEN_ANCESTOR_OF_FOCUSED_COMPONENT).put(KeyStroke.getKeyStroke(key), name);
         getActionMap().put(name, new AbstractAction() {
             @Override public void actionPerformed(java.awt.event.ActionEvent event) {
-                if (model.screen() == Screen.REPLAY) action.run();
+                if (active.getAsBoolean()) action.run();
             }
         });
     }
@@ -105,10 +113,19 @@ final class ReplayPanel extends JPanel {
                 + (replay.complete() ? "" : "  ·  Incomplete recording: some actions are missing"));
         subtitle.setForeground(replay.complete() ? Theme.FADED : Theme.CORAL);
         changed();
-        SwingUtilities.invokeLater(() -> { if (model.screen() == Screen.REPLAY) requestFocusInWindow(); });
+        SwingUtilities.invokeLater(() -> { if (active.getAsBoolean()) requestFocusInWindow(); });
     }
 
-    private void stop() {
+    /** Opens a contiguous training excerpt with its own identity, apart from account history. */
+    void openTraining(ReplayPlayback next) {
+        open(next);
+        back.setVisible(false);
+        title.setText("Recorded example");
+        subtitle.setText("Read-only playback · Previous / Play / Next · Space / arrow keys");
+        doLayout();
+    }
+
+    void stop() {
         stepper.stop();
         glow.stop();
         if (playback != null) playback.pause();
@@ -146,19 +163,19 @@ final class ReplayPanel extends JPanel {
             if (!stepper.isRunning()) stepper.start();
         } else stepper.stop();
         glowStartedAt = System.nanoTime();
-        if (model.reducedMotion()) glow.stop();
+        if (reducedMotion.getAsBoolean()) glow.stop();
         else glow.restart();
         repaint();
     }
 
     private void glowFrame() {
-        if (glowAlpha() <= 0 || !isShowing()) glow.stop();
+        if (reducedMotion.getAsBoolean() || glowAlpha() <= 0 || !isShowing()) glow.stop();
         repaint();
     }
 
     /** The latest card's glow: fading after each step, steady with reduced motion. */
     private float glowAlpha() {
-        if (model.reducedMotion()) return .8f;
+        if (reducedMotion.getAsBoolean()) return .8f;
         double elapsed = (System.nanoTime() - glowStartedAt) / 1e6;
         return (float) Math.max(0, 1 - elapsed / GLOW_MILLIS);
     }
@@ -183,7 +200,7 @@ final class ReplayPanel extends JPanel {
         int w = getWidth(), h = getHeight();
         Dimension backSize = back.getPreferredSize();
         back.setBounds(MARGIN, MARGIN, backSize.width, backSize.height);
-        int textX = MARGIN + backSize.width + 18;
+        int textX = back.isVisible() ? MARGIN + backSize.width + 18 : MARGIN;
         title.setBounds(textX, MARGIN - 4, Math.max(0, w - textX - MARGIN - 60), 32);
         subtitle.setBounds(textX, MARGIN + 28, Math.max(0, w - textX - MARGIN - 60), 20);
         int y = h - MARGIN - CONTROLS + 10;
@@ -243,12 +260,17 @@ final class ReplayPanel extends JPanel {
         y += cardHeight + 18;
         y = caption(g, board.x, y, "YOUR HAND  ·  deck " + view.you().deckCount() + "  ·  plays left "
                 + view.you().playsRemaining() + "  ·  draws left " + view.you().drawsRemaining());
-        int handEnd = paintCards(g, view.hand(), board.x, y, handWidth, handHeight, latest, board.width);
+        int lookedWidth = handWidth * 3 / 4, lookedHeight = handHeight * 3 / 4;
+        int lookRoom = view.looking().isEmpty() ? 0 : Math.max(110, view.looking().size() * (lookedWidth + 8) - 8);
+        int handRoom = lookRoom == 0 ? board.width : board.width - lookRoom - 16;
+        paintCards(g, view.hand(), board.x, y, handWidth, handHeight, latest, handRoom);
         if (!view.looking().isEmpty()) {
+            // Inspected cards need their own space; a full hand otherwise pushes them under the rail.
+            int lookX = board.x + handRoom + 16;
             g.setFont(Theme.bold(11f));
             g.setColor(Theme.BRASS_LIGHT);
-            g.drawString((view.choiceKind() == deckduel.core.card.ChoiceKind.SECRET_EDICT ? "SECRET EDICT" : "RECONNAISSANCE"), handEnd + 16, y + 12);
-            paintCards(g, view.looking(), handEnd + 16, y + 18, handWidth * 3 / 4, handHeight * 3 / 4, null, board.width);
+            g.drawString((view.choiceKind() == deckduel.core.card.ChoiceKind.SECRET_EDICT ? "SECRET EDICT" : "RECONNAISSANCE"), lookX, y + 12);
+            paintCards(g, view.looking(), lookX, y + 18, lookedWidth, lookedHeight, null, lookRoom);
         }
     }
 
@@ -312,12 +334,12 @@ final class ReplayPanel extends JPanel {
         plate.translate(rail.x, rail.y);
         UiKit.paintPlate(plate, rail.width - 4, rail.height - 4);
         plate.dispose();
-        int x = rail.x + 24, y = rail.y + 34, width = rail.width - 52;
+        int x = rail.x + 24, y = rail.y + (compact() ? 24 : 34), width = rail.width - 52;
         g.setFont(Theme.display(16f));
         g.setColor(Theme.BRASS_LIGHT);
         g.drawString("ROUND " + view.round() + " OF 3", x, y);
-        y = side(g, "YOU", view.you(), x, y + 26, width);
-        y = side(g, model.replay() == null ? "OPPONENT" : model.replay().replay().opponent().toUpperCase(java.util.Locale.ROOT),
+        y = side(g, "YOU", view.you(), x, y + (compact() ? 20 : 26), width);
+        y = side(g, playback.replay().opponent().toUpperCase(java.util.Locale.ROOT),
                 view.opponent(), x, y + 14, width);
         g.setFont(Theme.bold(11f));
         g.setColor(Theme.BRASS_LIGHT);
@@ -351,8 +373,8 @@ final class ReplayPanel extends JPanel {
         g.setFont(Theme.normal(12f));
         g.setColor(Theme.FADED);
         String kings = side.kings().kings().stream().map(k -> k.title()).collect(java.util.stream.Collectors.joining(", "));
-        if (!kings.isEmpty()) y = line(g, "Kings: " + kings, x, y + 22) - 4;
-        y = line(g, "Units " + score.units() + "   ·   Combos " + score.combos(), x, y + 22);
+        if (!compact() && !kings.isEmpty()) y = line(g, "Kings: " + kings, x, y + 22) - 4;
+        y = line(g, "Units " + score.units() + "   ·   Combos " + score.combos(), x, y + (compact() ? 18 : 22));
         y = line(g, score.formation() == null ? "No formation"
                 : score.formation().title() + "  +" + score.formationBonus() + "  ×" + score.multiplier(), x, y);
         if (score.bonus() != 0) y = line(g, "Bonus +" + score.bonus() + " (added after ×)", x, y);
@@ -362,8 +384,10 @@ final class ReplayPanel extends JPanel {
         return line(g, "Match total " + side.matchTotal(), x, y);
     }
 
-    private static int line(Graphics2D g, String text, int x, int y) {
+    private boolean compact() { return getHeight() < 680; }
+
+    private int line(Graphics2D g, String text, int x, int y) {
         g.drawString(text, x, y);
-        return y + 18;
+        return y + (compact() ? 16 : 18);
     }
 }

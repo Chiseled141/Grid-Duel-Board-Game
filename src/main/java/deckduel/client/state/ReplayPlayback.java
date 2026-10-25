@@ -92,7 +92,7 @@ public final class ReplayPlayback {
 
     /** What the shown action was, from the log lines it added, or the opening deal. */
     public String action() {
-        if (index == 0) return "Opening deal";
+        if (index == 0) return frame().revision() == 0 ? "Opening deal" : "Start of recorded excerpt";
         PlayerView view = frame();
         List<String> lines = new ArrayList<>();
         for (MatchEvent event : added(previousFrame().events(), view.events())) {

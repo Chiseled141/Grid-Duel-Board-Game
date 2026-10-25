@@ -69,7 +69,10 @@ class CardMatchIntegrationTest {
             synchronized (out) { out.writeObject(message); out.flush(); out.reset(); }
         }
         <T> T expect(Class<T> type, Predicate<T> wanted) throws Exception {
-            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+            return expect(type, wanted, 10);
+        }
+        <T> T expect(Class<T> type, Predicate<T> wanted, int seconds) throws Exception {
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(seconds);
             while (System.nanoTime() < deadline) {
                 Object next = inbox.poll(100, TimeUnit.MILLISECONDS);
                 if (type.isInstance(next) && wanted.test(type.cast(next))) return type.cast(next);
@@ -113,14 +116,69 @@ class CardMatchIntegrationTest {
 
     private static boolean waitedOn(MatchUpdate update) { return update.view().needsAction(); }
 
+    @Test void realThirtySecondDeadlineChoosesLeftmostForIdleSeatsAndPreservesConfirmedChoices() throws Exception {
+        try (var alice = new Peer("timer_a", true); var bob = new Peer("timer_b", true);
+             var carol = new Peer("timer_c", true); var dan = new Peer("timer_d", true)) {
+            MatchUpdate[] idle = hostAndJoin(alice, bob), mixed = hostAndJoin(carol, dan);
+            long idleDeadline = idle[0].kingChoiceDeadlineMillis(), mixedDeadline = mixed[0].kingChoiceDeadlineMillis();
+            assertEquals(idleDeadline, idle[1].kingChoiceDeadlineMillis());
+            assertTrue(idleDeadline > System.currentTimeMillis());
+            assertTrue(idleDeadline <= System.currentTimeMillis() + 30_000);
+            var chosen = mixed[0].view().kingOffer().get(2);
+            MoveRequest confirmation = new MoveRequest(500, mixed[0].view().revision(), new deckduel.core.card.ChooseKing(chosen));
+            carol.send(confirmation);
+            MatchUpdate waiting = carol.update(u -> u.view().selectedKing() == chosen);
+            MatchUpdate hidden = dan.update(u -> u.view().revision() == waiting.view().revision());
+            assertEquals(mixedDeadline, waiting.kingChoiceDeadlineMillis());
+            assertTrue(hidden.view().opponent().kings().kings().isEmpty());
+            dan.close(); carol.update(u -> !u.opponentConnected());
+            try (var again = new Peer("timer_d", false)) {
+                MatchUpdate restored = again.update(any -> true);
+                assertEquals(mixedDeadline, restored.kingChoiceDeadlineMillis(), "reconnect does not restart the clock");
+                carol.update(MatchUpdate::opponentConnected);
+                MatchUpdate auto = alice.expect(MatchUpdate.class, u -> u.view().phase() == MatchPhase.IN_PROGRESS, 40);
+                assertTrue(System.currentTimeMillis() >= idleDeadline);
+                var firstKing = idle[0].view().kingOffer().get(0);
+                assertEquals(List.of(firstKing), auto.view().you().kings().kings());
+                assertEquals(List.of(firstKing), auto.view().opponent().kings().kings());
+                assertEquals(0, auto.kingChoiceDeadlineMillis());
+                assertEquals(0, auto.view().you().playsUsed()); assertEquals(0, auto.view().you().drawsUsed());
+                assertEquals(idle[0].view().turn(), auto.view().turn());
+                MatchUpdate kept = carol.expect(MatchUpdate.class, u -> u.view().phase() == MatchPhase.IN_PROGRESS, 10);
+                assertEquals(List.of(chosen), kept.view().you().kings().kings());
+                assertEquals(List.of(mixed[0].view().kingOffer().get(0)), kept.view().opponent().kings().kings());
+                carol.send(confirmation);
+                assertEquals(kept.view(), carol.update(any -> true).view(), "retry of the original confirmation changes nothing");
+                again.send(new LeaveMatchRequest()); carol.update(u -> u.view().phase() == MatchPhase.FINISHED);
+                ReplayResponse replay = replayOf(carol);
+                assertTrue(replay.frames().stream().anyMatch(f -> f.selectedKing() == chosen));
+                assertEquals(List.of(chosen), replay.frames().get(replay.frames().size() - 1).you().kings().kings());
+                bob.send(new LeaveMatchRequest()); alice.update(u -> u.view().phase() == MatchPhase.FINISHED);
+            }
+        }
+    }
+
     /** Drives both peers with the greedy bot until each sees the finished view. */
     private MatchUpdate[] playOut(Peer a, Peer b, MatchUpdate first, MatchUpdate second) throws Exception {
         MatchUpdate ua = first, ub = second;
         while (ua.view().phase() != MatchPhase.FINISHED) {
+            int rounds = ua.view().rounds().size();
             int revision = Math.max(ua.view().revision(), ub.view().revision());
             if (waitedOn(ua)) a.move(ua); else b.move(ub);
             ua = a.update(u -> u.view().revision() > revision);
             ub = b.update(u -> u.view().revision() > revision);
+            if (ua.view().rounds().size() > rounds) {
+                for (MatchUpdate update : List.of(ua, ub)) {
+                    var closing = update.closingRoundView();
+                    assertNotNull(closing, "the final pre-bank view crosses the real socket");
+                    var banked = update.view().rounds().get(rounds);
+                    assertEquals(banked.scoreOf(closing.seat()), closing.you().score().total());
+                    assertEquals(closing.you().matchTotal() + closing.you().score().total(), update.view().you().matchTotal());
+                    assertFalse(closing.yourTurn());
+                }
+                assertEquals(ua.closingRoundView().you().handCount(), ub.closingRoundView().opponent().handCount());
+                assertEquals(ub.closingRoundView().you().handCount(), ua.closingRoundView().opponent().handCount());
+            }
         }
         return new MatchUpdate[] {ua, ub};
     }
@@ -257,6 +315,7 @@ class CardMatchIntegrationTest {
             assertEquals(1, second.view().round());
             assertEquals(10, second.view().hand().size());
             assertEquals(0, second.view().you().matchTotal());
+            assertTrue(second.kingChoiceDeadlineMillis() > System.currentTimeMillis());
         }
     }
 

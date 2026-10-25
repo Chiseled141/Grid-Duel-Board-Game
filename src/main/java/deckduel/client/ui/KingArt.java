@@ -28,6 +28,8 @@ final class KingArt {
     });
     private KingArt() { }
     static void preload() { /* Class initialization starts the background decode. */ }
+    /** Runs after background decoding; Swing repaint callbacks are safe from that worker. */
+    static void whenReady(Runnable repaint) { LOADING.thenRun(repaint); }
     static String path(King king) { return "/assets/cards/kings/" + king.id() + ".png"; }
     static Image image(King king) {
         return FX.computeIfAbsent(king, k -> new Image(KingArt.class.getResource(path(k)).toExternalForm(), true));

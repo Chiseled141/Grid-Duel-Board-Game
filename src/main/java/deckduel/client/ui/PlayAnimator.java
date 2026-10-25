@@ -77,6 +77,37 @@ final class PlayAnimator {
         return new Plan(s, 0);
     }
 
+    /** Clears only after final scoring; the final card play has already been performed. */
+    static Plan nextRound(PlayerView before, PlayerView after, Layout layout) {
+        Staging s = new Staging();
+        after.hand().forEach(card -> s.uses(card.def()));
+        int at = 0;
+        for (TableZone zone : List.of(TableZone.OWN, TableZone.OPPONENT)) {
+            Row row = zone == TableZone.OWN ? before.you().row() : before.opponent().row();
+            for (RowCard card : row.cards()) {
+                Rectangle slot = layout.slot(zone, card.slot());
+                s.uses(card.def());
+                if (at > 0) s.add(0, at, new Staging.Hold(card.def(), card.suppressed(), slot));
+                s.add(at, EJECT, new Staging.Eject(card.def(), card.suppressed(), slot, layout.pile(zone)));
+                at += 45;
+            }
+        }
+        int bannerAt = at + EJECT;
+        s.sound(bannerAt, Kind.ROUND);
+        Point2D gap = gap(layout);
+        s.add(bannerAt, 1700, new Staging.Banner("Round " + after.round(), gap.getX(), gap.getY(), Tone.GOLD, 46));
+        deal(s, after.hand(), layout, bannerAt + 700);
+        return new Plan(s, 0);
+    }
+
+    /** Victory celebration begins together with the result, after the score has settled. */
+    static Plan conclusion(PlayerView after, Layout layout) {
+        if (after.outcome().winner() != after.seat()) return null;
+        Staging s = new Staging();
+        s.add(0, 2600, new Staging.Confetti(layout.table(), after.revision()));
+        return new Plan(s, 0);
+    }
+
     /** The card play that produced {@code after}, staged from the table as it was in {@code before}. */
     static Plan play(PlayerView before, PlayerView after, Layout layout) {
         PlayRecord play = after.lastPlay();

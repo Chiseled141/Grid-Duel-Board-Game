@@ -11,13 +11,15 @@ public sealed interface Message extends Serializable permits ActionRejected, Can
         PracticeRequest, ProfileUpdate, ProtocolHello, ProtocolReady, RegisterRequest, RematchRequest,
         ReplayRequest, ReplayResponse, UpdateRequired {
     /**
-     * Version 17 adds simultaneous King choices, ownership, bonus breakdown and private Secret Edict.
+     * Version 19 adds the recipient's final pre-bank round view so scoring finishes before summaries.
+     * Version 18 added the server-owned 30-second King choice deadline to MatchUpdate.
+     * Version 17 added simultaneous King choices, ownership, bonus breakdown and private Secret Edict.
      * Version 16 added the client's release version to ProtocolHello, UpdateRequired (the server's
      * minimum client version, answered before login) and MaintenanceNotice (drain before a
      * restart). Version 15 added CancelRoomRequest, 14 personal replays, and 13 removed the
      * matchmaking queue. Older peers are rejected at the handshake.
      */
-    int PROTOCOL_VERSION = 17;
+    int PROTOCOL_VERSION = 19;
     /** Greeting shared by both peers. */
     String GREETING = "DECK_DUEL_PROTOCOL:" + PROTOCOL_VERSION;
     /** Restricts deserialization to protocol records, card view contracts and bounded collections. */

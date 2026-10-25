@@ -134,6 +134,7 @@ public final class ScoreRail extends Region {
     }
 
     boolean isAnimating() { return animating; }
+    long displayedScore() { return display == null ? 0 : shownScore(System.nanoTime()); }
 
     /** The full description for tests and assistive technology. */
     String description() { return getAccessibleText(); }

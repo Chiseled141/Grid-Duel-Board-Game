@@ -68,8 +68,8 @@ import javafx.scene.text.TextAlignment;
  */
 final class CardTableView extends Pane {
     private static final int GAP = 10;
-    /** Hover delay for card details, and the height of an enlarged row card. */
-    private static final int PREVIEW_DELAY_MS = 350, PREVIEW_H = 420;
+    /** Hover delay for Spell details. */
+    private static final int PREVIEW_DELAY_MS = 350;
     /** How long a scoring card's hop lasts, in animation milliseconds. */
     private static final int JUMP_MS = 300;
     /** A light veil over row cards the player is not pointing at, so busy art does not all compete at once. */
@@ -95,6 +95,7 @@ final class CardTableView extends Pane {
     private final ImageView backdrop = new ImageView();
     private final javafx.scene.shape.Rectangle headerShade = new javafx.scene.shape.Rectangle();
     private final Canvas board = new Canvas();
+    private final Canvas dragLayer = new Canvas();
     private final Label spellName = new Label(), spellEffect = new Label();
     private final VBox spellTip = new VBox(8, spellName, spellEffect);
     private final Pane effectsLayer = new Pane();
@@ -157,6 +158,7 @@ final class CardTableView extends Pane {
     private MatchUpdate shown;
     // The opponent's moves that arrived while a play was still being shown, oldest first.
     private final java.util.ArrayDeque<State> held = new java.util.ArrayDeque<>();
+    private State pendingConclusion;
     private Long selected, pressed;
     // The player's own arrangement, for easier reading only: the hand's order by card id, and which
     // real row space each of the seven places on their row shows. Nothing of it reaches the server.
@@ -165,7 +167,7 @@ final class CardTableView extends Pane {
     private Integer pressedSlot;
     private Integer rowPreview;
     private boolean dragging;
-    private Point2D pointer;
+    private Point2D pointer, pressOrigin;
     private Hit hover;
     // The card the pointer is resting on, and the one whose large preview is showing once the delay has passed.
     private Hit previewTarget, preview;
@@ -175,7 +177,7 @@ final class CardTableView extends Pane {
     private ScoringTrace trace;
     private int beatsPlayed, roundsSeen;
     private int rowLeft, cardW, cardH, opponentTop, ownTop, handTop, midY, tableLeft, tableWidth, pilesX;
-    private int handW, handH;
+    private int handW, handH, handAreaWidth;
 
     /** Builds the table; it shows a match once {@link #show} receives one. */
     CardTableView(Actions actions, ClientSettings settings, ScoringSounds sounds) {
@@ -203,10 +205,13 @@ final class CardTableView extends Pane {
         // The rail sits under the effects, so scoring chips are seen landing on it.
         getChildren().addAll(backdrop, headerShade, board, rail, effectsScene, leave);
         buildSpellTip();
-        getChildren().add(spellTip);
+        dragLayer.setId("draggedCardLayer"); dragLayer.setManaged(false);
+        dragLayer.setMouseTransparent(true); dragLayer.setVisible(false);
+        // Details sit above deployed Kings, while modal dialogs retain priority over both.
+        getChildren().addAll(kings, spellTip, dragLayer);
         buildResult();
         buildConfirm();
-        getChildren().addAll(kings, cardDetails);
+        getChildren().add(cardDetails);
         installMouse();
         addEventHandler(KeyEvent.KEY_PRESSED, this::keyPressed);
     }
@@ -214,9 +219,9 @@ final class CardTableView extends Pane {
     // ---------------------------------------------------------------- state
 
     /**
-     * Shows the model's latest match. The opponent's move waits while a play is still being shown,
-     * so a quick reply, such as the practice bot's, follows the Spell and its effects instead of
-     * playing over them; your own moves show at once. A new game or reduced motion clears them.
+     * Shows accepted revisions in order, waiting for effects, scoring traces and the rail count.
+     * A round's pre-bank view finishes before its conclusion. New games and reduced motion bypass
+     * the queue so obsolete presentation cannot delay them.
      */
     void show(State next) {
         if (holds(next)) {
@@ -224,54 +229,75 @@ final class CardTableView extends Pane {
             return;
         }
         held.clear();
+        pendingConclusion = null;
         present(next);
     }
 
     /**
-     * Whether {@code next} must wait for the table's animations: the opponent's change in the game
-     * on screen while a play is still staged, or anything queued behind one.
+     * Whether a newer revision or anything behind it must wait for the complete presentation.
      */
     private boolean holds(State next) {
         MatchUpdate update = next.match();
         if (update == null || shown == null || next.reducedMotion() || !onScreen) return false;
         if (!update.matchId().equals(shown.matchId()) || update.game() != shown.game()) return false;
-        if (!held.isEmpty()) return true;
-        return staged && update.view().revision() > shown.view().revision() && !shown.view().yourTurn();
+        if (!held.isEmpty() || pendingConclusion != null) return true;
+        return presentationBusy() && update.view().revision() > shown.view().revision();
     }
 
-    /** Puts {@code next} on the table and stages the change that produced it. */
+    /** Finishes the server's final pre-bank view before accepting its round/match conclusion. */
     private void present(State next) {
+        MatchUpdate update = next.match();
+        if (update != null && shown != null && onScreen && !next.reducedMotion()
+                && update.matchId().equals(shown.matchId()) && update.game() == shown.game()
+                && update.view().revision() == shown.view().revision() + 1
+                && update.closingRoundView() != null
+                && update.closingRoundView().round() == shown.view().round()) {
+            pendingConclusion = next;
+            var closing = new MatchUpdate(update.matchId(), update.game(), update.yourName(), update.opponentName(),
+                    update.practice(), update.opponentConnected(), update.opponentLeft(), update.rematchRequested(),
+                    update.opponentWantsRematch(), update.closingRoundView());
+            presentSnapshot(new State(closing, next.reconnecting(), false));
+        } else presentSnapshot(next);
+    }
+
+    /** Puts one authoritative presentation snapshot on the table. */
+    private void presentSnapshot(State next) {
         // Hover indices may identify different cards after a draw, play or private reveal update.
         clearPreview();
         state = next;
         MatchUpdate update = next.match();
         if (update == null) {
+            kings.reset();
             cardDetails.close();
             kings.setVisible(false);
             shown = null; selected = null; rail.reset(); result.setVisible(false);
             effects.clear(); staged = false; trace = null;
             rowPose.clear(); handPose.clear();
-            pressed = null; pressedSlot = null; rowPreview = null; dragging = false;
+            clearGesture();
             redraw();
             return;
         }
         boolean newMatch = shown == null || !shown.matchId().equals(update.matchId());
         boolean newGame = newMatch || shown.game() != update.game();
         boolean newRound = newGame || shown.view().round() != update.view().round();
-        if (newRound || pressedSlot != null && !java.util.Objects.equals(
+        if (newRound || update.view().phase() == MatchPhase.FINISHED
+                || pressed != null && update.view().hand().stream().noneMatch(card -> card.id() == pressed)
+                || pressedSlot != null && !java.util.Objects.equals(
                 shown.view().you().row().at(pressedSlot), update.view().you().row().at(pressedSlot))) {
-            pressed = null; pressedSlot = null; rowPreview = null; dragging = false;
+            clearGesture();
         }
         if (newRound || next.reducedMotion()) rowPose.clear();
+        if (next.reducedMotion()) handPose.clear();
         ScoringTrace change = newGame ? null : ScoringTrace.between(shown.view(), update.view());
         PlayAnimator.Plan plan = plan(newGame, update);
         if (newGame) {
+            kings.reset();
             cardDetails.close();
             rail.reset(); roundsSeen = 0; selected = null; trace = null;
             handOrder = new ArrayList<>();
             for (int i = 0; i < Row.SIZE; i++) rowOrder[i] = i;
         }
-        if (newGame || next.reducedMotion()) { effects.clear(); staged = false; }
+        if (newGame || next.reducedMotion()) { effects.clear(); staged = false; trace = null; }
         announceRounds(update);
         if (selected != null && update.view().hand().stream().noneMatch(card -> card.id() == selected)) selected = null;
         shown = update;
@@ -336,18 +362,24 @@ final class CardTableView extends Pane {
     /** Called when another screen replaces the table. */
     void hidden() {
         clearPreview();
+        clearGesture();
         onScreen = false;
+        if (pendingConclusion != null) {
+            State conclusion = pendingConclusion; pendingConclusion = null;
+            presentSnapshot(conclusion);
+        }
         while (!held.isEmpty()) present(held.poll());
         effects.clear();
         staged = false;
         trace = null;
+        rail.stopFeedback();
         frames.stop();
         running = false;
         sounds.stop();
         settle.stop();
         confirm.setVisible(false);
         cardDetails.close();
-        kings.closeInspector();
+        kings.suspend();
     }
 
     /** Starts performing {@code next} alongside anything still playing. */
@@ -368,6 +400,12 @@ final class CardTableView extends Pane {
         }
         if (cardW <= 0 || newGame && !deal) return null;
         if (deal) return PlayAnimator.opening(next.view(), layout);
+        if (next.view().revision() == shown.view().revision()) {
+            if (next.view().round() != shown.view().round())
+                return PlayAnimator.nextRound(shown.view(), next.view(), layout);
+            if (shown.view().phase() != MatchPhase.FINISHED && next.view().phase() == MatchPhase.FINISHED)
+                return PlayAnimator.conclusion(next.view(), layout);
+        }
         if (next.view().revision() != shown.view().revision() + 1) return null;
         // A manual draw or a kept Reconnaissance card has no play record; only the hands changed.
         return next.view().lastPlay() != null ? PlayAnimator.play(shown.view(), next.view(), layout)
@@ -423,15 +461,24 @@ final class CardTableView extends Pane {
             sounds.play(trace.beats.get(beatsPlayed++).cue());
         if (trace != null && elapsed > trace.finishAt + GAIN_MILLIS) trace = null;
         if (staged && !effects.tick(now)) staged = false;
-        // The opponent's held move plays once the one before it has finished.
-        if (!staged && !held.isEmpty()) present(held.poll());
+        // Chips, formation/King effects and the rail's final count must all finish first.
+        if (!presentationBusy()) {
+            if (pendingConclusion != null) {
+                State conclusion = pendingConclusion; pendingConclusion = null;
+                presentSnapshot(conclusion);
+            } else if (!held.isEmpty()) present(held.poll());
+        }
         // A heavy blow shakes the cards and effects, never the room behind them.
         double[] shake = staged ? effects.shake() : new double[2];
         for (Node shaken : List.of(board, effectsScene)) { shaken.setTranslateX(shake[0]); shaken.setTranslateY(shake[1]); }
         boolean lifting = stepCards(now);
         redraw();
-        if (System.currentTimeMillis() > noticeUntil && trace == null && !staged && !lifting) { frames.stop(); running = false; }
+        if (System.currentTimeMillis() > noticeUntil && !presentationBusy() && !lifting
+                && pendingConclusion == null && held.isEmpty()) { frames.stop(); running = false; }
     }
+
+    private boolean presentationBusy() { return staged || scoring(); }
+    boolean scoring() { return trace != null || rail.isAnimating(); }
 
     /** Eases hand and row cards toward their display positions; true while anything still moves. */
     private boolean stepCards(long now) {
@@ -469,7 +516,8 @@ final class CardTableView extends Pane {
     private double[] handTarget(int index) {
         CardInstance card = hand().get(index);
         double x = handSlot(index, hand().size()).x;
-        if (selected != null && card.id() == selected) return new double[]{26, 1.08, x};
+        if (selected != null && card.id() == selected || pressed != null && card.id() == pressed)
+            return new double[]{26, 1.08, x};
         return hover != null && hover.zone() == TableZone.HAND && hover.index() == index ? new double[]{12, 1.05, x} : new double[]{0, 1, x};
     }
 
@@ -576,17 +624,14 @@ final class CardTableView extends Pane {
         wake();
     }
 
-    /** Previews public row Units and readable text for Spells in recipient-visible card areas. */
+    /** Only Spells need hover rules; Unit faces remain at their normal table size. */
     private Hit previewable(Hit hit) {
         if (hit == null || shown == null || dragging || result.isVisible()
                 || confirm.isVisible() || cardDetails.isVisible()) return null;
+        // Inspect Kings during their choice; hiding that overlay reveals the hand without popups.
+        if (shown.view().phase() == MatchPhase.KING_SELECTION) return null;
         CardDef card = cardAt(hit);
         if (card != null && !card.occupiesSpace()) return hit;
-        if (selected != null) return null;
-        PlayerView view = shown.view();
-        if (view.keeping()) return null;
-        if (hit.zone() == TableZone.OWN) return view.you().row().at(hit.index()) != null ? hit : null;
-        if (hit.zone() == TableZone.OPPONENT) return view.opponent().row().at(hit.index()) != null ? hit : null;
         return null;
     }
 
@@ -647,19 +692,25 @@ final class CardTableView extends Pane {
     void pressAt(Point2D point) {
         requestFocus();
         clearPreview();
+        clearGesture();
         Hit hit = hitAt(point);
+        hover = hit;
         pressed = hit != null && hit.zone() == TableZone.HAND ? hand().get(hit.index()).id() : null;
         // A card already on the player's own row can be picked up to rearrange it, unless a hand
         // card is chosen: then a click on the row is a play.
         pressedSlot = pressed == null && selected == null && hit != null && hit.zone() == TableZone.OWN
-                && shown.view().you().row().at(hit.index()) != null ? hit.index() : null;
+                && shown.view().you().row().at(hit.index()) != null
+                && !(staged && effects.hiddenOnRow(shown.view().you().row().at(hit.index()).card().id())) ? hit.index() : null;
         pointer = point;
+        pressOrigin = point;
+        lastPointer = null;
         dragging = false;
+        wake();
     }
 
     void dragTo(Point2D point) {
         if (pressed == null && pressedSlot == null) return;
-        if (pointer.distance(point) > 6) dragging = true;
+        if (pressOrigin != null && pressOrigin.distance(point) > 6) dragging = true;
         leanWithPointer(point);
         pointer = point;
         hover = hitAt(pointer);
@@ -681,7 +732,9 @@ final class CardTableView extends Pane {
     }
 
     void releaseAt(Point2D point) {
+        pointer = point;
         Hit hit = hitAt(point);
+        pressOrigin = null;
         lastPointer = null;
         if (pressedSlot != null) { dropRowCard(hit, point); return; }
         if (!dragging && hit != null && button(hit)) { pressed = null; return; }
@@ -693,11 +746,34 @@ final class CardTableView extends Pane {
         PlayCard play = rearranged != null ? null : playAt(card, hit);
         if (play != null) { play(play); return; }
         if (rearranged != null) handOrder = rearranged;
+        if (wasDrag) settleHandCard(card, point);
         if (!wasDrag && hit != null && hit.zone() == TableZone.HAND && settings.clickToSelectCards()) {
             long id = hand().get(hit.index()).id();
             selected = selected != null && selected == id ? null : id;
         }
         wake();
+    }
+
+    /** A cancelled/reordered hand card eases from the release point instead of teleporting home. */
+    private void settleHandCard(Long id, Point2D at) {
+        if (id == null || state.reducedMotion()) return;
+        int index = indexOf(hand(), id);
+        if (index < 0) return;
+        Rectangle slot = handSlot(index, hand().size());
+        handPose.put(id, new double[]{slot.getCenterY() + fanDrop(index, hand().size()) - at.getY(),
+                1.1, at.getX() - handW / 2.0});
+    }
+
+    private void clearGesture() {
+        pressed = null; pressedSlot = null; rowPreview = null; dragging = false;
+        pointer = null; pressOrigin = null; lastPointer = null; dragLean = 0;
+        dragLayer.setVisible(false);
+    }
+
+    private void cancelDrag() {
+        if (pressedSlot != null && pointer != null) dropRowCard(null, pointer);
+        else if (dragging && pointer != null) settleHandCard(pressed, pointer);
+        clearGesture(); wake();
     }
 
     /** Handles a click on a revealed card to keep, a Spy-revealed card, or the draw or skip button; false for anything else. */
@@ -812,7 +888,10 @@ final class CardTableView extends Pane {
             case ENTER -> confirmKey();
             case D -> draw();
             case S -> skipTurn();
-            case ESCAPE -> { if (selected != null) { selected = null; wake(); } else confirmLeave(); }
+            case ESCAPE -> {
+                if (pressed != null || pressedSlot != null) { selected = null; cancelDrag(); }
+                else if (selected != null) { selected = null; wake(); } else confirmLeave();
+            }
             default -> {
                 int slot = code.isDigitKey() ? code.getCode() - (code.isKeypadKey() ? KeyCode.NUMPAD1.getCode() : KeyCode.DIGIT1.getCode()) : -1;
                 if (slot < 0 || slot >= Row.SIZE) return;
@@ -967,6 +1046,7 @@ final class CardTableView extends Pane {
                 new Stop(0, Color.rgb(0, 0, 0, .73)), new Stop(1, Color.rgb(0, 0, 0, 0))));
         board.setWidth(w);
         board.setHeight(h);
+        dragLayer.setWidth(w); dragLayer.setHeight(h);
         effectsScene.setWidth(w);
         effectsScene.setHeight(h);
         effectsLayer.resize(w, h);
@@ -978,27 +1058,34 @@ final class CardTableView extends Pane {
         // The window's floating music toggle occupies the top-right corner.
         tableLeft = 20 + railWidth + 28;
         pilesX = w - 110;
-        tableWidth = Math.max(0, pilesX - 170 - tableLeft);
         int across = Row.SIZE;
-        cardW = Math.max(40, (tableWidth - (across - 1) * GAP) / across);
+        int available = Math.max(0, pilesX - 16 - tableLeft);
+        handAreaWidth = Math.max(0, available - 12);
+        // Reserve two King faces at the Unit row's height, preserving each painting's proportions.
+        double kingToUnitWidth = 1.5 * 1060 / 1482;
+        // Leave room for the edge aura without washing light across adjacent Units or controls.
+        int kingPadding = 28, kingGutters = kingPadding * 2 + GAP;
+        cardW = Math.max(40, (int) ((available - (across - 1) * GAP - kingGutters) / (across + 2 * kingToUnitWidth)));
         // Cards use the artwork's 2:3 proportions.
         int handReserve = Math.max(180, Math.min(260, (int) (h * .27)));
         cardH = Math.max(60, Math.min(cardW * 3 / 2, (h - 242 - handReserve) / 2));
         cardW = Math.min(cardW, cardH * 2 / 3);
+        int kingWidth = (int) Math.round(cardH * 1060.0 / 1482);
+        tableWidth = Math.max(0, available - 2 * kingWidth - kingGutters);
         int width = across * cardW + (across - 1) * GAP;
         rowLeft = tableLeft + (tableWidth - width) / 2;
         opponentTop = 92;
         midY = opponentTop + cardH + 20;
         ownTop = opponentTop + cardH + 80;
         // The hand has its own larger faces; reserve room for the fan and its shadows at the bottom.
-        handH = Math.max(cardH, Math.min(cardH * 3 / 2, h - ownTop - cardH - 70));
+        handH = Math.max(cardH, Math.min(cardH * 3 / 2, h - ownTop - cardH - 100));
         handW = handH * 2 / 3;
-        handTop = Math.max(ownTop + cardH + 30, h - handH - 40);
+        handTop = Math.max(ownTop + cardH + 30, h - handH - 70);
         // Centred on the window: the match is over, so the verdict takes the middle of the screen.
         result.resizeRelocate((w - 560) / 2.0, (h - 290) / 2.0, 560, 290);
         confirm.resizeRelocate(0, 0, w, h);
         cardDetails.resizeRelocate(0, 0, w, h);
-        kings.position(tableLeft + tableWidth + 10, opponentTop, ownTop, w, h);
+        kings.position(tableLeft + tableWidth + kingPadding, opponentTop, ownTop, w, h, kingWidth, cardH);
         startPendingOpening();
         redraw();
         if (staged) wake();
@@ -1057,13 +1144,13 @@ final class CardTableView extends Pane {
     /** Where hand card {@code index} of {@code count} rests; a hand too wide for the table overlaps. */
     Rectangle handSlot(int index, int count) {
         int step = handStep(count);
-        int left = tableLeft + (tableWidth - ((count - 1) * step + handW)) / 2;
+        int left = tableLeft + (handAreaWidth - ((count - 1) * step + handW)) / 2;
         return new Rectangle(left + index * step, handTop, handW, handH);
     }
 
     /** Distance between neighbouring hand cards. */
     private int handStep(int count) {
-        return count < 2 ? handW + GAP : Math.min(handW + GAP, (tableWidth - handW) / (count - 1));
+        return count < 2 ? handW + GAP : Math.min(handW + GAP, (handAreaWidth - handW) / (count - 1));
     }
 
     /** The hand's card ids in the order shown; for tests. */
@@ -1079,6 +1166,7 @@ final class CardTableView extends Pane {
     Button rematchButton() { return rematch; }
     Button backButton() { return backToMenu; }
     boolean resultShowing() { return result.isVisible(); }
+    boolean finishingRound() { return pendingConclusion != null; }
     boolean confirmShowing() { return confirm.isVisible(); }
 
     Rectangle castBounds() { return new Rectangle(tableLeft + tableWidth / 2 - 110, midY + 8, 220, 28); }
@@ -1087,7 +1175,7 @@ final class CardTableView extends Pane {
         if (shown == null || result.isVisible() || cardDetails.isVisible()) return null;
         int x = (int) point.getX(), y = (int) point.getY();
         PlayerView view = shown.view();
-        if (view.phase() == MatchPhase.KING_SELECTION) return null;
+        if (view.phase() == MatchPhase.KING_SELECTION && !kings.selectionHidden()) return null;
         // While keeping a revealed card, only that choice is on offer.
         if (view.keeping()) {
             for (int i = 0; i < view.looking().size(); i++)
@@ -1104,7 +1192,8 @@ final class CardTableView extends Pane {
         for (int i = view.revealed().size() - 1; i >= 0; i--)
             if (revealedBounds(i).contains(x, y)) return new Hit(TableZone.REVEALED, i);
         for (int i = hand().size() - 1; i >= 0; i--)
-            if (handBounds(i).contains(x, y)) return new Hit(TableZone.HAND, i);
+            if (!openingPending && !(staged && effects.hiddenInHand(hand().get(i).id()))
+                    && handBounds(i).contains(x, y)) return new Hit(TableZone.HAND, i);
         for (RowCard card : view.you().row().cards())
             if (rowCardBounds(TableZone.OWN, card.slot()).contains(x, y)) return new Hit(TableZone.OWN, card.slot());
         for (TableZone zone : List.of(TableZone.OWN, TableZone.OPPONENT))
@@ -1142,8 +1231,10 @@ final class CardTableView extends Pane {
     // ---------------------------------------------------------------- drawing
 
     private void redraw() {
+        drawDraggedCard();
         refreshSpellTip();
-        if (shown != null) kings.update(shown.view(), state.reconnecting(), openingPending || staged);
+        if (shown != null) kings.update(shown.view(), shown.kingChoiceDeadlineMillis(), state.reconnecting(),
+                openingPending || staged, state.reducedMotion());
         GraphicsContext g = board.getGraphicsContext2D();
         g.clearRect(-20, -20, board.getWidth() + 40, board.getHeight() + 40);
         if (shown == null) { centered(g, "Waiting for the match to start…", FxKit.bold(18), FxKit.CREAM, getHeight() / 2); return; }
@@ -1161,20 +1252,6 @@ final class CardTableView extends Pane {
         if (!shown.view().keeping() && !effects.noticeShowing()) drawStatus(g);
         drawHand(g);
         if (shown.view().keeping()) drawLooking(g);
-        else drawPreview(g);
-    }
-
-    /** A large copy of the row card the pointer rests on, beside it, so small printed text never needs squinting at. */
-    private void drawPreview(GraphicsContext g) {
-        if (preview == null || previewable(preview) == null) return;
-        if (preview.zone() != TableZone.OWN && preview.zone() != TableZone.OPPONENT) return;
-        RowCard unit = (preview.zone() == TableZone.OWN ? shown.view().you() : shown.view().opponent()).row().at(preview.index());
-        Rectangle at = rowCardBounds(preview.zone(), preview.index());
-        int h = (int) Math.min(PREVIEW_H, board.getHeight() * .55), w = h * 2 / 3;
-        double x = at.getMaxX() + 14 + w <= board.getWidth() - 8 ? at.getMaxX() + 14 : at.x - 14 - w;
-        x = Math.max(8, Math.min(x, board.getWidth() - w - 8));
-        double y = Math.max(8, Math.min(at.getCenterY() - h / 2.0, board.getHeight() - h - 8));
-        FxKit.drawFace(g, unit.def(), unit.suppressed(), w, h, false, pixelScale(), x, y);
     }
 
     private void drawHeader(GraphicsContext g) {
@@ -1418,6 +1495,7 @@ final class CardTableView extends Pane {
 
     private String statusText() {
         if (state.reconnecting()) return "Connection lost — reconnecting…";
+        if (pendingConclusion != null) return "Finishing round " + shown.view().round() + " scoring…";
         if (System.currentTimeMillis() < noticeUntil && notice != null) return notice;
         PlayerView view = shown.view();
         if (view.phase() == MatchPhase.FINISHED) return "Match over";
@@ -1462,7 +1540,15 @@ final class CardTableView extends Pane {
             handCard(g, card.def(), r.getCenterX(), r.getCenterY(), pose[1], fanAngle(i, hand.size()),
                     chosen, pose[0], yourTurn ? null : DIM);
         }
-        CardInstance held = dragging ? handCard(pressed) : null;
+    }
+
+    /** Direct manipulation stays above Kings and HUD plates, below modal dialogs. */
+    private void drawDraggedCard() {
+        GraphicsContext g = dragLayer.getGraphicsContext2D();
+        g.clearRect(0, 0, dragLayer.getWidth(), dragLayer.getHeight());
+        dragLayer.setVisible(shown != null && shown.view().phase() != MatchPhase.FINISHED && dragging && pointer != null);
+        if (!dragLayer.isVisible()) return;
+        CardInstance held = handCard(pressed);
         if (held != null && pointer != null) handCard(g, held.def(), pointer.getX(), pointer.getY(), 1.1, dragLean, true, 30, null);
         RowCard moving = dragging && pressedSlot != null ? shown.view().you().row().at(pressedSlot) : null;
         if (moving != null && pointer != null)

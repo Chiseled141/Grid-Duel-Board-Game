@@ -54,6 +54,17 @@ off the same way has no result row, so it does not appear in history either. Fra
 incompatible build are refused with "This replay was recorded by another version and cannot be
 shown." rather than partly shown.
 
+## Live selection deadline (introduced in protocol 18)
+
+Protocol 19 additionally carries the recipient's final pre-bank round view in live `MatchUpdate`
+metadata, so the table finishes scoring before bank/deal/result presentation. This does not add
+or change stored replay frames. See [round presentation](round-presentation.md).
+
+The server's 30-second King deadline is carried in live `MatchUpdate` metadata; it does not
+change serialized `PlayerView` frames. Earlier King replays remain readable. Automatic first-card
+confirmations are recorded through normal accepted revisions, preserving the same recipient
+privacy and replay ownership rules. The client countdown never chooses a King locally.
+
 ## King compatibility (2026-10-25, protocol 17)
 
 Frames now include shared offers, the owner's private confirmation, public King ownership,

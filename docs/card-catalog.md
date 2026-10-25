@@ -89,7 +89,7 @@ parameters copied from the supplied paintings. `KingStatus` stores at most two d
 Kings and accepted round counters; `KingScoring` derives the live per-King breakdown. Kings
 are offered after the deals of rounds 1 and 2 and remain in round 3. See [King Cards](kings.md)
 for all formulas, simultaneous selection, Secret Edict and privacy. The draw catalog version
-remains `cards-neutral-5` because its 35 Units and 10 Spells are unchanged; wire protocol is 17.
+remains `cards-neutral-5` because its 35 Units and 10 Spells are unchanged; wire protocol is 18 (including the 30-second selection deadline).
 
 ## Artwork
 

@@ -3,6 +3,7 @@ package deckduel.server;
 import deckduel.core.EndReason;
 import deckduel.core.PlayerColor;
 import deckduel.core.card.DeckRules;
+import deckduel.core.card.ChooseKing;
 import deckduel.core.card.GreedyBot;
 import deckduel.core.card.MatchOutcome;
 import deckduel.core.card.MatchPhase;
@@ -80,6 +81,8 @@ final class MatchSession {
     private final ExecutorService executor;
     private MatchState state;
     private int game = 1;
+    private final KingChoiceDeadline kingDeadline = new KingChoiceDeadline();
+    private ScheduledFuture<?> kingTimeout;
     // Published for the operator's status from the match thread; read from any thread.
     private volatile boolean inProgress = true;
     private volatile int heldSeats;
@@ -131,6 +134,8 @@ final class MatchSession {
         submit(() -> {
             Participant p = participant(handler);
             if (p == null) return;
+            if (kingDeadline.expired(System.currentTimeMillis()))
+                expireKings(game, state.round(), kingDeadline.millis());
             if (request.requestId() == p.lastAccepted) { send(p); return; }
             if (state.phase() == MatchPhase.FINISHED) { reject(p, request, "The match is over."); return; }
             if (request.move() == null || request.revision() != state.revision()) {
@@ -190,6 +195,8 @@ final class MatchSession {
             if (p.grace != null) p.grace.cancel(false);
             p.grace = null;
             p.handler = handler;
+            if (kingDeadline.expired(System.currentTimeMillis()))
+                expireKings(game, state.round(), kingDeadline.millis());
             LOG.info(() -> username + " rejoined match " + id);
             publishStatus();
             broadcast();
@@ -205,7 +212,10 @@ final class MatchSession {
     }
 
     /** Stops the session's thread during server shutdown. */
-    void close() { executor.shutdownNow(); inProgress = false; }
+    void close() {
+        if (kingTimeout != null) kingTimeout.cancel(false);
+        executor.shutdownNow(); inProgress = false;
+    }
 
     /** Whether a game or its final persistence is still in progress, for the restart check. */
     boolean inProgress() { return inProgress; }
@@ -268,6 +278,7 @@ final class MatchSession {
 
     /** Publishes an accepted change, then records a finished match or lets a waited-on bot move. */
     private void changed() {
+        updateKingDeadline();
         capture();
         broadcast();
         if (state.phase() == MatchPhase.FINISHED) {
@@ -281,6 +292,37 @@ final class MatchSession {
             if (!p.bot || !state.awaits(p.seat)) continue;
             int revision = state.revision(), forGame = game;
             later(() -> botMove(p, revision, forGame), server.config().botDelayMillis());
+        }
+    }
+
+    /** The window begins after the server deals; hiding the client overlay does not pause it. */
+    private void updateKingDeadline() {
+        if (state.phase() != MatchPhase.KING_SELECTION) {
+            if (kingTimeout != null) kingTimeout.cancel(false);
+            kingTimeout = null;
+            kingDeadline.clear();
+            return;
+        }
+        if (!kingDeadline.begin(game, state.round(), System.currentTimeMillis())) return;
+        if (kingTimeout != null) kingTimeout.cancel(false);
+        int forGame = game, forRound = state.round();
+        long deadline = kingDeadline.millis();
+        kingTimeout = later(() -> expireKings(forGame, forRound, deadline), KingChoiceDeadline.DURATION_MILLIS);
+    }
+
+    /** Timer callbacks only post here; each automatic confirmation is recorded as a normal revision. */
+    private void expireKings(int forGame, int forRound, long deadline) {
+        if (!kingDeadline.matches(forGame, forRound, deadline) || state.phase() != MatchPhase.KING_SELECTION) return;
+        long remaining = deadline - System.currentTimeMillis();
+        if (remaining > 0) {
+            kingTimeout = later(() -> expireKings(forGame, forRound, deadline), remaining);
+            return;
+        }
+        for (Participant p : List.of(first, second)) {
+            PlayerView view = state.view(p.seat);
+            if (!view.choosingKing()) continue;
+            state = state.apply(p.seat, new ChooseKing(view.kingOffer().get(0)));
+            changed();
         }
     }
 
@@ -331,7 +373,8 @@ final class MatchSession {
         if (p.bot || p.left || p.handler == null) return;
         Participant other = other(p);
         p.handler.send(new MatchUpdate(id, game, p.username, other.username, practice,
-                other.bot || other.handler != null, other.left, p.rematch, other.rematch, state.view(p.seat)));
+                other.bot || other.handler != null, other.left, p.rematch, other.rematch, state.view(p.seat), kingDeadline.millis(),
+                state.closingRoundView(p.seat)));
     }
 
     private void reject(Participant p, MoveRequest request, String reason) {

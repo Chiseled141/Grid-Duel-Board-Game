@@ -147,6 +147,8 @@ public final class ClientModel {
     public void startupFinished() { if (screen == Screen.STARTUP) setScreen(Screen.LOGIN); }
     /** Returns to the main menu. */
     public void leaveToLobby() { setScreen(Screen.LOBBY); }
+    /** Opens the local read-only guide without sending a lobby or match request. */
+    public void showHowToPlay() { if (screen == Screen.LOBBY) setScreen(Screen.HOW_TO_PLAY); }
     /** Opens match history and requests the account's recorded matches. */
     public void requestHistory() {
         setScreen(Screen.HISTORY);

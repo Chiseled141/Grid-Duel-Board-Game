@@ -187,10 +187,12 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
     private JPanel buildHome() {
         JPanel page = page(null, null, null);
         JButton play = new MenuAction("Play", () -> showPage("play"), true);
+        JButton guide = new MenuAction("How to Play", model::showHowToPlay, false);
         JButton preferences = new MenuAction("Settings", () -> showPage("settings"), false);
         JButton quit = new MenuAction("Quit game", this::confirmQuit, false);
-        petalTargets.add(play); petalTargets.add(preferences); petalTargets.add(quit);
+        petalTargets.add(play); petalTargets.add(guide); petalTargets.add(preferences); petalTargets.add(quit);
         line(page, play);
+        line(page, guide);
         line(page, preferences);
         line(page, quit);
         page.add(Box.createVerticalStrut(14));

@@ -2,11 +2,34 @@
 
 The live screen is the JavaFX `CardTableView`.
 
+Spell hover details render above deployed Kings and their aura, including at the right edge of
+the hand. Result/confirmation dialogs and the Spy inspector remain above the hover layer;
+the details remain mouse-transparent so they do not intercept card input.
+
+Dragging uses total distance from the original press, so many small mouse events still pick up
+the card. Pressing wakes the hand's lift immediately. The dragged face/shadow renders in a
+mouse-transparent layer above Kings/HUD and below modal dialogs. Cancelled/reordered hand cards
+ease back from the actual release point; reduced motion snaps them. Esc, hidden/finished/new
+matches, removed held cards and a fresh press discard obsolete gestures. Cards still hidden in
+the deal or a play cannot be picked up before they are visible. Unit hover enlargement is removed;
+Spell hover text, King previews and explicit Spy inspection remain.
+
 King Cards (2026-10-25): a reserved strip between the seven-space rows and the deck/discard
-piles contains two King positions per side. `KingTableControls` uses the original uncropped art,
+piles contains two King positions per side, each matching the Unit-row height. `KingTableControls` uses the original uncropped art,
 a three-card selection/confirmation overlay and an original-art inspector with current flat
 contribution and Nethrion's round status. Selection waits for opening-deal staging; reduced
-motion displays it immediately. `KingArt` caches background decoding. The score rail has a
+motion displays it immediately. The choice rises/fades in with staggered original paintings;
+a centered teal eye-icon button below it hides/shows the offer to inspect the hand. It has no visible
+caption; its eye/slashed-eye icon changes with the action. A small top countdown remains while hidden.
+Unit/Spell hover popups are disabled for the entire King-selection phase, including while the offer is hidden.
+The shared server deadline continues while hidden, with a 30-second fallback to the first offered King for every
+unconfirmed seat. Offered cards have a King-colored edge aura on hover/focus and selection;
+confirmation buttons say only `CONFIRM`. Deployed Kings retain a static colored edge aura and show
+only their `+N` contribution, using the rail's Outfit display font and the matching King color.
+Empty positions have no labels. Hovering a King shows only its painting, capped at 480 logical pixels
+high (58% of table height on smaller windows); it has no text tooltip. The click inspector uses
+the same 480-pixel cap. Gutters leave clearance for the glow. The
+hand uses the available width below the Unit/King rows with clearance for the toggle. `KingArt` caches background decoding. The score rail has a
 separate Kings line below formation; scoring chips tally it after the multiplier. Secret Edict
 uses the private keep overlay with its own heading and `KeepEdictCard` move, preserving the
 turn; Reconnaissance remains separately labelled and ends the cast's turn. All these facts come
@@ -63,7 +86,7 @@ Every accepted play is staged by `PlayAnimator` as a short `Staging` timeline (p
 - **Draws and rounds:** drawn and dealt cards glide from the deck (about 1.3 s: eased in and out along a shallow arc, lifted mid-flight, turning over across the middle of the trip) and settle exactly at their fanned place and tilt in the hand, so nothing jumps when the real card appears; a round-ending play still lands, then the rows sweep away, a round toast in the gap between the rows (the status line waits while it shows) shows only the new round heading, without a subtitle, and the new hand is dealt; a victory brings falling gold leaf and scraps of banner red.
 - Sounds (Settings → Game sounds): whoosh, spell shimmer, shatter, chain clink, deal tick and round bell, plus a seal thud, chime, flame crackle, vortex warble and glint for the Spells, and a paper rip for a replaced Unit, all synthesized. Reduced motion skips the staging and plays only the result sound.
 - Pacing and smoothness: plans are written at base speed and `Staging.TEMPO` (1.8) slows every sequence evenly. Frames follow the JavaFX pulse, synchronised with the display. Card faces are the shared `CardFace` sprites converted once to JavaFX images (`FxKit`).
-- Calm board: row cards carry a light dark veil unless pointed at or offered as a target, and resting the pointer on a row card for 350 ms shows a large preview (up to 420 px tall) beside it; clicking dismisses it. Hand Units get no enlarged preview or hover wobble. Resting on a Spell in the hand, Reconnaissance choices or Spy-revealed cards for 350 ms shows its catalog name and rules text in a dark, bordered panel with wrapped 17 px rules text and a 20 px title. The panel stays within the window, accepts no pointer input, and disappears when the pointer leaves, a card is picked up, the visible view changes or the table is hidden.
+- Calm board: row cards carry a light dark veil unless pointed at or offered as a target, and Unit cards do not open enlarged hover details. Hand Units keep their pickup/selection lift without an extra detail panel. Resting on a Spell in the hand, Reconnaissance choices or Spy-revealed cards for 350 ms shows its catalog name and rules text in a dark, bordered panel with wrapped 17 px rules text and a 20 px title. The panel stays within the window, accepts no pointer input, and disappears when the pointer leaves, a card is picked up, the visible view changes or the table is hidden.
 
 ## JavaFX screens
 

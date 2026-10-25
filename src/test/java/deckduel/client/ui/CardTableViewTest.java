@@ -79,7 +79,9 @@ class CardTableViewTest {
             var controls = (KingTableControls) t.view.lookup("#kingControls");
             assertTrue(controls.choosingVisible());
             var confirm = (javafx.scene.control.Button) controls.lookup("#confirm-" + king.id());
-            confirm.fire(); assertTrue(t.actions.calls.isEmpty(), "select before confirm");
+            assertEquals("CONFIRM", confirm.getText()); assertTrue(confirm.isDisabled());
+            ((javafx.scene.control.Button) controls.lookup("#offer-" + king.id())).fire();
+            assertTrue(t.actions.calls.isEmpty(), "select before confirm");
             confirm.fire(); assertEquals(List.of(new deckduel.core.card.ChooseKing(king)), t.actions.calls);
             assertEquals(0, t.view.shownRevision(), "selection waits for the server");
             t.view.show(shown(waiting.view(Seat.FIRST), true));
@@ -97,6 +99,93 @@ class CardTableViewTest {
             assertTrue(t.view.rail().description().contains("Kings +0 after multiplier"));
             controls.closeInspector();
             t.view.hidden();
+        });
+    }
+
+    @Test void kingToggleRevealsTheHandWithoutSendingMovesOrLosingTheCandidate() throws Exception {
+        MatchState opening = MatchState.start(DECK, DECK, 3);
+        PlayerView view = opening.view(Seat.FIRST);
+        var king = view.kingOffer().get(1);
+        long deadline = System.currentTimeMillis() + 30_000;
+        FxTesting.run(() -> {
+            var t = table(new ClientSettings(), true);
+            var update = new MatchUpdate("M1", 1, "alice", "bob", false, true, false, false, false, view, deadline);
+            t.view.show(new CardTableView.State(update, false, true));
+            var controls = (KingTableControls) t.view.lookup("#kingControls");
+            var confirm = (javafx.scene.control.Button) controls.lookup("#confirm-" + king.id());
+            ((javafx.scene.control.Button) controls.lookup("#offer-" + king.id())).fire();
+            var toggle = (javafx.scene.control.Button) controls.lookup("#kingHandToggle");
+            assertTrue(toggle.isVisible()); toggle.fire();
+            assertFalse(controls.choosingVisible()); assertTrue(controls.selectionHidden());
+            int index = view.hand().size() - 1;
+            assertEquals(new CardTableView.Hit(TableZone.HAND, index), t.view.hitAt(centre(t.view.handBounds(index))));
+            int unit = 0; while (!view.hand().get(unit).def().occupiesSpace()) unit++;
+            t.view.moveTo(centre(t.view.handBounds(unit)));
+            assertNull(t.view.previewTarget(), "the visible hand must not open Unit popups during King selection");
+            for (int handIndex = 0; handIndex < view.hand().size(); handIndex++) {
+                t.view.moveTo(centre(t.view.handBounds(handIndex)));
+                assertNull(t.view.previewTarget(), "neither Unit nor Spell previews are queued");
+            }
+            assertFalse(t.view.lookup("#spellHoverDetails").isVisible());
+            t.view.keyPressed(key(javafx.scene.input.KeyCode.D));
+            t.view.keyPressed(key(javafx.scene.input.KeyCode.S));
+            assertTrue(t.actions.calls.isEmpty(), "hiding the offer does not unlock gameplay");
+            assertEquals("", toggle.getText()); assertNotNull(toggle.getGraphic());
+            assertTrue(toggle.getAccessibleText().contains("Show King choices"));
+            assertTrue(controls.lookup("#kingHandCountdown").isVisible());
+            toggle.fire(); assertTrue(controls.choosingVisible());
+            assertEquals("CONFIRM", confirm.getText()); assertFalse(confirm.isDisabled());
+            confirm.fire(); assertEquals(List.of(new deckduel.core.card.ChooseKing(king)), t.actions.calls);
+            assertEquals(0, t.view.shownRevision());
+            t.view.hidden();
+        });
+    }
+
+    @Test void kingHoverShowsOnlyAnEnlargedPaintingWithoutAnInformationTooltip() throws Exception {
+        MatchState opening = MatchState.start(DECK, DECK, 3);
+        var king = opening.view(Seat.FIRST).kingOffer().get(0);
+        MatchState ready = opening.apply(Seat.FIRST, new deckduel.core.card.ChooseKing(king))
+                .apply(Seat.SECOND, new deckduel.core.card.ChooseKing(king));
+        FxTesting.run(() -> {
+            var t = table(new ClientSettings(), true);
+            t.view.show(shown(ready.view(Seat.FIRST), true));
+            var button = (javafx.scene.control.Button) t.view.lookup("#yourKing0");
+            assertNull(button.getTooltip());
+            var small = (javafx.scene.image.ImageView) button.getGraphic();
+            assertEquals(t.view.slotBounds(TableZone.OWN, 0).height, small.getFitHeight(), .1);
+            button.getOnMouseEntered().handle(null);
+            var preview = (javafx.scene.image.ImageView) t.view.lookup("#kingHoverArt");
+            assertTrue(preview.isVisible()); assertTrue(preview.isPreserveRatio());
+            assertTrue(preview.getFitHeight() >= 400 && preview.getFitHeight() <= 480);
+            assertSame(small.getImage(), preview.getImage());
+            button.fire();
+            assertTrue(((javafx.scene.image.ImageView) t.view.lookup("#kingInspectorArt")).getFitHeight() <= 480);
+            ((KingTableControls) t.view.lookup("#kingControls")).closeInspector();
+            button.getOnMouseExited().handle(null); assertFalse(preview.isVisible());
+            assertTrue(t.actions.calls.isEmpty()); t.view.hidden();
+        });
+    }
+
+    @Test void kingRevealAnimatesAndReducedMotionCancelsItWithoutClientAutoSelection() throws Exception {
+        PlayerView view = MatchState.start(DECK, DECK, 3).view(Seat.FIRST);
+        List<deckduel.core.card.ChooseKing> moves = new ArrayList<>();
+        KingTableControls controls = FxTesting.call(() -> {
+            var c = new KingTableControls(moves::add);
+            new Scene(new javafx.scene.layout.Pane(c));
+            c.position(920, 92, 310, 1280, 720, 90, 126);
+            c.update(view, System.currentTimeMillis() + 30_000, false, false, false);
+            assertTrue(c.revealing()); return c;
+        });
+        Thread.sleep(750);
+        FxTesting.run(() -> {
+            assertFalse(controls.revealing());
+            var toggle = (javafx.scene.control.Button) controls.lookup("#kingHandToggle");
+            toggle.fire(); toggle.fire(); assertTrue(controls.revealing());
+            controls.update(view, System.currentTimeMillis() - 1, false, false, true);
+            assertFalse(controls.revealing());
+            assertTrue(((javafx.scene.control.Label) controls.lookup("#kingCountdown")).getText().startsWith("0s"));
+            assertTrue(moves.isEmpty(), "only the server chooses a default King");
+            controls.reset(); assertFalse(toggle.isVisible()); assertFalse(controls.choosingVisible());
         });
     }
 
@@ -151,7 +240,7 @@ class CardTableViewTest {
         });
     }
 
-    @Test void restingOnARowCardQueuesALargePreviewThatAClickDismisses() throws Exception {
+    @Test void unitsOnEitherRowAndInTheHandDoNotOpenHoverDetails() throws Exception {
         PlayerView view = rowView();
         int slot = 0;
         while (view.you().row().at(slot) == null) slot++;
@@ -161,7 +250,11 @@ class CardTableViewTest {
             t.view.show(shown(view, true));
             Rectangle card = t.view.rowCardBounds(TableZone.OWN, unit);
             t.view.moveTo(centre(card));
-            assertEquals(new CardTableView.Hit(TableZone.OWN, unit), t.view.previewTarget());
+            assertNull(t.view.previewTarget(), "Unit rows have no magnified detail panel");
+            for (var enemy : view.opponent().row().cards()) {
+                t.view.moveTo(centre(t.view.rowCardBounds(TableZone.OPPONENT, enemy.slot())));
+                assertNull(t.view.previewTarget());
+            }
             int handUnit = 0;
             while (!view.hand().get(handUnit).def().occupiesSpace()) handUnit++;
             t.view.moveTo(centre(t.view.handBounds(handUnit)));
@@ -197,6 +290,11 @@ class CardTableViewTest {
                 var tip = t.view.lookup("#spellHoverDetails");
                 assertTrue(tip.isVisible(), spells.get(index).def().name());
                 assertTrue(tip.isMouseTransparent(), "details must not intercept card input");
+                var layers = t.view.getChildrenUnmodifiable();
+                assertTrue(layers.indexOf(tip) > layers.indexOf(t.view.lookup("#kingControls")),
+                        "Kings and their aura cannot cover Spell details");
+                assertTrue(layers.indexOf(tip) < layers.indexOf(t.view.lookup("#matchResult")));
+                assertTrue(layers.indexOf(tip) < layers.indexOf(t.view.lookup("#cardDetails")));
                 assertEquals(spells.get(index).def().name(),
                         ((javafx.scene.control.Label) t.view.lookup("#spellHoverName")).getText());
                 assertEquals(spells.get(index).def().text(),
@@ -209,6 +307,15 @@ class CardTableViewTest {
                 assertTrue(t.actions.calls.isEmpty(), "hover is read-only");
             });
         }
+        FxTesting.run(() -> t.view.moveTo(centre(t.view.handBounds(spells.size() - 1))));
+        Thread.sleep(550);
+        var hoverImage = FxTesting.call(() -> {
+            assertTrue(t.view.lookup("#spellHoverDetails").isVisible());
+            return t.view.snapshot(null, null);
+        });
+        var hoverPath = java.nio.file.Path.of("target/spell-hover-qa/rightmost-spell-with-king.png");
+        java.nio.file.Files.createDirectories(hoverPath.getParent());
+        javax.imageio.ImageIO.write(javafx.embed.swing.SwingFXUtils.fromFXImage(hoverImage, null), "png", hoverPath.toFile());
         FxTesting.run(() -> t.view.moveTo(centre(t.view.handBounds(0))));
         Thread.sleep(550);
         FxTesting.run(() -> {
@@ -243,6 +350,124 @@ class CardTableViewTest {
             t.view.dragTo(centre(to));
             t.view.releaseAt(centre(to));
             assertEquals(5, ((PlayCard) t.actions.calls.get(0)).slot());
+        });
+    }
+
+    private static void slowlyDrag(CardTableView view, Point2D from, Point2D to) {
+        int steps = Math.max(1, (int) Math.ceil(from.distance(to) / 2));
+        for (int step = 1; step <= steps; step++)
+            view.dragTo(from.add(to.subtract(from).multiply(step / (double) steps)));
+    }
+
+    @Test void smallMouseStepsStartHandDragsInBothInputModesAndOnlyServerUpdatesPlayTheCard() throws Exception {
+        FxTesting.run(() -> {
+            for (boolean click : new boolean[] {true, false}) {
+                var settings = new ClientSettings(); settings.setClickToSelectCards(click);
+                var t = table(settings, true);
+                MatchState state = state(); var view = state.view(state.turn());
+                t.view.show(shown(view, true)); t.view.show(shown(view, false));
+                int index = 0; while (!view.hand().get(index).def().occupiesSpace()) index++;
+                long cardId = view.hand().get(index).id();
+                Point2D origin = centre(t.view.handBounds(index));
+                t.view.pressAt(origin);
+                for (int dx = 2; dx <= 10; dx += 2) t.view.dragTo(origin.add(dx, 0));
+                assertTrue(t.view.lookup("#draggedCardLayer").isVisible(), "slow events must accumulate beyond the drag threshold");
+                var layer = t.view.lookup("#draggedCardLayer"); assertTrue(layer.isMouseTransparent());
+                var children = t.view.getChildrenUnmodifiable();
+                assertTrue(children.indexOf(layer) > children.indexOf(t.view.lookup("#kingControls")));
+                assertTrue(children.indexOf(layer) < children.indexOf(t.view.lookup("#matchResult")));
+                Point2D target = centre(t.view.slotBounds(TableZone.OWN, 0));
+                slowlyDrag(t.view, origin.add(10, 0), target); t.view.releaseAt(target);
+                assertEquals(List.of(PlayCard.place(cardId, 0)), t.actions.calls);
+                assertTrue(view.you().row().cards().isEmpty(), "a visual drag applies no gameplay locally");
+                assertFalse(layer.isVisible());
+                var accepted = state.apply(state.turn(), PlayCard.place(cardId, 0));
+                t.view.show(shown(accepted.view(view.seat()), false));
+                assertTrue(t.view.animating(), "the server's accepted play still runs its card animation");
+                t.view.hidden();
+            }
+        });
+    }
+
+    @Test void holdingLiftsTheHandCardAndCancelledDragEasesBackInsteadOfTeleporting() throws Exception {
+        Table[] holder = new Table[1]; Rectangle[] resting = new Rectangle[1]; int[] index = new int[1];
+        FxTesting.run(() -> {
+            var t = holder[0] = table(new ClientSettings(), true);
+            var state = state(); var view = state.view(state.turn());
+            t.view.show(shown(view, true)); t.view.show(shown(view, false));
+            index[0] = view.hand().size() - 1;
+            resting[0] = t.view.handBounds(index[0]); t.view.pressAt(centre(resting[0]));
+        });
+        Thread.sleep(200);
+        var image = FxTesting.call(() -> {
+            var t = holder[0];
+            assertTrue(t.view.handBounds(index[0]).y < resting[0].y, "press wakes the lift without any mouse movement");
+            Point2D origin = centre(resting[0]);
+            for (int dx = 2; dx <= 10; dx += 2) t.view.dragTo(origin.add(dx, 0));
+            var king = t.view.lookup("#yourKing0");
+            var bounds = t.view.sceneToLocal(king.localToScene(king.getBoundsInLocal()));
+            t.view.dragTo(new Point2D(bounds.getCenterX(), bounds.getCenterY()));
+            assertTrue(t.view.lookup("#draggedCardLayer").isVisible());
+            return t.view.snapshot(null, null);
+        });
+        var path = java.nio.file.Path.of("target/drag-qa/drag-over-king.png");
+        java.nio.file.Files.createDirectories(path.getParent());
+        javax.imageio.ImageIO.write(javafx.embed.swing.SwingFXUtils.fromFXImage(image, null), "png", path.toFile());
+        FxTesting.run(() -> {
+            var t = holder[0]; Point2D outside = new Point2D(80, 80);
+            t.view.dragTo(outside); t.view.releaseAt(outside);
+            var returning = t.view.handBounds(index[0]);
+            assertEquals(outside.getX(), returning.getCenterX(), 1);
+            assertEquals(outside.getY(), returning.getCenterY(), 1);
+            assertTrue(t.actions.calls.isEmpty());
+        });
+        Thread.sleep(1500);
+        FxTesting.run(() -> {
+            var t = holder[0]; assertEquals(resting[0], t.view.handBounds(index[0]));
+            t.view.hidden();
+        });
+    }
+
+    @Test void slowRowDragsAndEscapeHiddenOrFreshPressCannotLeaveAGhostGesture() throws Exception {
+        FxTesting.run(() -> {
+            var t = table(new ClientSettings(), true); var view = rowView();
+            t.view.show(shown(view, true)); t.view.show(shown(view, false));
+            var cards = view.you().row().cards(); int from = cards.get(0).slot(), to = cards.get(1).slot();
+            Rectangle source = t.view.slotBounds(TableZone.OWN, from), target = t.view.slotBounds(TableZone.OWN, to);
+            Point2D origin = centre(source); t.view.pressAt(origin);
+            for (int dx = 2; dx <= 10; dx += 2) t.view.dragTo(origin.add(dx, 0));
+            assertTrue(t.view.lookup("#draggedCardLayer").isVisible());
+            t.view.releaseAt(centre(target));
+            assertEquals(target, t.view.slotBounds(TableZone.OWN, from)); assertTrue(t.actions.calls.isEmpty());
+            Point2D hand = centre(t.view.handBounds(0)); t.view.pressAt(hand); t.view.dragTo(hand.add(10, 0));
+            t.view.keyPressed(key(javafx.scene.input.KeyCode.ESCAPE));
+            assertFalse(t.view.lookup("#draggedCardLayer").isVisible()); assertFalse(t.view.confirmShowing());
+            t.view.show(shown(view, true));
+            hand = centre(t.view.handBounds(0)); t.view.pressAt(hand); t.view.dragTo(hand.add(10, 0));
+            t.view.hidden(); t.view.shown(0); t.view.dragTo(hand.add(50, 0));
+            assertFalse(t.view.lookup("#draggedCardLayer").isVisible(), "a hidden table discards its gesture");
+            t.view.pressAt(hand); t.view.dragTo(hand.add(10, 0));
+            t.view.pressAt(new Point2D(2, 2)); t.view.dragTo(hand);
+            assertFalse(t.view.lookup("#draggedCardLayer").isVisible(), "a fresh press replaces a missed-release gesture");
+            assertTrue(t.actions.calls.isEmpty()); t.view.hidden();
+        });
+    }
+
+    @Test void cardsStillHiddenInTheOpeningDealCannotStartAnInvisibleDrag() throws Exception {
+        FxTesting.run(() -> {
+            var t = table(new ClientSettings(), true); var state = state();
+            t.view.show(shown(state.view(state.turn()), false));
+            Point2D last = centre(t.view.handBounds(state.view(state.turn()).hand().size() - 1));
+            assertNull(t.view.hitAt(last), "a hand position is not a card until that card is visible");
+            t.view.pressAt(last); slowlyDrag(t.view, last, last.add(10, -10));
+            assertFalse(t.view.lookup("#draggedCardLayer").isVisible());
+            assertTrue(t.actions.calls.isEmpty()); t.view.hidden();
+            t.view.show(shown(state.view(state.turn()), true)); t.view.shown(0);
+            Point2D hand = centre(t.view.handBounds(0)); t.view.pressAt(hand); t.view.dragTo(hand.add(10, 0));
+            assertTrue(t.view.lookup("#draggedCardLayer").isVisible());
+            t.view.show(shown(state.forfeit(state.turn().other()).view(state.turn()), true));
+            assertFalse(t.view.lookup("#draggedCardLayer").isVisible(), "a finished match cancels any held card");
+            t.view.hidden();
         });
     }
 
@@ -612,7 +837,7 @@ class CardTableViewTest {
         Table[] holder = new Table[1];
         FxTesting.run(() -> {
             var t = holder[0] = table(new ClientSettings(), true);
-            t.view.show(shown(before, false));
+            t.view.show(shown(before, true));
             t.view.show(shown(after, false));
             assertTrue(t.view.rail().description().contains("Your score " + after.you().score().total() + "."),
                     "the true score is available at once");
@@ -622,8 +847,8 @@ class CardTableViewTest {
         Thread.sleep(Math.round((PlayAnimator.FLIGHT + trace.finishAt + 600) * Staging.TEMPO));
         FxTesting.run(() -> {
             var cues = holder[0].cues;
-            // The opening deal still plays out alongside the play; it is not cut short.
-            assertEquals(ScoringSounds.Cue.Kind.ROUND, cues.get(0).kind());
+            // The baseline hand is already dealt; the accepted card starts with its flight.
+            assertEquals(ScoringSounds.Cue.Kind.WHOOSH, cues.get(0).kind());
             int whoosh = cues.indexOf(new ScoringSounds.Cue(ScoringSounds.Cue.Kind.WHOOSH, 0));
             assertTrue(whoosh >= 0 && whoosh < cues.indexOf(new ScoringSounds.Cue(ScoringSounds.Cue.Kind.CARD, 0)),
                     "the card is heard flying before it lands");

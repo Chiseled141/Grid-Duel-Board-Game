@@ -84,9 +84,17 @@ public final class MatchState {
     private final List<MatchEvent> events;
     private final MatchOutcome outcome;
     private final PlayRecord lastPlay;
+    /** Recipient-projected only: the accepted final action before banking/resetting the round. */
+    private final MatchState closingRound;
 
     private MatchState(long seed, int round, int revision, Seat starter, Seat turn, Side first, Side second,
                        List<RoundResult> rounds, List<MatchEvent> events, MatchOutcome outcome, PlayRecord lastPlay) {
+        this(seed, round, revision, starter, turn, first, second, rounds, events, outcome, lastPlay, null);
+    }
+
+    private MatchState(long seed, int round, int revision, Seat starter, Seat turn, Side first, Side second,
+                       List<RoundResult> rounds, List<MatchEvent> events, MatchOutcome outcome, PlayRecord lastPlay,
+                       MatchState closingRound) {
         this.seed = seed;
         this.round = round;
         this.revision = revision;
@@ -98,6 +106,7 @@ public final class MatchState {
         this.events = List.copyOf(events.subList(Math.max(0, events.size() - EVENT_LIMIT), events.size()));
         this.outcome = outcome;
         this.lastPlay = lastPlay;
+        this.closingRound = closingRound;
     }
 
     /** Opens a match and deals round one. The seed picks the first starter and every shuffle. */
@@ -294,6 +303,8 @@ public final class MatchState {
 
     /** Banks both live scores, then deals the next round or finishes the match. */
     private MatchState endRound(Side first, Side second, List<MatchEvent> log, PlayRecord record) {
+        MatchState closing = new MatchState(seed, round, revision + 1, starter, null, first, second,
+                rounds, log, null, record);
         long firstScore = Scoring.score(first.row(), first.kings()).total();
         long secondScore = Scoring.score(second.row(), second.kings()).total();
         RoundResult result = new RoundResult(round, starter, firstScore, secondScore);
@@ -306,7 +317,7 @@ public final class MatchState {
                     : bankedFirst.matchTotal() > bankedSecond.matchTotal() ? Seat.FIRST : Seat.SECOND;
             log.add(new MatchEvent(null, winner == null ? "The match is drawn." : "The match is decided."));
             return new MatchState(seed, round, revision + 1, starter, null, bankedFirst, bankedSecond, history, log,
-                    new MatchOutcome(winner, false), record);
+                    new MatchOutcome(winner, false), record, closing);
         }
         // The round's loser starts next; after a tie the starting player alternates.
         Seat nextStarter = result.winner() == null ? starter.other() : result.winner().other();
@@ -314,7 +325,7 @@ public final class MatchState {
         log.add(new MatchEvent(null, "Round " + nextRound + " begins."));
         return new MatchState(seed, nextRound, revision + 1, nextStarter, nextStarter,
                 deal(bankedFirst, seed, nextRound, Seat.FIRST), deal(bankedSecond, seed, nextRound, Seat.SECOND),
-                history, log, null, record);
+                history, log, null, record, closing);
     }
 
     private static Side bank(Side side, long score) {
@@ -345,6 +356,11 @@ public final class MatchState {
                 mine.hand(), rounds, events, outcome, lastPlay, mine.looking(), revealed,
                 phase() == MatchPhase.KING_SELECTION ? kingOffer() : List.of(), mine.selectedKing(),
                 mine.looking().isEmpty() ? ChoiceKind.NONE : mine.choiceKind());
+    }
+
+    /** Final accepted round view before banking, visible only to its recipient; null on other moves. */
+    public PlayerView closingRoundView(Seat seat) {
+        return closingRound == null ? null : closingRound.view(seat);
     }
 
     /** One side's public facts. */

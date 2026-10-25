@@ -71,7 +71,8 @@ class PracticeMatchSystemTest {
                 FxTesting.run(() -> {
                     var king = model[0].match().view().kingOffer().get(0);
                     var button = (javafx.scene.control.Button) screens[0].table().lookup("#confirm-" + king.id());
-                    button.fire(); button.fire();
+                    ((javafx.scene.control.Button) screens[0].table().lookup("#offer-" + king.id())).fire();
+                    button.fire();
                 });
                 waitFor(() -> model[0].match().view().yourTurn(), "the player's turn");
                 // A bot that moved first is shown only after the opening deal, so wait for the table too.

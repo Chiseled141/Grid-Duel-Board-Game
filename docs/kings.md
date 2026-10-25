@@ -2,7 +2,7 @@
 
 Kings are a separate seven-entry immutable catalog (`core/card/King`), outside the unchanged
 45-card draw deck, hand and seven-space Unit row. There is no currency, shop, reroll, upgrade,
-automatic selection timer or generic authority bonus. Values follow the supplied paintings and
+generic authority bonus. A server-owned selection deadline is described below. Values follow the supplied paintings and
 still need playtesting; this change makes no balance or performance claim.
 
 ## Acquisition and visibility
@@ -21,7 +21,39 @@ normal round starter is preserved. Round 3 retains both Kings and has no selecti
 
 Disconnect holds this state through the existing grace period; reconnect projects it again.
 A forfeit can end a match during selection. A rematch starts a new state with new offers, empty
-ownership and reset counters. No choice is made for a disconnected human.
+ownership and reset counters. The deadline continues during the reconnect grace period; a
+forfeit that ends the match cancels it.
+
+## Selection deadline and hand preview (approved 2026-10-25)
+
+Each selection phase lasts 30 seconds from the server's opening deal. `KingChoiceDeadline`
+opens one shared deadline for that game/round. A confirmation, hidden overlay, rejected request
+or reconnect never resets it. `MatchSession` schedules its callback onto the match executor;
+at expiry each unconfirmed seat confirms the first (leftmost) offered King through the normal
+immutable engine transition. Existing confirmations remain unchanged. Automatic choices spend
+no plays/draws and each accepted revision is recorded. Leaving selection or ending a game
+cancels the timer; game/round/deadline guards discard obsolete callbacks after rematches.
+Late actions also check expiry on the executor before ordinary validation.
+
+Protocol 18 adds `MatchUpdate.kingChoiceDeadlineMillis` (epoch milliseconds, zero outside
+selection). The client uses it only for a countdown, never to submit a default choice itself.
+It is live session metadata: the existing `PlayerView` replay format is unchanged, and earlier
+King replays remain compatible. Automatic confirmations appear in normal recorded views.
+
+The centered teal eye-icon button below the offer toggles only the overlay, without a visible caption.
+While hidden, the dealt hand stays visible. Unit/Spell hover popups are disabled throughout
+King selection (including while hidden); King inspection remains available. Play/draw/skip remain blocked and
+the countdown continues, with a small time display at the top. The three original paintings rise, scale and fade in from left to
+right when shown, with no new artwork or sound. Reduced motion bypasses this animation.
+Select a painting, then use its `CONFIRM` button; the button contains no King name and is enabled
+only for the selected painting. Offered paintings glow in their King's color on hover/focus or selection.
+King slots match Unit-row height, keeping each original aspect ratio. Empty positions have no
+numbered label; occupied positions show only `+N` in the score rail's Outfit display font and
+the King's color. Each deployed painting has a persistent, static edge aura of that color, with
+clearance from the Unit rows and controls. `KingVisuals` owns these presentation colors outside core.
+King hover shows only the original painting, capped at 480 logical pixels high (58% of the table
+height on smaller windows). The click inspector has the same 480-pixel height cap and still provides
+contribution/status. Aura does not animate, including with reduced motion enabled.
 
 ## Abilities and score order
 
@@ -73,8 +105,9 @@ continues to use `ChoiceKind.RECONNAISSANCE` and `KeepCard`, ending its cast's t
 - `server/MatchSession`: existing single executor, revision checks, accepted-request-ID retry,
   disconnect grace, rematch and replay capture also cover the new moves. Its `awaits` check
   schedules bots for either seat's outstanding King confirmation independently of normal turns.
-- `net/Message`: protocol **17**, explicit allowlist entries for every new wire type, unchanged
-  serialVersionUID 1, socket/TLS, heartbeat, flush/reset and silence rules. Version 16 is rejected.
+  `KingChoiceDeadline` and the existing scheduler enforce the 30-second fallback on that executor.
+- `net/Message`: protocol **19**, explicit allowlist entries for every new wire type, unchanged
+  serialVersionUID 1, socket/TLS, heartbeat, flush/reset and silence rules. Version 17 and earlier are rejected.
 - `client/state/ClientModel`: permits the owner's King choice through the normal pending-action
   seam; selection counts as an active match for reconnect and deferred updates.
 - `client/bot/CardBot`: protocol `bots`/`demo` handles both outstanding King selection and ordinary
@@ -84,8 +117,8 @@ continues to use `ChoiceKind.RECONNAISSANCE` and `KeepCard`, ending its cast's t
   contribution and Edict status. It consumes snapshots and emits moves only. Opening-deal
   staging completes before the offer appears. Reduced motion shows the offer immediately.
 - `KingArt`: cached background image decoding; paints the full original aspect ratio without
-  cropping. `assets/cards/kings/*.png` are byte-for-byte copies of `7_king_cards/*.png`; the originals
-  are untouched. No artwork or sound was generated. SHA-256 checks cover all seven resources.
+  cropping. The supplied originals are stored unchanged in `src/main/resources/assets/cards/kings/`;
+  redundant import copies are not retained. SHA-256 checks cover all seven resources.
 - `ScoreRail`/`ScoringTrace`/`PlayAnimator`: separate King contribution after formation, with a
   King tally pocket and existing sound cues. `ReplayPanel` renders the recorded King facts and
   labels Edict's private choice separately.
@@ -102,4 +135,4 @@ The new required King/choice fields deliberately reject pre-King serialized fram
 existing "recorded by another version" response. Existing accounts, result rows and stored
 replay bytes are retained; no destructive migration or database reset is performed.
 
-See [King verification](testing/kings-2026-10-25.md) for commands, actual results and limitations.
+See [verification notes](testing/README.md) for King selection, deadlines, presentation and privacy checks.

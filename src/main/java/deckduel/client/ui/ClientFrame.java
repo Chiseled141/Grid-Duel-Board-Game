@@ -102,6 +102,7 @@ public final class ClientFrame extends JFrame {
         content.add(lobby, Screen.LOBBY.name());
         content.add(new HistoryPanel(model, settings, model::leaveToLobby), Screen.HISTORY.name());
         content.add(new ReplayPanel(model), Screen.REPLAY.name());
+        content.add(new HowToPlayPanel(model), Screen.HOW_TO_PLAY.name());
         add(buildScene());
         fxScreens = new FxScreens(model, settings, scoringSounds, this, () -> soundToggle.doClick(),
                 settings::soundEnabled, bounds -> { setBounds(bounds); closeAndSave(); });
