@@ -3,4 +3,4 @@
 HOST="${1:-127.0.0.1}"
 PORT="${2:-5555}"
 cd "$(dirname "$0")/.." || exit 1
-exec java -jar target/onitama.jar client --host "$HOST" --port "$PORT"
+exec java -jar target/deck-duel.jar client --host "$HOST" --port "$PORT"

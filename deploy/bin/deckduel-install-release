@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# Run inside EC2: sudo /opt/deckduel/bin/deckduel-install-release <unpacked bundle folder>
+# Verifies the bundle's SHA256SUMS and copies its server jar to /opt/deckduel/releases/<version>/.
+# It does not switch versions; deckduel-switch-release does that safely.
+set -euo pipefail
+[ "$(id -u)" -eq 0 ] || { echo "Run with sudo." >&2; exit 1; }
+BUNDLE=${1:?usage: deckduel-install-release <bundle folder>}
+VERSION=$(cat "$BUNDLE/VERSION")
+[[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || { echo "Bad version '$VERSION'" >&2; exit 1; }
+(cd "$BUNDLE" && sha256sum --check --strict SHA256SUMS)
+TARGET=/opt/deckduel/releases/$VERSION
+if [ -d "$TARGET" ]; then
+  cmp -s "$BUNDLE/deck-duel-server.jar" "$TARGET/deck-duel-server.jar" \
+    && { echo "Release $VERSION is already installed (identical)."; exit 0; }
+  echo "Release $VERSION is already installed with different contents; refusing to replace it. Use a new version." >&2
+  exit 1
+fi
+install -d -o root -g root -m 0755 "$TARGET"
+install -o root -g root -m 0644 "$BUNDLE/deck-duel-server.jar" "$BUNDLE/SHA256SUMS" "$BUNDLE/VERSION" "$TARGET/"
+echo "Installed release $VERSION in $TARGET. Next: sudo /opt/deckduel/bin/deckduel-switch-release $VERSION"

@@ -1,4 +1,5 @@
 target/
+*.class
 data/
 results/
 *.db
@@ -11,3 +12,11 @@ logs/
 # Generated visual QA exports; runtime artwork belongs in src/main/resources.
 artifacts/
 docs/screenshots/
+output/
+
+# Release and deployment output, and secrets that must never be committed.
+dist/
+*.pem
+*.key
+*.p12
+*.db.enc

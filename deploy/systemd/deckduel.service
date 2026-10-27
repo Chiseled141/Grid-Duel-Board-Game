@@ -1,0 +1,43 @@
+# Deck Duel game server. Install as /etc/systemd/system/deckduel.service (deploy/setup-ec2.sh does this).
+[Unit]
+Description=Deck Duel game server
+Documentation=file:///opt/deckduel/docs/deployment.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=deckduel
+Group=deckduel
+# Memory for a 2 GiB t4g.small (docs/deployment.md "JVM memory"): a 512 MiB heap, capped
+# metaspace, the serial collector for a small heap on two vCPUs, and exit (then restart) on OOM.
+ExecStart=/usr/bin/java -Xms128m -Xmx512m -XX:MaxMetaspaceSize=128m -XX:+UseSerialGC -XX:+ExitOnOutOfMemoryError \
+    -Djava.awt.headless=true -jar /opt/deckduel/current/deck-duel-server.jar server --config /etc/deckduel/server.properties
+# Stopping ends every match still in progress; use deckduel-switch-release, which drains first.
+TimeoutStopSec=20
+SuccessExitStatus=143
+Restart=on-failure
+RestartSec=5
+RuntimeDirectory=deckduel
+RuntimeDirectoryMode=0750
+StateDirectory=deckduel
+StateDirectoryMode=0700
+UMask=0027
+LimitNOFILE=4096
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/deckduel /var/backups/deckduel
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=
+
+[Install]
+WantedBy=multi-user.target

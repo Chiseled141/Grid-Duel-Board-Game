@@ -1,106 +1,27 @@
-# Grid Duel
+# Deck Duel
 
-A two-player strategy game on a 7×7 board, built with Java 17 and Swing.
-Each player controls seven identical pieces and combines public movement cards
-with private skill cards. The authoritative server handles accounts, rooms,
-match rules, reconnects, Elo and SQLite persistence.
+A two-player card duel being built around Gwent-inspired turns and Balatro-style scoring combinations.
 
-## How to run the game
+Start directly from **Play**: everyone plays the same automatic 45-card deck (all 35 Units and one of each of the 10 Spells), dealt as the match opens. Then find an online opponent, host or join a room, or practise against an easy or hard bot. **History** lists your recorded matches. Matches run on an authoritative local server with privacy-filtered views, reconnect and rematch; recorded matches update win/loss records.
 
-Install **JDK 17 or newer** and **Maven**. Open a terminal in this project's folder
-(the folder containing `pom.xml`).
+The cards are listed in [the catalog notes](docs/card-catalog.md): seven nations (Ashkar, Asterion, Dravorn, Nerath, Solmara, Sylvaren, Vaelora) × Assassin 2, Bowman 3, Guardman 4, Knight 5 and Wizard 6 points. Each row's best Balatro-style formation (such as Full Muster, +20 ×2) adds points and a multiplier. The Unit library and deck are approved; formation values and a few edge cases are provisional. All 45 cards and the shared card back use painted art (`src/main/resources/assets/cards/`).
 
-### 1. Build the game
+## Build and run
 
-```bash
-mvn package
+Use JDK 17 or newer and Maven:
+
+```sh
+mvn clean verify
+java -jar target/deck-duel.jar server --port 5555 --db data/deck-duel.db
+java -jar target/deck-duel.jar client --host 127.0.0.1 --port 5555
+java -jar target/deck-duel.jar demo --games 1          # two bots, throwaway server
+java -jar target/deck-duel.jar bots --port 5555 --count 4 --games 2
 ```
 
-Wait for `BUILD SUCCESS`. This creates `target/onitama.jar`.
+Tests use temporary databases and local ephemeral ports. Swing and JavaFX tests need a graphical session. Client and server use protocol 13; older applications cannot connect.
 
-### 2. Start the server
+On the table, click a hand card and then a highlighted space or target (or drag it there); **Draw** (or the deck, or D) makes one of your three manual draws per round. **Skip turn** (or S) keeps your cards and board unchanged and uses one of your ten round plays. Hand cards are larger than row cards; rest the pointer on a row card for a large preview. Your formation and its multiplier head the score breakdown. Click a Spy-revealed card for a large image and full details (Esc closes). Arrow keys pick a card, 1–7 choose a space, Enter casts a Spell that needs no target, Esc deselects.
 
-In the same terminal, run:
+## Rules
 
-```bash
-java -jar target/onitama.jar server --port 5555 --db data/onitama.db
-```
-
-Keep this terminal open while playing. The server saves accounts and results in
-`data/onitama.db`; no separate database installation is needed.
-
-### 3. Open the game
-
-Open a **second terminal** in the same project folder and run:
-
-```bash
-java -jar target/onitama.jar client --host 127.0.0.1 --port 5555
-```
-
-In the game window:
-
-- **Register** an account, or **Login** if you already have one.
-- Choose **Play → Practice** to play against a bot.
-- For two players, open another client with the same command, log in with a
-  different account, and choose **Play → Find match** in both clients to pair
-  automatically, or create/join a room from **Play**. Find match waits for another
-  player on the same server; **Cancel search** stops waiting.
-- In the main menu, Play and Practice, use the mouse or **arrow keys / WASD**
-  to choose an action, **Enter** to open it, and **Esc / Backspace** to go back. Backspace still
-  deletes text when editing a room code.
-- When a new match finishes loading, press **Enter Match**. **Return to Match**
-  opens an ongoing match immediately.
-
-Next time, repeat steps 2 and 3. Rebuild only after changing or updating the code.
-To stop, close the game windows and press **Ctrl+C** in the server terminal.
-
-If the game cannot connect, check that the server is running and both commands
-use port `5555`. If the server says the port is already in use, an existing server
-may already be running.
-
-## Gameplay
-
-- Each turn: optional movement, optional one skill, then End Turn. Passing is legal.
-- Shared movement deck: 16 cards, two in each player's hand. A played card returns
-  to the deck, which is shuffled before drawing a replacement; the same card may return.
-- Shared skill deck: 24 unique effects, three starting skills per player. Successfully
-  cast skills are spent permanently; draw a replacement while the deck has cards.
-- Start with 2 mana, gain 1 at each own-turn start (including the first), cap 5.
-- Movement jumps. Friendly landing is illegal; landing on an enemy eliminates it.
-- Win by eliminating every enemy or reaching 8 points. Each enemy eliminated
-  earns 1 point; holding a gold square until your turn starts earns +1 point.
-- Blue squares award +1 bonus mana at your turn start, within the 5-mana cap.
-- Otherwise, 60 completed player turns is a draw. Elimination and score wins
-  take priority over the turn limit.
-
-These are bundled defaults. The [authoritative spec](GRID-DUEL-BOARD-GAME_SPEC.md)
-defines effects, targeting and configurable balance.
-
-Additional modes:
-
-```bash
-java -jar target/onitama.jar demo --seed 42
-java -jar target/onitama.jar bots --host 127.0.0.1 --port 5555 --bots 8 --games 4
-```
-
-Server/demo accept `--config path/to/balance.properties`. See
-[the balance template](docs/examples/game-balance.properties). Matches retain an
-immutable rules snapshot; editing a file does not change an ongoing match.
-Skill text and costs are rendered from that snapshot.
-
-## Validation and source map
-
-`mvn test` covers the Grid Duel engine and skills, atomic rejection, privacy,
-protocol retries/reconnects, SQLite/Elo, bots and Swing presentation. Tests use
-local ephemeral ports and temporary databases; no running server is required.
-Some older engine classes remain solely for regression and wire-rejection tests.
-
-- `src/main/java/onitama/core/duel`: live engine, effects and recipient views.
-- `src/main/java/onitama/config`: validated balance loader and skill text.
-- `src/main/java/onitama/client`: Swing client, state observers and bot harness.
-- `src/main/java/onitama/{server,net,db}`: sessions, protocol and persistence.
-- `src/main/resources`: bundled config, artwork, fonts and audio.
-- `data/`, `results/`: local databases and bot output; do not commit personal data.
-
-Read [AGENTS.md](AGENTS.md) before coding and
-[the Step 6 readiness handoff](docs/handoffs/step-06-readiness.md) before continuing.
+The approved rules, architecture and open design work are in [AGENTS.md](AGENTS.md). The [board and score-panel notes](docs/design/card-table-design.md) describe the table design; [verification notes](docs/testing/README.md) list reproducible checks and current results.

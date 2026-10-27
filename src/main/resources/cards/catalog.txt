@@ -1,0 +1,74 @@
+# Deck Duel card catalog: 35 Units and 10 neutral Spells (AGENTS.md §5.1, §5.5).
+# Nations, classes and printed points follow the painted Unit art (2026-10-22): Assassin 2,
+# Bowman 3, Guardman 4, Knight 5, Wizard 6, identical in every nation. Each Unit's id names its
+# art file, assets/cards/<id>.png. Landmarks and Sabotage were removed at the user's request
+# (2026-10-21); the eleventh Spell slot is open until a new Spell is designed.
+#
+# unit     | id | name | points 1-6 | nation | class
+# spell    | id | name | effect
+# Spell effects:    DISABLE <OWN|OPPONENT> <POINTS|TAGS> · DESTROY <OWN|OPPONENT> · CLEAR_DISABLE
+#                   RANDOM_DISCARD <cards> · RANDOM_STEAL <cards> · DRAW <cards> · EXCHANGE <discard> <draw>
+#                   RECONNAISSANCE <look> · SPY <cards>
+version | cards-neutral-5
+regions | Ashkar;Asterion;Dravorn;Nerath;Solmara;Sylvaren;Vaelora
+
+# Ashkar
+unit | ashkar-assassin | Ashkar Assassin | 2 | Ashkar | Assassin
+unit | ashkar-bowman | Ashkar Bowman | 3 | Ashkar | Bowman
+unit | ashkar-guardman | Ashkar Guardman | 4 | Ashkar | Guardman
+unit | ashkar-knight | Ashkar Knight | 5 | Ashkar | Knight
+unit | ashkar-wizard | Ashkar Wizard | 6 | Ashkar | Wizard
+
+# Asterion
+unit | asterion-assassin | Asterion Assassin | 2 | Asterion | Assassin
+unit | asterion-bowman | Asterion Bowman | 3 | Asterion | Bowman
+unit | asterion-guardman | Asterion Guardman | 4 | Asterion | Guardman
+unit | asterion-knight | Asterion Knight | 5 | Asterion | Knight
+unit | asterion-wizard | Asterion Wizard | 6 | Asterion | Wizard
+
+# Dravorn
+unit | dravorn-assassin | Dravorn Assassin | 2 | Dravorn | Assassin
+unit | dravorn-bowman | Dravorn Bowman | 3 | Dravorn | Bowman
+unit | dravorn-guardman | Dravorn Guardman | 4 | Dravorn | Guardman
+unit | dravorn-knight | Dravorn Knight | 5 | Dravorn | Knight
+unit | dravorn-wizard | Dravorn Wizard | 6 | Dravorn | Wizard
+
+# Nerath
+unit | nerath-assassin | Nerath Assassin | 2 | Nerath | Assassin
+unit | nerath-bowman | Nerath Bowman | 3 | Nerath | Bowman
+unit | nerath-guardman | Nerath Guardman | 4 | Nerath | Guardman
+unit | nerath-knight | Nerath Knight | 5 | Nerath | Knight
+unit | nerath-wizard | Nerath Wizard | 6 | Nerath | Wizard
+
+# Solmara
+unit | solmara-assassin | Solmara Assassin | 2 | Solmara | Assassin
+unit | solmara-bowman | Solmara Bowman | 3 | Solmara | Bowman
+unit | solmara-guardman | Solmara Guardman | 4 | Solmara | Guardman
+unit | solmara-knight | Solmara Knight | 5 | Solmara | Knight
+unit | solmara-wizard | Solmara Wizard | 6 | Solmara | Wizard
+
+# Sylvaren
+unit | sylvaren-assassin | Sylvaren Assassin | 2 | Sylvaren | Assassin
+unit | sylvaren-bowman | Sylvaren Bowman | 3 | Sylvaren | Bowman
+unit | sylvaren-guardman | Sylvaren Guardman | 4 | Sylvaren | Guardman
+unit | sylvaren-knight | Sylvaren Knight | 5 | Sylvaren | Knight
+unit | sylvaren-wizard | Sylvaren Wizard | 6 | Sylvaren | Wizard
+
+# Vaelora
+unit | vaelora-assassin | Vaelora Assassin | 2 | Vaelora | Assassin
+unit | vaelora-bowman | Vaelora Bowman | 3 | Vaelora | Bowman
+unit | vaelora-guardman | Vaelora Guardman | 4 | Vaelora | Guardman
+unit | vaelora-knight | Vaelora Knight | 5 | Vaelora | Knight
+unit | vaelora-wizard | Vaelora Wizard | 6 | Vaelora | Wizard
+
+# Spells: neutral, one copy each in every deck.
+spell | disable-tags | Disable Tags | DISABLE OPPONENT TAGS
+spell | disable-points | Disable Points | DISABLE OPPONENT POINTS
+spell | destroy-unit | Destroy Unit | DESTROY OPPONENT
+spell | random-discard | Random Discard | RANDOM_DISCARD 1
+spell | random-steal | Random Steal | RANDOM_STEAL 1
+spell | draw-two | Draw Two | DRAW 2
+spell | exchange | Exchange | EXCHANGE 1 2
+spell | reconnaissance | Reconnaissance | RECONNAISSANCE 3
+spell | spy | Spy | SPY 3
+spell | clear-disable | Clear Disable | CLEAR_DISABLE

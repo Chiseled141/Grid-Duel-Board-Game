@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# Run inside EC2 (optional): sudo /opt/deckduel/bin/deckduel-backup-upload <backup-bucket> [prefix]
+# Uploads the newest encrypted backup from /var/backups/deckduel to s3://<bucket>/<prefix>/.
+# Needs the AWS CLI and an instance role allowing s3:PutObject on that prefix (docs/deployment.md);
+# without it, copy backups off the instance by the manual route described there.
+set -euo pipefail
+BUCKET=${1:?usage: deckduel-backup-upload <backup-bucket> [prefix]}
+PREFIX=${2:-deckduel-backups}
+NEWEST=$(ls -1 /var/backups/deckduel/deckduel-*.db.enc 2>/dev/null | sort | tail -1)
+[ -n "$NEWEST" ] || { echo "No backup in /var/backups/deckduel; run: sudo systemctl start deckduel-backup" >&2; exit 1; }
+aws s3 cp "$NEWEST" "s3://$BUCKET/$PREFIX/$(basename "$NEWEST")" --sse AES256 --only-show-errors
+echo "Uploaded $(basename "$NEWEST") to s3://$BUCKET/$PREFIX/"
