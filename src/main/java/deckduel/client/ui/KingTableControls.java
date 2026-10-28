@@ -11,6 +11,8 @@ import java.util.EnumMap;
 import java.util.Map;
 import java.util.function.Consumer;
 import javafx.animation.Animation;
+import javafx.animation.Interpolator;
+import javafx.animation.KeyValue;
 import javafx.animation.FadeTransition;
 import javafx.animation.KeyFrame;
 import javafx.animation.ParallelTransition;
@@ -20,6 +22,7 @@ import javafx.animation.PauseTransition;
 import javafx.animation.Timeline;
 import javafx.animation.TranslateTransition;
 import javafx.geometry.Pos;
+import javafx.geometry.Bounds;
 import javafx.beans.binding.Bindings;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
@@ -38,6 +41,8 @@ import javafx.util.Duration;
 final class KingTableControls extends Pane {
     private final Consumer<ChooseKing> choose;
     private final Pane slots = new Pane();
+    private final Pane flights = new Pane();
+    private final Timeline deployment = new Timeline();
     private final StackPane choice = new StackPane(), inspector = new StackPane();
     private final Label notice = label(""), countdown = label("");
     private final Button toggle = new Button();
@@ -59,6 +64,9 @@ final class KingTableControls extends Pane {
         this.choose = choose;
         setId("kingControls"); setManaged(false); setPickOnBounds(false);
         slots.setManaged(false); slots.setPickOnBounds(false);
+        flights.setManaged(false); flights.setMouseTransparent(true);
+        flights.setId("kingFlights");
+        deployment.setOnFinished(e -> finishDeployment());
         choice.setManaged(false); inspector.setManaged(false);
         choice.setId("kingSelection"); inspector.setId("kingInspector");
         choice.setStyle("-fx-background-color: rgba(8,6,4,.91);");
@@ -82,15 +90,25 @@ final class KingTableControls extends Pane {
         countdown.setId("kingCountdown");
         countdown.setStyle("-fx-text-fill: #e7c47e; -fx-font-size: 16px; -fx-font-weight: bold;");
         clock.setCycleCount(Animation.INDEFINITE);
-        getChildren().addAll(slots, choice, hoverArt, handCountdown, toggle, inspector);
+        getChildren().addAll(slots, choice, flights, hoverArt, handCountdown, toggle, inspector);
     }
 
     void update(PlayerView next, long deadline, boolean blocked, boolean dealing, boolean reducedMotion) {
+        PlayerView previous = builtView;
+        boolean deploy = previous != null && previous.round() == next.round()
+                && previous.phase() == MatchPhase.KING_SELECTION && next.phase() == MatchPhase.IN_PROGRESS;
+        Map<King, Bounds> origins = new EnumMap<>(King.class);
+        if (deploy && !reducedMotion && !blocked && !dealing) {
+            finishReveal();
+            choice.applyCss(); choice.layout();
+            offerPictures.forEach((king, picture) -> origins.put(king,
+                    sceneToLocal(picture.localToScene(picture.getLayoutBounds()))));
+        }
         boolean newOffer = builtView == null || builtView.round() != next.round()
                 || !builtView.kingOffer().equals(next.kingOffer());
         boolean rebuild = newOffer || builtView.selectedKing() != next.selectedKing();
         this.view = next; this.blocked = blocked; this.reducedMotion = reducedMotion; deadlineMillis = deadline;
-        if (newOffer) { candidate = null; collapsed = false; updateToggleIcon(); }
+        if (newOffer) { finishDeployment(); candidate = null; collapsed = false; updateToggleIcon(); }
         if (builtView != next) {
             rebuildSlots();
             if (rebuild) rebuildChoice();
@@ -102,18 +120,22 @@ final class KingTableControls extends Pane {
         handCountdown.setVisible(toggle.isVisible() && collapsed);
         boolean show = selecting && !dealing && !collapsed;
         setChoiceVisible(show);
+        if (!origins.isEmpty()) startDeployment(previous, origins);
         updateConfirmations();
         if (selecting && toggle.isVisible()) {
             if (clock.getStatus() != Animation.Status.RUNNING) clock.play();
             updateCountdown();
         } else clock.stop();
-        if (reducedMotion) finishReveal();
+        if (reducedMotion || blocked) { finishReveal(); finishDeployment(); }
     }
 
     void notice(String text) { notice.setText(text == null ? "" : text); }
 
     void position(double x, double opponentY, double ownY, double w, double h, double faceWidth, double faceHeight) {
+        if (getWidth() != w || getHeight() != h || slotsX != x || this.ownY != ownY
+                || this.opponentY != opponentY || cardWidth != faceWidth || cardHeight != faceHeight) finishDeployment();
         resize(w, h);
+        flights.resize(w, h);
         if (slotsX != x || this.ownY != ownY || this.opponentY != opponentY
                 || cardWidth != faceWidth || cardHeight != faceHeight) {
             slotsX = x; this.ownY = ownY; this.opponentY = opponentY;
@@ -169,6 +191,46 @@ final class KingTableControls extends Pane {
             card.setOpacity(1); card.setTranslateY(0); card.setScaleX(1); card.setScaleY(1);
         }
     }
+
+    /** Only newly public ownership flies; a reconnect snapshot never replays a deployment. */
+    private void startDeployment(PlayerView previous, Map<King, Bounds> origins) {
+        finishDeployment();
+        flyKings(previous.you(), view.you(), false, origins);
+        flyKings(previous.opponent(), view.opponent(), true, origins);
+        if (!flights.getChildren().isEmpty()) {
+            slots.setMouseTransparent(true);
+            deployment.playFromStart();
+        }
+    }
+
+    private void flyKings(SideView previous, SideView next, boolean opponent, Map<King, Bounds> origins) {
+        for (int i = previous.kings().kings().size(); i < next.kings().kings().size(); i++) {
+            King king = next.kings().kings().get(i);
+            Bounds from = origins.get(king);
+            if (from == null || from.getWidth() <= 0 || from.getHeight() <= 0) continue;
+            ImageView flying = art(king, from.getWidth(), from.getHeight());
+            flying.setId((opponent ? "foeKingFlight" : "yourKingFlight") + i);
+            flying.setManaged(false); flying.setEffect(KingVisuals.aura(king));
+            flying.setX(from.getMinX()); flying.setY(from.getMinY());
+            flights.getChildren().add(flying);
+            double x = slotsX + i * (cardWidth + 10), y = opponent ? opponentY : ownY;
+            deployment.getKeyFrames().add(new KeyFrame(Duration.millis(650),
+                    new KeyValue(flying.xProperty(), x, Interpolator.EASE_BOTH),
+                    new KeyValue(flying.yProperty(), y, Interpolator.EASE_BOTH),
+                    new KeyValue(flying.fitWidthProperty(), cardWidth, Interpolator.EASE_BOTH),
+                    new KeyValue(flying.fitHeightProperty(), cardHeight, Interpolator.EASE_BOTH)));
+            Node destination = slots.lookup("#" + (opponent ? "foeKing" : "yourKing") + i);
+            if (destination != null) destination.getParent().setOpacity(0);
+        }
+    }
+
+    private void finishDeployment() {
+        deployment.stop(); deployment.getKeyFrames().clear(); flights.getChildren().clear();
+        slots.setMouseTransparent(false);
+        slots.getChildren().forEach(cell -> cell.setOpacity(1));
+    }
+
+    boolean deploying() { return deployment.getStatus() == Animation.Status.RUNNING; }
 
     private void updateCountdown() {
         if (view == null) return;
@@ -226,6 +288,7 @@ final class KingTableControls extends Pane {
                 cell.getChildren().add(empty);
             }
             slots.getChildren().add(cell);
+            if (flights.lookup("#" + (opponent ? "foeKingFlight" : "yourKingFlight") + i) != null) cell.setOpacity(0);
         }
     }
 
@@ -308,7 +371,7 @@ final class KingTableControls extends Pane {
     }
 
     void closeInspector() { inspected = null; inspector.setVisible(false); inspector.getChildren().clear(); }
-    void suspend() { clock.stop(); finishReveal(); hoverArt.setVisible(false); closeInspector(); }
+    void suspend() { clock.stop(); finishReveal(); finishDeployment(); hoverArt.setVisible(false); closeInspector(); }
     void reset() {
         suspend(); builtView = null; view = null; candidate = null; collapsed = false;
         choice.setVisible(false); toggle.setVisible(false); handCountdown.setVisible(false);

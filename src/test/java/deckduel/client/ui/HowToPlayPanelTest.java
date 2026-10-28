@@ -70,8 +70,18 @@ class HowToPlayPanelTest {
                 chapters.setSelectedIndex(5);
                 named(ui.panel, JButton.class, "replayNext").doClick();
                 assertFalse(named(ui.panel, JLabel.class, "replayPosition").getText().contains("Action 0"));
-                named(ui.panel, JButton.class, "replayPlay").doClick();
-                assertEquals("PAUSE", named(ui.panel, JButton.class, "replayPlay").getText());
+                var recording = named(ui.panel, ReplayPanel.class, "guideRecording");
+                for (String control : List.of("replayPrevious", "replayPlay", "replaySpeed", "replayTimeline"))
+                    assertFalse(named(recording, JComponent.class, control).isVisible());
+                assertEquals(2, java.util.Arrays.stream(recording.getComponents())
+                        .filter(component -> component instanceof JButton && component.isVisible()).count());
+                String position = named(recording, JLabel.class, "replayPosition").getText();
+                for (String command : List.of("replay.play", "replay.previous", "replay.first", "replay.last", "replay.nextRound"))
+                    recording.getActionMap().get(command).actionPerformed(null);
+                assertEquals(position, named(recording, JLabel.class, "replayPosition").getText());
+                named(recording, JButton.class, "replayDetailsToggle").doClick(0);
+                assertTrue(named(recording, JTextArea.class, "guideStepDetails").isVisible());
+                assertFalse(named(recording, JTabbedPane.class, "replayDetailTabs").isVisible());
                 ui.model.leaveToLobby();
                 assertEquals("PLAY", named(ui.panel, JButton.class, "replayPlay").getText());
                 assertTrue(ui.sent.isEmpty()); assertNull(ui.model.match()); assertNull(ui.model.replay());
@@ -116,7 +126,11 @@ class HowToPlayPanelTest {
                     Files.createDirectories(path.getParent()); ImageIO.write(image, "png", path.toFile());
                     if (lesson == 5 || lesson == 14) {
                         BufferedImage privateChoice = edt(() -> {
-                            named(ui.panel, JButton.class, "replayPrevious").doClick(0);
+                            var chapters = named(ui.panel, JComboBox.class, "guideChapters");
+                            chapters.setSelectedIndex(0); chapters.setSelectedIndex(lesson);
+                            JButton next = named(ui.panel, JButton.class, "replayNext");
+                            while (next.isEnabled() && !named(ui.panel, JTextArea.class, "guideObservation").getText().contains("only")
+                                    && !named(ui.panel, JTextArea.class, "guideObservation").getText().contains("Only")) next.doClick(0);
                             assertTrue(named(ui.panel, JTextArea.class, "guideObservation").getText().contains("only")
                                     || named(ui.panel, JTextArea.class, "guideObservation").getText().contains("Only"));
                             BufferedImage picture = new BufferedImage(size[0], size[1], BufferedImage.TYPE_INT_RGB);

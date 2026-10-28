@@ -144,8 +144,37 @@ class ReplayJourneySystemTest {
                 assertTrue(onEdt(() -> label(frame[0], "replayPosition")).startsWith("Round 1 · Action 0 of"));
                 SwingUtilities.invokeAndWait(() -> { button(frame[0], "Next").doClick(); button(frame[0], "Next").doClick(); });
                 assertTrue(onEdt(() -> label(frame[0], "replayPosition")).contains("Action 2 of"));
+                SwingUtilities.invokeAndWait(() -> {
+                    find(frame[0].getContentPane(), JButton.class).stream()
+                            .filter(b -> "replayNextRound".equals(b.getName())).findFirst().orElseThrow().doClick();
+                    assertTrue(label(frame[0], "replayPosition").startsWith("Round 2"));
+                    find(frame[0].getContentPane(), JButton.class).stream()
+                            .filter(b -> "replayDetailsToggle".equals(b.getName())).findFirst().orElseThrow().doClick();
+                    var journal = find(frame[0].getContentPane(), javax.swing.JList.class).stream()
+                            .filter(list -> "replayJournal".equals(list.getName())).findFirst().orElseThrow();
+                    assertTrue(journal.getModel().getSize() > 3);
+                    journal.setSelectedIndex(0);
+                    assertTrue(label(frame[0], "replayPosition").contains("Action 0 of"));
+                    var slider = find(frame[0].getContentPane(), javax.swing.JSlider.class).stream()
+                            .filter(component -> "replaySeek".equals(component.getName())).findFirst().orElseThrow();
+                    slider.setValue(slider.getMaximum());
+                    assertTrue(label(frame[0], "replayPosition").startsWith("Round 3"));
+                    var score = find(frame[0].getContentPane(), javax.swing.JTextArea.class).stream()
+                            .filter(component -> "replayScoreChanges".equals(component.getName())).findFirst().orElseThrow();
+                    assertTrue(score.getText().contains("Banked total:"));
+                });
                 SwingUtilities.invokeAndWait(() -> button(frame[0], "Back").doClick());
                 waitFor(() -> showing(frame[0], HistoryPanel.class), "Back returns to match history");
+                SwingUtilities.invokeAndWait(() -> {
+                    var search = find(frame[0].getContentPane(), JTextField.class).stream()
+                            .filter(field -> "historySearch".equals(field.getName())).findFirst().orElseThrow();
+                    search.setText("no such opponent");
+                    var history = find(frame[0].getContentPane(), JTable.class).get(0);
+                    assertEquals(0, history.getRowCount());
+                    find(frame[0].getContentPane(), JButton.class).stream()
+                            .filter(b -> "historyClearFilters".equals(b.getName())).findFirst().orElseThrow().doClick();
+                    assertEquals(1, history.getRowCount(), "reviewing does not add another match");
+                });
             } finally {
                 if (frame[0] != null) SwingUtilities.invokeAndWait(frame[0]::dispose);
                 server.stop();

@@ -136,3 +136,14 @@ existing "recorded by another version" response. Existing accounts, result rows 
 replay bytes are retained; no destructive migration or database reset is performed.
 
 See [verification notes](testing/README.md) for King selection, deadlines, presentation and privacy checks.
+
+After both choices become public, each newly acquired King flies from its offered painting to
+its owner's next King position in 650 ms, shrinking with its colored aura attached. The actual
+slot and its points appear when the flight finishes. Newer match revisions wait for deployment;
+draw, skip and card plays are held during the flight. Reduced motion, reconnecting, resizing or
+leaving the table finishes the flight immediately. An initial snapshot with already owned Kings
+does not replay it. Hidden offers still provide the same flight origins; private confirmations
+alone never reveal the opponent's choice.
+
+`KingDeploymentTest` checks both owners, the second-round position, repeated/initial snapshots,
+hidden offers and cancellation. It writes `target/kings-qa/deployment-in-flight.png` as visual evidence.

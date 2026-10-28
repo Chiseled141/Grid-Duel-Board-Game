@@ -18,11 +18,17 @@ java -jar target/deck-duel.jar demo --games 1          # two bots, throwaway ser
 java -jar target/deck-duel.jar bots --port 5555 --count 4 --games 2
 ```
 
-Tests use temporary databases and local ephemeral ports. Swing and JavaFX tests need a graphical session. Client and server use protocol 13; older applications cannot connect.
+Tests use temporary databases and local ephemeral ports. Swing and JavaFX tests need a graphical session. Client and server use protocol 19; older applications cannot connect.
 
 On Windows, `launcher-win\build-cards-exe.bat` builds `Cards.exe`, which starts the local development server and the client from one double-click; see [the Cards.exe guide](docs/cards-exe.md).
 
-On the table, click a hand card and then a highlighted space or target (or drag it there); **Draw** (or the deck, or D) makes one of your three manual draws per round. **Skip turn** (or S) keeps your cards and board unchanged and uses one of your ten round plays. Hand cards are larger than row cards; rest the pointer on a row card for a large preview. Your formation and its multiplier head the score breakdown. Click a Spy-revealed card for a large image and full details (Esc closes). Arrow keys pick a card, 1–7 choose a space, Enter casts a Spell that needs no target, Esc deselects.
+On the table, click a hand card and then a highlighted space or target (or drag it there); **Draw** (or the deck, or D) makes one of your three manual draws per round. **Skip turn** (or S) keeps your cards and board unchanged and uses one of your ten round plays. Hand cards are larger than row cards; Spell hover shows its rules, while Units have no hover magnifier. Your formation and its multiplier head the score breakdown. Click a Spy-revealed card for a large image and full details (Esc closes). Arrow keys pick a card, 1–7 choose a space, Enter casts a Spell that needs no target, Esc deselects.
+
+Match history supports opponent search and result/online/practice filters over the loaded entries.
+Personal replays have a seek bar, round jumps and a Details drawer with a
+searchable action journal and score changes. Guide examples use only Next and compact Details.
+Home/End in personal replays seek to the ends; Page Up/Page Down jump
+between recorded rounds. Seeking pauses playback. See [replay controls](docs/replays.md).
 
 ## Rules
 

@@ -122,7 +122,7 @@ final class HowToPlayPanel extends JPanel {
         observation.setText(lesson.before()); observation.setCaretPosition(0);
         recording.openTraining(playback);
         status.setText("Lesson " + (chapters.getSelectedIndex() + 1) + " of " + lessons.size()
-                + " · Recorded training game · Press Play to watch, or Next for one action.");
+                + " · Recorded training game · Next advances one action; Details explains the step.");
         enabled(true);
     }
 

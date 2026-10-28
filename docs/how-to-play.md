@@ -1,9 +1,14 @@
 # How to Play
 
 The main menu's **How to Play** entry opens the English guide, including in offline practice.
-Choose a lesson, read the rule and watch its recorded example. Previous / Play / Next and the
-speed button control only the recording; Space and arrow keys work while the replay has focus.
+Choose a lesson, read the rule and step through its recorded example with **Next**.
+**Details** shows the recorded action and a compact score explanation for both sides.
 Back (or Escape from the replay) returns to the menu. Leaving or changing lessons pauses playback.
+
+The example has only Next and Details controls: no timeline, round jumps, Previous, automatic
+playback or speed control. Right arrow advances one action; the full replay navigation shortcuts
+are disabled here. Choose the lesson again to restart it. Personal replays retain their complete
+navigation and searchable journal; see [replay controls](replays.md).
 
 The 17 lessons cover starting matches, Units and pairs, formations/scoring, seven-space rows
 and replacement, manual draws/skips, Kings/Secret Edict, rounds/final results and each of the ten

@@ -25,7 +25,7 @@ import javax.swing.*;
  * a request or reach a live match.
  */
 final class ReplayPanel extends JPanel {
-    private static final int MARGIN = 24, RAIL = 300, HEADER = 74, CONTROLS = 70, GAP = 12;
+    private static final int MARGIN = 24, RAIL = 300, HEADER = 74, CONTROLS = 120, GAP = 12;
     /** How long the brass glow around the latest card fades, unless motion is reduced. */
     private static final int GLOW_MILLIS = 700;
 
@@ -35,6 +35,10 @@ final class ReplayPanel extends JPanel {
     private final JButton play = UiKit.pill("Pause", UiKit.Pill.GOLD);
     private final JButton next = UiKit.pill("Next", UiKit.Pill.GOLD_OUTLINE);
     private final JButton speed = UiKit.pill("Speed 0.5×", UiKit.Pill.GOLD_OUTLINE);
+    private final JButton details = UiKit.pill("Details", UiKit.Pill.GOLD_OUTLINE);
+    private final ReplayTimeline timeline = new ReplayTimeline();
+    private final ReplayDetailsPanel drawer = new ReplayDetailsPanel();
+    private final Runnable playbackChanged = this::changed;
     private final JLabel title = label(Theme.display(24f), Theme.CREAM);
     private final JLabel subtitle = label(Theme.normal(13f), Theme.FADED);
     private final JLabel position = label(Theme.bold(13f), Theme.BRASS_LIGHT);
@@ -42,6 +46,7 @@ final class ReplayPanel extends JPanel {
     private final Timer stepper = new Timer(ReplayPlayback.BASE_STEP_MILLIS, event -> advance());
     private final Timer glow = new Timer(30, event -> glowFrame());
     private ReplayPlayback playback;
+    private boolean training;
     private long glowStartedAt;
 
     /** Builds the screen; Back returns to match history through the model. */
@@ -71,6 +76,15 @@ final class ReplayPanel extends JPanel {
         play.setName("replayPlay");
         next.setName("replayNext");
         speed.setName("replaySpeed");
+        details.setName("replayDetailsToggle");
+        details.addActionListener(event -> {
+            drawer.setVisible(!drawer.isVisible());
+            details.setText(!training && drawer.isVisible() ? "SCORES" : "DETAILS");
+            details.getAccessibleContext().setAccessibleDescription(drawer.isVisible()
+                    ? "Show the score rail" : "Show the action journal and score changes");
+            doLayout(); repaint();
+        });
+        drawer.setVisible(false);
         position.setName("replayPosition");
         action.setName("replayAction");
         title.setName("replayTitle");
@@ -79,7 +93,8 @@ final class ReplayPanel extends JPanel {
         next.addActionListener(event -> { if (playback != null) playback.next(); });
         play.addActionListener(event -> togglePlay());
         speed.addActionListener(event -> cycleSpeed());
-        for (JComponent child : new JComponent[] {back, previous, play, next, speed, title, subtitle, position, action}) add(child);
+        for (JComponent child : new JComponent[] {back, previous, play, next, speed, details, timeline, drawer,
+                title, subtitle, position, action}) add(child);
         stepper.setRepeats(true);
         bindKeys();
     }
@@ -88,6 +103,10 @@ final class ReplayPanel extends JPanel {
         bind("SPACE", "replay.play", this::togglePlay);
         bind("LEFT", "replay.previous", () -> previous.doClick(0));
         bind("RIGHT", "replay.next", () -> next.doClick(0));
+        bind("HOME", "replay.first", () -> { if (playback != null) playback.seek(0); });
+        bind("END", "replay.last", () -> { if (playback != null) playback.seek(playback.length() - 1); });
+        bind("PAGE_UP", "replay.previousRound", () -> { if (playback != null) playback.previousRound(); });
+        bind("PAGE_DOWN", "replay.nextRound", () -> { if (playback != null) playback.nextRound(); });
         bind("ESCAPE", "replay.back", () -> back.doClick(0));
         bind("BACK_SPACE", "replay.back", () -> back.doClick(0));
     }
@@ -97,16 +116,22 @@ final class ReplayPanel extends JPanel {
         getInputMap(WHEN_ANCESTOR_OF_FOCUSED_COMPONENT).put(KeyStroke.getKeyStroke(key), name);
         getActionMap().put(name, new AbstractAction() {
             @Override public void actionPerformed(java.awt.event.ActionEvent event) {
-                if (active.getAsBoolean()) action.run();
+                if (active.getAsBoolean() && (!training || name.equals("replay.next") || name.equals("replay.back"))) action.run();
             }
         });
     }
 
     private void open(ReplayPlayback next) {
         stop();
+        training = false;
+        for (JComponent control : new JComponent[] {previous, play, speed, timeline}) control.setVisible(true);
+        drawer.training(false);
+        if (playback != null) playback.removeListener(playbackChanged);
         playback = next;
+        timeline.attach(next); drawer.attach(next);
+        drawer.setVisible(false); details.setText("DETAILS"); back.setVisible(true);
         if (playback == null) return;
-        playback.addListener(this::changed);
+        playback.addListener(playbackChanged);
         var replay = playback.replay();
         title.setText("Replay · vs " + replay.opponent());
         subtitle.setText(date(replay.playedAt()) + (replay.practice() ? "  ·  Practice" : "")
@@ -119,9 +144,12 @@ final class ReplayPanel extends JPanel {
     /** Opens a contiguous training excerpt with its own identity, apart from account history. */
     void openTraining(ReplayPlayback next) {
         open(next);
+        training = true;
+        for (JComponent control : new JComponent[] {previous, play, speed, timeline}) control.setVisible(false);
+        drawer.training(true);
         back.setVisible(false);
         title.setText("Recorded example");
-        subtitle.setText("Read-only playback · Previous / Play / Next · Space / arrow keys");
+        subtitle.setText("Next: one recorded action · Details: explanation");
         doLayout();
     }
 
@@ -149,6 +177,8 @@ final class ReplayPanel extends JPanel {
     }
 
     private void changed() {
+        if (playback == null) return;
+        timeline.refresh(); drawer.refresh();
         // Pills letter their captions in capitals; relabelled ones must match.
         play.setText(playback.playing() ? "PAUSE" : "PLAY");
         speed.setText("SPEED " + speedText(playback.speed()));
@@ -157,7 +187,7 @@ final class ReplayPanel extends JPanel {
         position.setText(playback.position());
         action.setText(playback.action());
         action.setToolTipText(playback.action());
-        if (playback.playing()) {
+        if (!training && playback.playing() && active.getAsBoolean()) {
             stepper.setInitialDelay(playback.stepMillis());
             stepper.setDelay(playback.stepMillis());
             if (!stepper.isRunning()) stepper.start();
@@ -203,9 +233,11 @@ final class ReplayPanel extends JPanel {
         int textX = back.isVisible() ? MARGIN + backSize.width + 18 : MARGIN;
         title.setBounds(textX, MARGIN - 4, Math.max(0, w - textX - MARGIN - 60), 32);
         subtitle.setBounds(textX, MARGIN + 28, Math.max(0, w - textX - MARGIN - 60), 20);
-        int y = h - MARGIN - CONTROLS + 10;
+        timeline.setBounds(MARGIN, h - MARGIN - CONTROLS + 4, Math.max(0, w - 2 * MARGIN), 44);
+        int y = h - MARGIN - 66;
         int x = MARGIN;
-        for (JButton button : new JButton[] {previous, play, next, speed}) {
+        for (JButton button : new JButton[] {previous, play, next, speed, details}) {
+            if (!button.isVisible()) continue;
             Dimension size = button.getPreferredSize();
             button.setBounds(x, y, size.width, size.height);
             x += size.width + 10;
@@ -213,7 +245,11 @@ final class ReplayPanel extends JPanel {
         int textWidth = Math.max(0, w - x - MARGIN - 8);
         position.setBounds(x + 8, y - 2, textWidth, 20);
         action.setBounds(x + 8, y + 20, textWidth, 20);
+        drawer.setBounds(w - MARGIN - RAIL, MARGIN + HEADER, RAIL,
+                Math.max(0, h - 2 * MARGIN - HEADER - controlsHeight()));
     }
+
+    private int controlsHeight() { return training ? 70 : CONTROLS; }
 
     @Override protected void paintComponent(Graphics graphics) {
         super.paintComponent(graphics);
@@ -226,9 +262,9 @@ final class ReplayPanel extends JPanel {
             if (playback == null) return;
             PlayerView view = playback.frame();
             Rectangle board = new Rectangle(MARGIN, MARGIN + HEADER, getWidth() - 2 * MARGIN - RAIL - GAP,
-                    getHeight() - 2 * MARGIN - HEADER - CONTROLS);
+                    getHeight() - 2 * MARGIN - HEADER - controlsHeight());
             paintBoard(g, view, board);
-            paintRail(g, view, new Rectangle(getWidth() - MARGIN - RAIL, board.y, RAIL, board.height));
+            if (!drawer.isVisible()) paintRail(g, view, new Rectangle(getWidth() - MARGIN - RAIL, board.y, RAIL, board.height));
         } finally { g.dispose(); }
     }
 
@@ -240,7 +276,9 @@ final class ReplayPanel extends JPanel {
                 KingArt.paint(g, view.kingOffer().get(i), new Rectangle(board.x + i * (width + 12), board.y + 24, width, height));
             board = new Rectangle(board.x, board.y + height + 36, board.width, board.height - height - 36);
         }
-        int cardWidth = (int) Math.max(40, Math.min((board.width - 104 - 6 * GAP) / 7.0, board.height * .29 / 1.4));
+        // Fit both rows and the hand above the seek bar, including private inspection captions.
+        double available = board.height - 110 - (view.revealed().isEmpty() ? 0 : 50);
+        int cardWidth = (int) Math.max(24, Math.min((board.width - 104 - 6 * GAP) / 7.0, available / (1.4 * 2.72)));
         int cardHeight = (int) Math.round(cardWidth * 1.4);
         int handWidth = (int) Math.round(cardWidth * .72), handHeight = (int) Math.round(handWidth * 1.4);
         Long latest = view.lastPlay() == null ? null : view.lastPlay().card().id();

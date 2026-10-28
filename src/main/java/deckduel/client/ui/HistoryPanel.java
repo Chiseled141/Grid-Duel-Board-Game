@@ -4,6 +4,7 @@ import deckduel.client.ClientSettings;
 import deckduel.client.state.ClientModel;
 import deckduel.client.state.ClientModelListener;
 import deckduel.client.state.Screen;
+import deckduel.client.state.HistoryFilter;
 import deckduel.net.HistoryEntry;
 import java.awt.*;
 import javax.swing.*;
@@ -29,6 +30,9 @@ public final class HistoryPanel extends BattlefieldMenuPanel {
     private final JTable table;
     private final JButton watch = UiKit.pill("Watch replay", UiKit.Pill.GOLD);
     private final JLabel replayStatus = menuLabel(" ", 12, false);
+    private final JLabel emptyTitle = menuLabel("No recorded matches yet", 19, false);
+    private final JLabel emptyDetail = menuLabel("Online and practice matches appear here.", 13, false);
+    private final HistoryFiltersPanel filters;
     // The entries behind the table's rows, in the same order.
     private java.util.List<HistoryEntry> shown = java.util.List.of();
     private final DefaultTableModel rows = new DefaultTableModel(
@@ -40,6 +44,7 @@ public final class HistoryPanel extends BattlefieldMenuPanel {
     public HistoryPanel(ClientModel model, ClientSettings settings, Runnable backAction) {
         super(model, Screen.HISTORY, settings);
         this.model = model;
+        filters = new HistoryFiltersPanel(filter -> refresh());
         setLayout(null);
         ledger = new JPanel(new BorderLayout(0, 18));
         ledger.setName("historyLedger"); ledger.setOpaque(false);
@@ -52,6 +57,11 @@ public final class HistoryPanel extends BattlefieldMenuPanel {
         heading.add(back); heading.add(Box.createVerticalStrut(12));
         heading.add(menuLabel("Match history", 32, true));
         heading.add(Box.createVerticalStrut(6)); heading.add(summary);
+        filters.setAlignmentX(Component.LEFT_ALIGNMENT);
+        filters.setMinimumSize(new Dimension(0, 60));
+        filters.setPreferredSize(new Dimension(600, 60));
+        filters.setMaximumSize(new Dimension(Integer.MAX_VALUE, 60));
+        heading.add(Box.createVerticalStrut(8)); heading.add(filters);
         ledger.add(heading, BorderLayout.NORTH);
         table = new JTable(rows);
         table.setName("historyTable");
@@ -111,9 +121,10 @@ public final class HistoryPanel extends BattlefieldMenuPanel {
         JPanel empty = new JPanel(new GridBagLayout()); empty.setOpaque(false);
         JPanel emptyCopy = new JPanel(); emptyCopy.setOpaque(false);
         emptyCopy.setLayout(new BoxLayout(emptyCopy, BoxLayout.Y_AXIS));
-        emptyCopy.add(menuLabel("No recorded matches yet", 19, false));
+        emptyTitle.setName("historyEmptyTitle"); emptyDetail.setName("historyEmptyDetail");
+        emptyCopy.add(emptyTitle);
         emptyCopy.add(Box.createVerticalStrut(8));
-        emptyCopy.add(menuLabel("Online and practice matches appear here.", 13, false));
+        emptyCopy.add(emptyDetail);
         empty.add(emptyCopy);
         views.setOpaque(false);
         // Room inside the plate's trim and studs, and for its shadow on the right and bottom.
@@ -167,9 +178,10 @@ public final class HistoryPanel extends BattlefieldMenuPanel {
     }
 
     private void refresh() {
+        HistoryEntry selected = selected();
         rows.setRowCount(0);
-        shown = model.history();
-        int wins = 0, losses = 0, draws = 0, practice = 0;
+        HistoryFilter filter = filters.filter();
+        shown = filter.apply(model.history());
         boolean legacy = false;
         for (HistoryEntry match : shown) {
             boolean scored = !match.yourRounds().isEmpty();
@@ -177,16 +189,18 @@ public final class HistoryPanel extends BattlefieldMenuPanel {
             String result = label(match.result()) + ("FORFEIT".equals(match.endReason()) ? " (forfeit)" : "");
             rows.addRow(new Object[]{date(match.playedAt()), match.opponent(), result,
                     scored ? match.yourTotal() + "–" + match.opponentTotal() : "—", rounds(match), replayLabel(match.replay())});
-            // Practice games never change wins or losses, so the summary counts them apart.
-            if (match.practice()) { practice++; continue; }
-            switch (match.result()) {
-                case WIN -> wins++;
-                case LOSS -> losses++;
-                case DRAW -> draws++;
+        }
+        summary.setText(HistoryFilter.summarize(shown).description()
+                + (filter.active() ? " · " + shown.size() + " of " + model.history().size() + " loaded" : ""));
+        emptyTitle.setText(filter.active() ? "No matches found" : "No recorded matches yet");
+        emptyDetail.setText(filter.active() ? "Change the filters or press Clear to show loaded matches."
+                : "Online and practice matches appear here.");
+        for (int i = 0; selected != null && i < shown.size(); i++) {
+            HistoryEntry entry = shown.get(i);
+            if (entry.equals(selected) || entry.replayId() != null && entry.replayId().equals(selected.replayId())) {
+                table.setRowSelectionInterval(i, i); break;
             }
         }
-        summary.setText(rows.getRowCount() + " matches · " + wins + " won · " + losses + " lost · " + draws + " drawn"
-                + (practice == 0 ? "" : " · " + practice + " practice"));
         footnote.setText(model.isOffline() ? "Offline: history and replays last only for this session."
                 : legacy ? "Matches from the retired board game have no card scores." : "Round scores are banked into the match total.");
         updateReplayControls();
@@ -246,7 +260,7 @@ public final class HistoryPanel extends BattlefieldMenuPanel {
     @Override public void doLayout() {
         int width = Math.max(1, Math.min(820, getWidth() - 64));
         int visibleRows = Math.max(3, Math.min(rows.getRowCount(), 8));
-        int height = Math.max(1, Math.min(222 + visibleRows * 48, getHeight() - 112));
+        int height = Math.max(1, Math.min(286 + visibleRows * 48, getHeight() - 112));
         ledger.setBounds(Math.max(0, getWidth() - width - 40), Math.max(0, (getHeight() - height) / 2), width, height);
     }
 

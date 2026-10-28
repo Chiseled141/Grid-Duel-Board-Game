@@ -477,7 +477,7 @@ final class CardTableView extends Pane {
                 && pendingConclusion == null && held.isEmpty()) { frames.stop(); running = false; }
     }
 
-    private boolean presentationBusy() { return staged || scoring(); }
+    private boolean presentationBusy() { return staged || scoring() || kings.deploying(); }
     boolean scoring() { return trace != null || rail.isAnimating(); }
 
     /** Eases hand and row cards toward their display positions; true while anything still moves. */
@@ -547,12 +547,12 @@ final class CardTableView extends Pane {
 
     /** A manual draw, when the player may make one now. */
     void draw() {
-        if (shown != null && !state.reconnecting() && shown.view().canDraw()) { actions.move(new DrawCard()); wake(); }
+        if (shown != null && !kings.deploying() && !state.reconnecting() && shown.view().canDraw()) { actions.move(new DrawCard()); wake(); }
     }
 
     /** Skips this turn through the server, using one of the round's ten plays. */
     void skipTurn() {
-        if (shown == null || state.reconnecting() || !shown.view().canSkip()) return;
+        if (shown == null || kings.deploying() || state.reconnecting() || !shown.view().canSkip()) return;
         selected = null;
         actions.move(new SkipTurn());
         wake();
@@ -565,7 +565,7 @@ final class CardTableView extends Pane {
 
     /** Legal plays of one hand card in the current view. */
     private List<PlayCard> playsFor(Long cardId) {
-        if (shown == null || cardId == null || state.reconnecting()) return List.of();
+        if (shown == null || cardId == null || kings.deploying() || state.reconnecting()) return List.of();
         return shown.view().legalPlays().stream().filter(play -> play.cardId() == cardId).toList();
     }
 

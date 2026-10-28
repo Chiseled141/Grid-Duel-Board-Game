@@ -19,16 +19,49 @@ public final class ReplayPlayback {
     public static final int BASE_STEP_MILLIS = 1400;
 
     private final ReplayResponse replay;
+    private final ReplayIndex navigation;
     private final List<Runnable> listeners = new ArrayList<>();
     private int index;
     private boolean playing;
     private double speed = 1.0;
 
     /** Starts paused on the opening deal. */
-    public ReplayPlayback(ReplayResponse replay) { this.replay = Objects.requireNonNull(replay); }
+    public ReplayPlayback(ReplayResponse replay) {
+        this.replay = Objects.requireNonNull(replay);
+        navigation = new ReplayIndex(replay);
+    }
 
     /** Adds an observer of position, play state and speed. */
     public void addListener(Runnable listener) { listeners.add(listener); }
+    /** Detaches a page when it opens a different recording. */
+    public void removeListener(Runnable listener) { listeners.remove(listener); }
+    /** Cached chapter and journal information from this recording only. */
+    public ReplayIndex navigation() { return navigation; }
+    /** Seeks to an existing frame and pauses, including when seeking to the current position. */
+    public void seek(int position) {
+        if (position < 0 || position >= length()) throw new IllegalArgumentException("Position outside replay: " + position);
+        if (index == position && !playing) return;
+        index = position; playing = false; changed();
+    }
+    /** Jumps to the first frame actually recorded for a round. Missing rounds are rejected. */
+    public void seekRound(int round) {
+        seek(navigation.rounds().stream().filter(start -> start.round() == round).findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("Round not recorded: " + round)).index());
+    }
+    /** Returns to this round's start, or to the preceding round if already at its start. */
+    public void previousRound() {
+        var current = navigation.roundAt(index);
+        if (current.index() < index) { seek(current.index()); return; }
+        int chapter = navigation.rounds().indexOf(current);
+        seek(navigation.rounds().get(Math.max(0, chapter - 1)).index());
+    }
+    /** Jumps to the next recorded round; does nothing when no later round was recorded. */
+    public void nextRound() {
+        navigation.rounds().stream().filter(start -> start.index() > index).findFirst()
+                .ifPresent(start -> seek(start.index()));
+    }
+    /** Exact score component changes between this position and its predecessor. */
+    public ReplayScoreChange scoreChange() { return ReplayScoreChange.between(previousFrame(), frame()); }
     /** The replay as the server sent it. */
     public ReplayResponse replay() { return replay; }
     /** The frame shown now. */
@@ -92,14 +125,7 @@ public final class ReplayPlayback {
 
     /** What the shown action was, from the log lines it added, or the opening deal. */
     public String action() {
-        if (index == 0) return frame().revision() == 0 ? "Opening deal" : "Start of recorded excerpt";
-        PlayerView view = frame();
-        List<String> lines = new ArrayList<>();
-        for (MatchEvent event : added(previousFrame().events(), view.events())) {
-            String actor = event.actor() == null ? "" : event.actor() == view.seat() ? "You: " : replay.opponent() + ": ";
-            lines.add(actor + event.text());
-        }
-        return lines.isEmpty() ? "No logged change" : String.join("  ·  ", lines);
+        return navigation.at(index).text();
     }
 
     /**

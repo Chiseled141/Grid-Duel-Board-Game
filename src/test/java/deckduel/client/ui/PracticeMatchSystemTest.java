@@ -78,6 +78,12 @@ class PracticeMatchSystemTest {
                 // A bot that moved first is shown only after the opening deal, so wait for the table too.
                 waitFor(() -> { try { return FxTesting.call(() -> screens[0].table().shownRevision()) == model[0].match().view().revision(); }
                                 catch (Exception e) { return false; } }, "the table shows the player's turn");
+                // The server can grant the turn before the newly public Kings finish flying.
+                waitFor(() -> { try { return FxTesting.call(() -> {
+                    var table = screens[0].table();
+                    var kings = (KingTableControls) table.lookup("#kingControls");
+                    return !kings.deploying() && !table.animating() && !table.scoring();
+                }); } catch (Exception e) { return false; } }, "the table finishes presenting the turn");
                 Thread.sleep(500);
                 FxTesting.run(() -> {
                     CardTableView table = screens[0].table();
