@@ -1441,7 +1441,7 @@ final class CardTableView extends Pane {
                 label, FxKit.bold(12));
     }
 
-    /** Skip sits below Draw, with its allowance cost always visible. */
+    /** Skip sits below Draw. */
     private void drawSkipButton(GraphicsContext g) {
         if (shown.view().phase() != MatchPhase.IN_PROGRESS) return;
         Rectangle r = skipBounds();
@@ -1449,7 +1449,6 @@ final class CardTableView extends Pane {
         boolean lit = can && hover != null && hover.zone() == TableZone.SKIP;
         TablePlaque.button(g, r.x, r.y, r.width, r.height, can ? TablePlaque.Look.PLAIN : TablePlaque.Look.OFF, lit,
                 "SKIP TURN", FxKit.bold(11));
-        text(g, "S · uses 1 play", r.x + 6, r.y + 40, FxKit.normal(11), FxKit.MUTED, true);
     }
 
     /** The latest notice (such as a rejected move) under a choice overlay, which hides the status line. */
