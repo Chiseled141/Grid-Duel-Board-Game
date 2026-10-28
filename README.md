@@ -20,6 +20,8 @@ java -jar target/deck-duel.jar bots --port 5555 --count 4 --games 2
 
 Tests use temporary databases and local ephemeral ports. Swing and JavaFX tests need a graphical session. Client and server use protocol 13; older applications cannot connect.
 
+On Windows, `launcher-win\build-cards-exe.bat` builds `Cards.exe`, which starts the local development server and the client from one double-click; see [the Cards.exe guide](docs/cards-exe.md).
+
 On the table, click a hand card and then a highlighted space or target (or drag it there); **Draw** (or the deck, or D) makes one of your three manual draws per round. **Skip turn** (or S) keeps your cards and board unchanged and uses one of your ten round plays. Hand cards are larger than row cards; rest the pointer on a row card for a large preview. Your formation and its multiplier head the score breakdown. Click a Spy-revealed card for a large image and full details (Esc closes). Arrow keys pick a card, 1–7 choose a space, Enter casts a Spell that needs no target, Esc deselects.
 
 ## Rules

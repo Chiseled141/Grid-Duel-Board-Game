@@ -20,3 +20,6 @@ dist/
 *.key
 *.p12
 *.db.enc
+
+# Generated Windows launcher (launcher-win\build-cards-exe.bat).
+/Cards.exe
