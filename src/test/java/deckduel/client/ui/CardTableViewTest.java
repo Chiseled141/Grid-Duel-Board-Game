@@ -35,6 +35,8 @@ class CardTableViewTest {
         @Override public void move(Move move) { calls.add(move); }
         @Override public void rematch() { calls.add("rematch"); }
         @Override public void leave() { calls.add("leave"); }
+        @Override public void quit() { calls.add("quit"); }
+        @Override public void toggle(PauseMenu.Preference preference) { calls.add(preference); }
     }
 
     private record Table(CardTableView view, Recorder actions, List<ScoringSounds.Cue> cues) { }
@@ -203,7 +205,8 @@ class CardTableViewTest {
         }
         var king = deckduel.core.card.King.NETHRION;
         initial = initial.apply(Seat.FIRST, new deckduel.core.card.ChooseKing(king)).apply(Seat.SECOND, new deckduel.core.card.ChooseKing(king));
-        PlayerView pending = initial.apply(initial.turn(), new deckduel.core.card.DrawCard()).view(initial.turn());
+        PlayerView pending = initial.apply(initial.turn(), new deckduel.core.card.SwapCards(
+                List.of(initial.view(initial.turn()).hand().get(0).id()))).view(initial.turn());
         FxTesting.run(() -> {
             var t = table(new ClientSettings(), true);
             t.view.show(shown(pending, true));
@@ -423,7 +426,7 @@ class CardTableViewTest {
             assertEquals(target, t.view.slotBounds(TableZone.OWN, from)); assertTrue(t.actions.calls.isEmpty());
             Point2D hand = centre(t.view.handBounds(0)); t.view.pressAt(hand); t.view.dragTo(hand.add(10, 0));
             t.view.keyPressed(key(javafx.scene.input.KeyCode.ESCAPE));
-            assertFalse(t.view.lookup("#draggedCardLayer").isVisible()); assertFalse(t.view.confirmShowing());
+            assertFalse(t.view.lookup("#draggedCardLayer").isVisible()); assertFalse(t.view.pauseShowing());
             t.view.show(shown(view, true));
             hand = centre(t.view.handBounds(0)); t.view.pressAt(hand); t.view.dragTo(hand.add(10, 0));
             t.view.hidden(); t.view.shown(0); t.view.dragTo(hand.add(50, 0));
@@ -667,16 +670,30 @@ class CardTableViewTest {
         });
     }
 
-    @Test void theDrawButtonSendsAManualDrawOnlyWhenOneIsAllowed() throws Exception {
+    @Test void swappingMarksHandCardsThenSendsThemOnConfirmOnlyWhenAllowed() throws Exception {
         FxTesting.run(() -> {
             var t = table(new ClientSettings(), true);
             MatchState state = state();
-            t.view.show(shown(state.view(state.turn()), true));
-            click(t.view, t.view.drawBounds());
-            assertEquals(List.of(new deckduel.core.card.DrawCard()), t.actions.calls);
+            PlayerView view = state.view(state.turn());
+            t.view.show(shown(view, true));
+            click(t.view, t.view.swapBounds());
+            assertTrue(t.actions.calls.isEmpty(), "Swap opens the choice; nothing is sent yet");
+            click(t.view, t.view.swapBounds());
+            assertTrue(t.actions.calls.isEmpty(), "confirming needs at least one marked card");
+            List<Long> shownHand = t.view.shownHand();
+            for (int i = 0; i < 4; i++) click(t.view, t.view.handBounds(i));
+            click(t.view, t.view.swapBounds());
+            assertEquals(List.of(new deckduel.core.card.SwapCards(shownHand.subList(0, 3))), t.actions.calls,
+                    "at most three cards; a fourth mark is refused");
+            click(t.view, t.view.swapBounds());
+            click(t.view, t.view.handBounds(0));
+            click(t.view, t.view.skipBounds());
+            assertEquals(1, t.actions.calls.size(), "Cancel leaves swap mode without sending or skipping");
             t.view.show(shown(state.view(state.turn().other()), true));
-            click(t.view, t.view.drawBounds());
-            assertEquals(1, t.actions.calls.size(), "no draw on the opponent's turn");
+            click(t.view, t.view.swapBounds());
+            click(t.view, t.view.handBounds(0));
+            click(t.view, t.view.swapBounds());
+            assertEquals(1, t.actions.calls.size(), "no swap on the opponent's turn");
         });
     }
 
@@ -730,7 +747,8 @@ class CardTableViewTest {
                 PlayerView view = state.view(state.turn());
                 var recon = view.hand().stream().filter(c -> c.def().effect() instanceof deckduel.core.card.Effect.Reconnaissance).findFirst();
                 if (view.seat() == seat && recon.isPresent() && view.yourTurn()) state = state.apply(seat, PlayCard.cast(recon.get().id(), null));
-                else if (view.seat() == seat && view.canDraw()) state = state.apply(seat, new deckduel.core.card.DrawCard());
+                else if (view.seat() == seat && view.canSwap())
+                    state = state.apply(seat, new deckduel.core.card.SwapCards(List.of(view.hand().get(0).id())));
                 else state = state.apply(state.turn(), GreedyBot.choose(view));
             }
             if (state.round() == 1) return state.view(seat);
@@ -798,16 +816,35 @@ class CardTableViewTest {
         });
     }
 
-    @Test void leavingAMatchInProgressAsksBeforeForfeiting() throws Exception {
+    @Test void menuAndEscapePauseTheTableHoldMovesAndResume() throws Exception {
         FxTesting.run(() -> {
             var t = table(new ClientSettings(), true);
             MatchState state = state();
-            t.view.show(shown(state.view(Seat.FIRST), true));
+            Seat seat = state.turn();
+            t.view.show(shown(state.view(seat), true));
             t.view.keyPressed(key(javafx.scene.input.KeyCode.ESCAPE));
-            assertTrue(t.view.confirmShowing(), "Escape with nothing selected offers to leave");
-            assertTrue(t.actions.calls.isEmpty(), "nothing is sent until the player confirms");
+            assertTrue(t.view.pauseShowing(), "Escape with nothing selected pauses");
+            for (double[] size : new double[][] {{1280, 720}, {1470, 923}, {1920, 1080}}) {
+                t.view.resize(size[0], size[1]); t.view.applyCss(); t.view.layout();
+                var overlay = t.view.lookup("#pauseMenu");
+                assertEquals(size[0], overlay.getLayoutBounds().getWidth(), .5, "the pause veil covers the table");
+                assertEquals(size[1], overlay.getLayoutBounds().getHeight(), .5);
+                var panel = overlay.lookup(".leather").getBoundsInParent();
+                assertTrue(panel.getMinX() > 0 && panel.getMaxX() < size[0] && panel.getMinY() > 0 && panel.getMaxY() < size[1],
+                        "the pause panel stays inside the window");
+                assertEquals(size[0] / 2, panel.getCenterX(), 2, "centred");
+            }
+            click(t.view, t.view.swapBounds());
+            assertTrue(t.actions.calls.isEmpty(), "the table takes no input while paused");
+            MatchState next = state.apply(seat, new deckduel.core.card.SkipTurn());
+            t.view.show(shown(next.view(seat), true));
+            assertEquals(state.view(seat).revision(), t.view.shownRevision(), "a move that arrives while paused waits");
             t.view.keyPressed(key(javafx.scene.input.KeyCode.ESCAPE));
-            assertFalse(t.view.confirmShowing());
+            assertFalse(t.view.pauseShowing(), "Escape resumes");
+            ((javafx.scene.control.Button) t.view.lookup("#cardTable .pill")).fire();
+            assertTrue(t.view.pauseShowing(), "the Menu button pauses too");
+            t.view.resumeMatch();
+            assertTrue(t.actions.calls.isEmpty(), "pausing and resuming send nothing");
         });
     }
 

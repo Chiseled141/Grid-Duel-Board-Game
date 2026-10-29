@@ -62,9 +62,13 @@ public record PlayerView(Seat seat, int revision, MatchPhase phase, int round, S
         return yourTurn() && looking.isEmpty() && you.playsRemaining() > 0 ? Rules.legalPlays(hand, board()) : List.of();
     }
 
-    /** Whether the recipient may make a manual draw now. */
-    public boolean canDraw() {
-        return yourTurn() && looking.isEmpty() && you.drawsRemaining() > 0 && you.deckCount() > 0;
+    /** Whether the recipient may swap at least one hand card now. */
+    public boolean canSwap() { return swapLimit() > 0; }
+
+    /** How many hand cards the recipient may swap at once now: limited by swaps left, deck and hand. */
+    public int swapLimit() {
+        if (!yourTurn() || !looking.isEmpty()) return 0;
+        return Math.max(0, Math.min(you.drawsRemaining(), Math.min(you.deckCount(), hand.size())));
     }
 
     /** Whether the recipient can give up one play allowance to skip this turn. */

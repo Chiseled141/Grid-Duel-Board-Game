@@ -89,7 +89,7 @@ class StartupPanelTest {
             assertTrue(texts(ui).contains("Version 1.0.0 is the latest release."));
             ui.worker.remove().run();
             assertTrue(texts(ui).contains("CONNECTING"));
-            assertTrue(texts(ui).contains("Reaching the local development server 127.0.0.1:5555…"));
+            assertTrue(texts(ui).contains("Connecting to the server…"));
             assertEquals(List.of(), buttons(ui));
             assertTrue(texts(ui).contains("VERSION 1.0.0  ·  LOCAL DEVELOPMENT SERVER 127.0.0.1:5555"));
             assertTrue(find(ui.panel, JLabel.class).stream().noneMatch(l -> "startupFixture".equals(l.getName())),
@@ -152,8 +152,8 @@ class StartupPanelTest {
             var ui = ui(UpdateService.notConfigured(), UpdateInstaller.notConfigured(), 1, null);
             ui.flow.start(); ui.work();
             assertTrue(texts(ui).contains("CONNECTION FAILED"));
-            assertTrue(texts(ui).contains("Cannot reach the local development server 127.0.0.1:5555."));
-            assertTrue(texts(ui).contains("Connection refused"));
+            assertTrue(texts(ui).contains("Cannot connect to the server."));
+            assertFalse(texts(ui).contains("Connection refused"), "the technical reason goes to the log only");
             assertEquals(List.of("QUIT", "PLAY OFFLINE", "RETRY"), buttons(ui));
             button(ui, "Retry").doClick();
             assertTrue(texts(ui).contains("CONNECTING"));

@@ -30,7 +30,7 @@ final class ReplayDetailsPanel extends JPanel {
     private final JCheckBox keyOnly = new JCheckBox("Key moments");
     private final JTextField search = new JTextField();
     private final JLabel count = new JLabel();
-    private final JTextArea action = text(), changes = text(), lesson = text();
+    private final JTextArea action = text(), changes = text();
     private ReplayPlayback playback;
     private boolean updating;
 
@@ -56,7 +56,6 @@ final class ReplayDetailsPanel extends JPanel {
         tabs.addTab("Actions", journalPage());
         tabs.addTab("Score changes", scroll(changes));
         add(tabs, "replay");
-        lesson.setName("guideStepDetails"); add(scroll(lesson), "lesson");
         changes.setName("replayScoreChanges"); action.setName("replayJournalAction");
         journal.setName("replayJournal"); filter.setName("replayJournalFilter");
         keyOnly.setName("replayKeyMoments"); count.setName("replayJournalCount");
@@ -153,22 +152,6 @@ final class ReplayDetailsPanel extends JPanel {
         selectCurrent();
         action.setText(playback.navigation().at(playback.index()).caption()); action.setCaretPosition(0);
         changes.setText(scoreDescription(playback)); changes.setCaretPosition(0);
-        lesson.setText(playback.action() + "\n\nYOU\n" + lessonScore(playback.frame().you())
-                + "\n\nOPPONENT\n" + lessonScore(playback.frame().opponent()));
-        lesson.setCaretPosition(0);
-    }
-
-    void training(boolean training) {
-        ((java.awt.CardLayout) getLayout()).show(this, training ? "lesson" : "replay");
-    }
-
-    private static String lessonScore(deckduel.core.card.SideView side) {
-        var score = side.score();
-        return "Units: " + score.units() + "\nCombos: " + score.combos()
-                + "\nFormation: " + (score.formation() == null ? "None" : score.formation().title())
-                + "\nFormation bonus: +" + score.formationBonus() + " · ×" + score.multiplier()
-                + "\nKings: +" + score.kingPoints() + "\nSeven nations: +" + score.bonus()
-                + "\nRound score: " + score.total() + "\nMatch total: " + side.matchTotal();
     }
 
     private void selectCurrent() {

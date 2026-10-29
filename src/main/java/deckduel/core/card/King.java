@@ -9,7 +9,7 @@ public enum King {
     MORDRAVEN("dravorn-mordraven", "Mordraven", "Dravorn", "Legion",
             "In the largest active class group, each Unit from the third onward grants +3 points. Maximum +10.", 3, 10, 2),
     NETHRION("nerath-nethrion", "Nethrion", "Nerath", "Secret Edict",
-            "On your first manual draw each round, privately look at the top 2; keep 1, put the other on the bottom.", 0, 0, 2),
+            "On your first swap each round, privately look at the top 2 for its last card; keep 1, put the other on the bottom.", 0, 0, 2),
     AURENDOR("solmara-aurendor", "Aurendor", "Solmara", "Royal Decree",
             "Each Spell you played this round grants +3 points, maximum +9, while your row has a Unit with active tags.", 3, 9, 0),
     THALVAREN("sylvaren-thalvaren", "Thalvaren", "Sylvaren", "Alliance",

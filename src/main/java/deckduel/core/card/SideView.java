@@ -25,6 +25,6 @@ public record SideView(Row row, ScoreBreakdown score, int playsUsed, int drawsUs
     /** Card plays left this round. */
     public int playsRemaining() { return Rules.PLAYS_PER_ROUND - playsUsed; }
 
-    /** Manual draws left this round. */
-    public int drawsRemaining() { return Rules.MANUAL_DRAWS - drawsUsed; }
+    /** Card swaps left this round; the record keeps its original draw field name for stored replays. */
+    public int drawsRemaining() { return Rules.SWAPS_PER_ROUND - drawsUsed; }
 }

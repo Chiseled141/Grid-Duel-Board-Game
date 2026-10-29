@@ -222,8 +222,8 @@ class PlayAnimatorTest {
         assertTrue(tallyCues.get(1).step() > tallyCues.get(0).step(), "each chink a little higher");
     }
 
-    @Test void manualDrawsGlideFromTheDeckAndTheOpponentsArriveFaceDown() throws Exception {
-        MatchState[] mine = findMove((move, before, after) -> move instanceof deckduel.core.card.DrawCard && before.turn() == Seat.FIRST);
+    @Test void swapsGlideFromTheDeckAndTheOpponentsArriveFaceDown() throws Exception {
+        MatchState[] mine = findMove((move, before, after) -> move instanceof deckduel.core.card.SwapCards && before.turn() == Seat.FIRST);
         var own = PlayAnimator.handChanges(mine[0].view(Seat.FIRST), mine[1].view(Seat.FIRST), LAYOUT);
         assertNotNull(own);
         assertTrue(own.staging().steps().stream().anyMatch(s -> s.effect() instanceof Staging.Flight f && f.glide() && f.face() != null));
@@ -278,7 +278,7 @@ class PlayAnimatorTest {
     }
 
     @Test void aQuickReplyPlaysAlongsideTheDrawInsteadOfCuttingIt() throws Exception {
-        MatchState[] mine = findMove((move, before, after) -> move instanceof deckduel.core.card.DrawCard && before.turn() == Seat.FIRST);
+        MatchState[] mine = findMove((move, before, after) -> move instanceof deckduel.core.card.SwapCards && before.turn() == Seat.FIRST);
         var drawn = mine[1].view(Seat.FIRST).hand().stream()
                 .filter(card -> mine[0].view(Seat.FIRST).hand().stream().noneMatch(old -> old.id() == card.id())).findFirst().orElseThrow();
         var draw = PlayAnimator.handChanges(mine[0].view(Seat.FIRST), mine[1].view(Seat.FIRST), LAYOUT).staging();

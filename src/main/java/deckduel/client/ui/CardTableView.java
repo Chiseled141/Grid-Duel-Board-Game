@@ -3,7 +3,6 @@ package deckduel.client.ui;
 import deckduel.client.ScoringSounds;
 import deckduel.core.card.CardDef;
 import deckduel.core.card.CardInstance;
-import deckduel.core.card.DrawCard;
 import deckduel.core.card.Effect;
 import deckduel.core.card.KeepCard;
 import deckduel.core.card.KeepEdictCard;
@@ -19,6 +18,7 @@ import deckduel.core.card.RowCard;
 import deckduel.core.card.Rules;
 import deckduel.core.card.SideView;
 import deckduel.core.card.SkipTurn;
+import deckduel.core.card.SwapCards;
 import deckduel.core.card.TargetSide;
 import deckduel.net.MatchUpdate;
 import java.awt.Rectangle;
@@ -60,13 +60,13 @@ import javafx.scene.text.TextAlignment;
 
 /**
  * The live card match in JavaFX, over the room background. It renders only the latest
- * authoritative {@link MatchUpdate}; choosing a destination, a draw or a card to keep
+ * authoritative {@link MatchUpdate}; choosing a destination, a swap or a card to keep
  * sends a move through {@link Actions}, and nothing changes on screen until the server's next view
  * arrives. Every play is staged by {@link PlayAnimator} and performed by
  * {@link TableEffects} under a perspective camera. Used on the JavaFX Application Thread only.
  */
 final class CardTableView extends Pane {
-    private static final int GAP = 10;
+    private static final int GAP = 8;
     /** Hover delay for Spell details. */
     private static final int PREVIEW_DELAY_MS = 350;
     /** How long a scoring card's hop lasts, in animation milliseconds. */
@@ -81,6 +81,10 @@ final class CardTableView extends Pane {
         void move(Move move);
         void rematch();
         void leave();
+        /** Closes the game, forfeiting an unfinished match. */
+        void quit();
+        /** Switches a preference; the new values come back through {@link #preferences}. */
+        void toggle(PauseMenu.Preference preference);
     }
 
     /** The model's match as seen on the EDT when it changed; {@code match} is null between matches. */
@@ -106,7 +110,7 @@ final class CardTableView extends Pane {
     private final Label resultTitle = new Label(), resultDetail = new Label();
     private final Label yourTotal = new Label(), theirTotal = new Label(), theirName = new Label();
     private final Button rematch = FxKit.pill("Rematch", "gold"), backToMenu = FxKit.pill("Back to menu", "cream-outline");
-    private final StackPane confirm = new StackPane();
+    private final PauseMenu pause;
     private Long inspectedSpyCard;
     private final CardDetails cardDetails = new CardDetails(() -> {
         inspectedSpyCard = null;
@@ -160,6 +164,9 @@ final class CardTableView extends Pane {
     private Long selected, pressed;
     // The Cast button was pressed for a Spell that takes a target; the next card click chooses it.
     private boolean targetChoice;
+    // Swap mode: hand clicks mark cards to discard; Confirm swaps them for as many new cards.
+    private boolean swapping;
+    private final java.util.LinkedHashSet<Long> swapMarked = new java.util.LinkedHashSet<>();
     // The player's own arrangement, for easier reading only: the hand's order by card id, and which
     // real row space each of the seven places on their row shows. Nothing of it reaches the server.
     private List<Long> handOrder = new ArrayList<>();
@@ -177,13 +184,19 @@ final class CardTableView extends Pane {
     private ScoringTrace trace;
     private int beatsPlayed, roundsSeen;
     private int rowLeft, cardW, cardH, opponentTop, ownTop, handTop, midY, tableLeft, tableWidth, pilesX;
-    private int handW, handH, handAreaWidth;
+    private int handW, handH, handAreaWidth, railHeight;
 
     /** Builds the table; it shows a match once {@link #show} receives one. */
     CardTableView(Actions actions, ScoringSounds sounds) {
         this.actions = actions;
         kings = new KingTableControls(choice -> actions.move(choice));
         this.sounds = sounds;
+        pause = new PauseMenu(new PauseMenu.Choices() {
+            @Override public void resume() { resumeMatch(); }
+            @Override public void toggle(PauseMenu.Preference preference) { actions.toggle(preference); }
+            @Override public void surrender() { pause.setVisible(false); actions.leave(); }
+            @Override public void quit() { actions.quit(); }
+        });
         setId("cardTable");
         setStyle("-fx-background-color: #2C2925;");
         setFocusTraversable(true);
@@ -200,7 +213,7 @@ final class CardTableView extends Pane {
         if (room != null) backdrop.setImage(new Image(room.toExternalForm(), true));
         backdrop.setPreserveRatio(false);
         headerShade.setMouseTransparent(true);
-        leave.setOnAction(event -> confirmLeave());
+        leave.setOnAction(event -> openPause());
         // The rail sits under the effects, so scoring chips are seen landing on it.
         getChildren().addAll(backdrop, headerShade, board, rail, effectsScene, leave);
         buildSpellTip();
@@ -209,8 +222,7 @@ final class CardTableView extends Pane {
         // Details sit above deployed Kings, while modal dialogs retain priority over both.
         getChildren().addAll(kings, spellTip, dragLayer);
         buildResult();
-        buildConfirm();
-        getChildren().add(cardDetails);
+        getChildren().addAll(cardDetails, pause);
         installMouse();
         addEventHandler(KeyEvent.KEY_PRESSED, this::keyPressed);
     }
@@ -237,7 +249,9 @@ final class CardTableView extends Pane {
      */
     private boolean holds(State next) {
         MatchUpdate update = next.match();
-        if (update == null || shown == null || next.reducedMotion() || !onScreen) return false;
+        if (update == null || shown == null || !onScreen) return false;
+        if (pause.isVisible() && update.matchId().equals(shown.matchId())) return true;
+        if (next.reducedMotion()) return false;
         if (!update.matchId().equals(shown.matchId()) || update.game() != shown.game()) return false;
         if (!held.isEmpty() || pendingConclusion != null) return true;
         return presentationBusy() && update.view().revision() > shown.view().revision();
@@ -300,6 +314,8 @@ final class CardTableView extends Pane {
         if (newGame || next.reducedMotion()) { effects.clear(); staged = false; trace = null; }
         announceRounds(update);
         if (selected != null && update.view().hand().stream().noneMatch(card -> card.id() == selected)) selected = null;
+        swapMarked.removeIf(id -> update.view().hand().stream().noneMatch(card -> card.id() == id));
+        if (!update.view().canSwap() || newRound) endSwap();
         shown = update;
         kings.setVisible(true);
         handOrder = arranged(update.view().hand()).stream().map(CardInstance::id).toList();
@@ -378,7 +394,7 @@ final class CardTableView extends Pane {
         running = false;
         sounds.stop();
         settle.stop();
-        confirm.setVisible(false);
+        pause.setVisible(false);
         cardDetails.close();
         kings.suspend();
     }
@@ -408,7 +424,7 @@ final class CardTableView extends Pane {
                 return PlayAnimator.conclusion(next.view(), layout);
         }
         if (next.view().revision() != shown.view().revision() + 1) return null;
-        // A manual draw or a kept Reconnaissance card has no play record; only the hands changed.
+        // A swap or a kept Reconnaissance card has no play record; only the hands changed.
         return next.view().lastPlay() != null ? PlayAnimator.play(shown.view(), next.view(), layout)
                 : PlayAnimator.handChanges(shown.view(), next.view(), layout);
     }
@@ -462,8 +478,8 @@ final class CardTableView extends Pane {
             sounds.play(trace.beats.get(beatsPlayed++).cue());
         if (trace != null && elapsed > trace.finishAt + GAIN_MILLIS) trace = null;
         if (staged && !effects.tick(now)) staged = false;
-        // Chips, formation/King effects and the rail's final count must all finish first.
-        if (!presentationBusy()) {
+        // Chips, formation/King effects and the rail's final count must all finish first; a pause holds everything.
+        if (!presentationBusy() && !pause.isVisible()) {
             if (pendingConclusion != null) {
                 State conclusion = pendingConclusion; pendingConclusion = null;
                 presentSnapshot(conclusion);
@@ -475,7 +491,7 @@ final class CardTableView extends Pane {
         boolean lifting = stepCards(now);
         redraw();
         if (System.currentTimeMillis() > noticeUntil && !presentationBusy() && !lifting
-                && pendingConclusion == null && held.isEmpty()) { frames.stop(); running = false; }
+                && pendingConclusion == null && (held.isEmpty() || pause.isVisible())) { frames.stop(); running = false; }
     }
 
     private boolean presentationBusy() { return staged || scoring() || kings.deploying(); }
@@ -517,7 +533,7 @@ final class CardTableView extends Pane {
     private double[] handTarget(int index) {
         CardInstance card = hand().get(index);
         double x = handSlot(index, hand().size()).x;
-        if (selected != null && card.id() == selected || pressed != null && card.id() == pressed)
+        if (selected != null && card.id() == selected || pressed != null && card.id() == pressed || swapMarked.contains(card.id()))
             return new double[]{26, 1.08, x};
         return hover != null && hover.zone() == TableZone.HAND && hover.index() == index ? new double[]{12, 1.05, x} : new double[]{0, 1, x};
     }
@@ -547,13 +563,36 @@ final class CardTableView extends Pane {
         wake();
     }
 
-    /** A manual draw, when the player may make one now. */
-    void draw() {
-        if (shown != null && !kings.deploying() && !state.reconnecting() && shown.view().canDraw()) { actions.move(new DrawCard()); wake(); }
+    /** Whether the player may swap now; swaps never use or end the turn. */
+    private boolean canSwap() {
+        return shown != null && !kings.deploying() && !state.reconnecting() && shown.view().canSwap();
     }
+
+    /** The Swap button: opens swap mode, or confirms the marked cards once some are chosen. */
+    void swap() {
+        if (!canSwap()) return;
+        if (!swapping) {
+            swapping = true;
+            selected = null;
+            targetChoice = false;
+        } else if (!swapMarked.isEmpty()) {
+            actions.move(new SwapCards(List.copyOf(swapMarked)));
+            endSwap();
+        }
+        wake();
+    }
+
+    /** Marks or unmarks a hand card for the swap, within the swaps and deck cards left. */
+    private void toggleSwapMark(long cardId) {
+        if (!swapMarked.remove(cardId) && swapMarked.size() < shown.view().swapLimit()) swapMarked.add(cardId);
+        wake();
+    }
+
+    private void endSwap() { swapping = false; swapMarked.clear(); }
 
     /** Skips this turn through the server, using one of the round's ten plays. */
     void skipTurn() {
+        if (swapping) { endSwap(); wake(); return; }
         if (shown == null || kings.deploying() || state.reconnecting() || !shown.view().canSkip()) return;
         selected = null;
         targetChoice = false;
@@ -561,14 +600,35 @@ final class CardTableView extends Pane {
         wake();
     }
 
-    private void confirmLeave() {
-        if (shown != null && shown.view().phase() != MatchPhase.FINISHED) { confirm.setVisible(true); return; }
-        actions.leave();
+    /**
+     * Opens the pause menu over the table. Input and newly arrived moves wait behind it; the
+     * server's own clocks (such as a King choice deadline) keep running.
+     */
+    void openPause() {
+        clearPreview();
+        cancelDrag();
+        cardDetails.close();
+        pause.open(shown == null || shown.view().phase() == MatchPhase.FINISHED);
     }
+
+    /** Closes the pause menu and shows any moves that arrived meanwhile. */
+    void resumeMatch() {
+        pause.setVisible(false);
+        requestFocus();
+        wake();
+    }
+
+    /** The current preference values, for the pause menu's Settings and the table's reduced motion. */
+    void preferences(boolean gameSounds, boolean reducedMotion, boolean music) {
+        pause.preferences(gameSounds, reducedMotion, music);
+        state = new State(state.match(), state.reconnecting(), reducedMotion);
+    }
+
+    boolean pauseShowing() { return pause.isVisible(); }
 
     /** Legal plays of one hand card in the current view. */
     private List<PlayCard> playsFor(Long cardId) {
-        if (shown == null || cardId == null || kings.deploying() || state.reconnecting()) return List.of();
+        if (shown == null || cardId == null || kings.deploying() || state.reconnecting() || swapping) return List.of();
         return shown.view().legalPlays().stream().filter(play -> play.cardId() == cardId).toList();
     }
 
@@ -656,7 +716,7 @@ final class CardTableView extends Pane {
     /** Only Spells need hover rules; Unit faces remain at their normal table size. */
     private Hit previewable(Hit hit) {
         if (hit == null || shown == null || dragging || result.isVisible()
-                || confirm.isVisible() || cardDetails.isVisible()) return null;
+                || pause.isVisible() || cardDetails.isVisible()) return null;
         // Inspect Kings during their choice; hiding that overlay reveals the hand without popups.
         if (shown.view().phase() == MatchPhase.KING_SELECTION) return null;
         CardDef card = cardAt(hit);
@@ -767,6 +827,13 @@ final class CardTableView extends Pane {
         lastPointer = null;
         if (pressedSlot != null) { dropRowCard(hit, point); return; }
         if (!dragging && hit != null && button(hit)) { pressed = null; return; }
+        if (swapping) {
+            if (!dragging && hit != null && hit.zone() == TableZone.HAND) toggleSwapMark(hand().get(hit.index()).id());
+            if (dragging && pressed != null) settleHandCard(pressed, point);
+            pressed = null; dragging = false;
+            wake();
+            return;
+        }
         // The Cast button comes first; it then either asks for a target or resolves the Spell.
         if (!dragging && hit != null && hit.zone() == TableZone.CAST && castButtonActive()) {
             pressed = null;
@@ -812,7 +879,7 @@ final class CardTableView extends Pane {
         clearGesture(); wake();
     }
 
-    /** Handles a click on a revealed card to keep, a Spy-revealed card, or the draw or skip button; false for anything else. */
+    /** Handles a click on a revealed card to keep, a Spy-revealed card, or the swap or skip button; false for anything else. */
     private boolean button(Hit hit) {
         switch (hit.zone()) {
             case LOOK -> {
@@ -820,7 +887,7 @@ final class CardTableView extends Pane {
                 actions.move(shown.view().choiceKind() == ChoiceKind.SECRET_EDICT ? new KeepEdictCard(id) : new KeepCard(id));
                 wake();
             }
-            case DRAW -> draw();
+            case SWAP -> swap();
             case SKIP -> skipTurn();
             case REVEALED -> {
                 inspectedSpyCard = shown.view().revealed().get(hit.index()).id();
@@ -908,26 +975,27 @@ final class CardTableView extends Pane {
 
     void keyPressed(KeyEvent event) {
         KeyCode code = event.getCode();
+        if (pause.isVisible()) {
+            if (code == KeyCode.ESCAPE) pause.back();
+            if (code != KeyCode.TAB && code != KeyCode.ENTER && code != KeyCode.SPACE) event.consume();
+            return;
+        }
         if (cardDetails.isVisible()) {
             if (code == KeyCode.ESCAPE) cardDetails.close();
             if (code != KeyCode.TAB) event.consume();
-            return;
-        }
-        if (confirm.isVisible()) {
-            if (code == KeyCode.ESCAPE) confirm.setVisible(false);
-            event.consume();
             return;
         }
         switch (code) {
             case LEFT -> cycle(-1);
             case RIGHT -> cycle(1);
             case ENTER -> confirmKey();
-            case D -> draw();
+            case D, W -> swap();
             case S -> skipTurn();
             case ESCAPE -> {
                 if (pressed != null || pressedSlot != null) { selected = null; targetChoice = false; cancelDrag(); }
+                else if (swapping) { endSwap(); wake(); }
                 else if (targetChoice) { targetChoice = false; wake(); }
-                else if (selected != null) { selected = null; wake(); } else confirmLeave();
+                else if (selected != null) { selected = null; wake(); } else openPause();
             }
             default -> {
                 int slot = code.isDigitKey() ? code.getCode() - (code.isKeypadKey() ? KeyCode.NUMPAD1.getCode() : KeyCode.DIGIT1.getCode()) : -1;
@@ -958,6 +1026,7 @@ final class CardTableView extends Pane {
     }
 
     private void confirmKey() {
+        if (swapping) { swap(); return; }
         if (castButtonActive()) { pressCast(); return; }
         PlayCard chosen = playNow(selected, hover);
         if (chosen != null) play(chosen);
@@ -1014,36 +1083,11 @@ final class CardTableView extends Pane {
         return column;
     }
 
-    private void buildConfirm() {
-        Label title = new Label("Leave match");
-        title.setFont(FxKit.display(24));
-        title.setTextFill(FxKit.AMBER);
-        Label message = new Label("Leave and forfeit this match?");
-        message.setFont(FxKit.normal(15));
-        message.setTextFill(FxKit.CREAM);
-        Button stay = FxKit.pill("No", "cream-outline"), forfeit = FxKit.pill("Forfeit", "danger");
-        stay.setOnAction(event -> { confirm.setVisible(false); requestFocus(); });
-        forfeit.setOnAction(event -> { confirm.setVisible(false); actions.leave(); });
-        HBox buttons = new HBox(12, stay, forfeit);
-        buttons.setAlignment(Pos.CENTER);
-        VBox dialog = new VBox(14, title, message, buttons);
-        dialog.getStyleClass().add("leather");
-        dialog.setAlignment(Pos.CENTER);
-        dialog.setMaxSize(420, 200);
-        dialog.setPadding(new javafx.geometry.Insets(24));
-        confirm.setId("leaveConfirm");
-        confirm.setStyle("-fx-background-color: rgba(10, 6, 2, 0.55);");
-        confirm.getChildren().add(dialog);
-        confirm.setVisible(false);
-        getChildren().add(confirm);
-    }
-
     private void refreshResult() {
         PlayerView view = shown.view();
         boolean finished = view.phase() == MatchPhase.FINISHED;
         result.setVisible(finished);
         if (!finished) return;
-        confirm.setVisible(false);
         var outcome = view.outcome();
         String verdict = outcome.winner() == null ? "Draw" : outcome.winner() == view.seat() ? "Victory" : "Defeat";
         resultTitle.setText(verdict);
@@ -1088,16 +1132,16 @@ final class CardTableView extends Pane {
         effectsScene.setWidth(w);
         effectsScene.setHeight(h);
         effectsLayer.resize(w, h);
-        int railWidth = Math.max(196, Math.min(252, w / 6));
-        int railHeight = (int) Math.ceil(railWidth * 550.0 / 260);
+        int railWidth = Math.max(190, Math.min(240, (int) (w / 6.5)));
+        railHeight = (int) Math.ceil(railWidth * 550.0 / 260);
         rail.resizeRelocate(20, 76, railWidth, railHeight);
         // The pill's padding, border and offset shadow need its own preferred height, or the label clips.
         leave.resizeRelocate(20, 14, Math.max(120, leave.prefWidth(-1)), leave.prefHeight(-1));
         // The window's floating music toggle occupies the top-right corner.
-        tableLeft = 20 + railWidth + 28;
-        pilesX = w - 110;
+        tableLeft = 20 + railWidth + 20;
+        pilesX = w - 100;
         int across = Row.SIZE;
-        int available = Math.max(0, pilesX - 16 - tableLeft);
+        int available = Math.max(0, pilesX - 22 - tableLeft);
         handAreaWidth = Math.max(0, available - 12);
         // Reserve two King faces at the Unit row's height, preserving each painting's proportions.
         double kingToUnitWidth = 1.5 * 1060 / 1482;
@@ -1105,8 +1149,8 @@ final class CardTableView extends Pane {
         int kingPadding = 28, kingGutters = kingPadding * 2 + GAP;
         cardW = Math.max(40, (int) ((available - (across - 1) * GAP - kingGutters) / (across + 2 * kingToUnitWidth)));
         // Cards use the artwork's 2:3 proportions.
-        int handReserve = Math.max(180, Math.min(260, (int) (h * .27)));
-        cardH = Math.max(60, Math.min(cardW * 3 / 2, (h - 242 - handReserve) / 2));
+        int handReserve = Math.max(170, Math.min(250, (int) (h * .25)));
+        cardH = Math.max(60, Math.min(cardW * 3 / 2, (h - 226 - handReserve) / 2));
         cardW = Math.min(cardW, cardH * 2 / 3);
         int kingWidth = (int) Math.round(cardH * 1060.0 / 1482);
         tableWidth = Math.max(0, available - 2 * kingWidth - kingGutters);
@@ -1114,15 +1158,15 @@ final class CardTableView extends Pane {
         rowLeft = tableLeft + (tableWidth - width) / 2;
         opponentTop = 92;
         midY = opponentTop + cardH + 20;
-        ownTop = opponentTop + cardH + 80;
+        ownTop = opponentTop + cardH + 66;
         // The hand has its own larger faces; reserve room for the fan and its shadows at the bottom.
         handH = Math.max(cardH, Math.min(cardH * 3 / 2, h - ownTop - cardH - 100));
         handW = handH * 2 / 3;
         handTop = Math.max(ownTop + cardH + 30, h - handH - 70);
         // Centred on the window: the match is over, so the verdict takes the middle of the screen.
         result.resizeRelocate((w - 560) / 2.0, (h - 290) / 2.0, 560, 290);
-        confirm.resizeRelocate(0, 0, w, h);
         cardDetails.resizeRelocate(0, 0, w, h);
+        pause.resizeRelocate(0, 0, w, h);
         kings.position(tableLeft + tableWidth + kingPadding, opponentTop, ownTop, w, h, kingWidth, cardH);
         startPendingOpening();
         redraw();
@@ -1159,8 +1203,8 @@ final class CardTableView extends Pane {
         return rowPose.computeIfAbsent(shown.view().you().row().at(slot).card().id(), id -> new double[]{target.x, target.y});
     }
 
-    /** The manual-draw button under the player's own deck. */
-    Rectangle drawBounds() { return new Rectangle(pilesX - 10, ownTop + 128, 76, 26); }
+    /** The swap button under the player's own deck. */
+    Rectangle swapBounds() { return new Rectangle(pilesX - 18, ownTop + 128, 92, 26); }
 
     Rectangle skipBounds() { return new Rectangle(pilesX - 18, ownTop + 162, 92, 26); }
 
@@ -1205,12 +1249,15 @@ final class CardTableView extends Pane {
     Button backButton() { return backToMenu; }
     boolean resultShowing() { return result.isVisible(); }
     boolean finishingRound() { return pendingConclusion != null; }
-    boolean confirmShowing() { return confirm.isVisible(); }
 
-    Rectangle castBounds() { return new Rectangle(tableLeft + tableWidth / 2 - 110, midY + 8, 220, 28); }
+    /** The Cast button, full rail width under the score rail on the left. */
+    Rectangle castBounds() {
+        int y = (int) Math.min(rail.getLayoutY() + railHeight + 14, getHeight() - 60);
+        return new Rectangle((int) rail.getLayoutX(), y, (int) rail.getWidth(), 48);
+    }
 
     Hit hitAt(Point2D point) {
-        if (shown == null || result.isVisible() || cardDetails.isVisible()) return null;
+        if (shown == null || result.isVisible() || cardDetails.isVisible() || pause.isVisible()) return null;
         int x = (int) point.getX(), y = (int) point.getY();
         PlayerView view = shown.view();
         if (view.phase() == MatchPhase.KING_SELECTION && !kings.selectionHidden()) return null;
@@ -1237,8 +1284,8 @@ final class CardTableView extends Pane {
         for (TableZone zone : List.of(TableZone.OWN, TableZone.OPPONENT))
             for (int slot = 0; slot < Row.SIZE; slot++)
                 if (slotBounds(zone, slot).contains(x, y)) return new Hit(zone, slot);
-        if (view.canDraw() && (drawBounds().contains(x, y) || pileBounds().contains(x, y))) return new Hit(TableZone.DRAW, 0);
-        if (view.canSkip() && !state.reconnecting() && skipBounds().contains(x, y)) return new Hit(TableZone.SKIP, 0);
+        if (canSwap() && (swapBounds().contains(x, y) || pileBounds().contains(x, y))) return new Hit(TableZone.SWAP, 0);
+        if ((swapping || view.canSkip() && !state.reconnecting()) && skipBounds().contains(x, y)) return new Hit(TableZone.SKIP, 0);
         if (castButtonActive() && castBounds().contains(x, y)) return new Hit(TableZone.CAST, 0);
         return null;
     }
@@ -1283,7 +1330,7 @@ final class CardTableView extends Pane {
         drawRow(g, TableZone.OWN, shown.view().you(), "YOUR ROW");
         drawPiles(g, shown.view().opponent(), opponentTop);
         drawPiles(g, shown.view().you(), ownTop);
-        drawDrawButton(g);
+        drawSwapButton(g);
         drawSkipButton(g);
         // The keep overlay carries its own heading; the status line would show through under it.
         // A notification toast sits where the status line is; the line waits until it has gone.
@@ -1468,25 +1515,29 @@ final class CardTableView extends Pane {
         text(g, "Discard " + side.discardCount(), pilesX, top + 119, FxKit.normal(11), FxKit.CREAM, true);
     }
 
-    /** The manual-draw button with the draws left this round; dimmed when no draw is possible now. */
-    private void drawDrawButton(GraphicsContext g) {
+    /**
+     * The swap button with the swaps left this round, dimmed when no swap is possible now. In
+     * swap mode it confirms the marked cards.
+     */
+    private void drawSwapButton(GraphicsContext g) {
         if (shown.view().phase() != MatchPhase.IN_PROGRESS) return;
-        Rectangle r = drawBounds();
-        boolean can = shown.view().canDraw() && !state.reconnecting();
-        boolean lit = can && hover != null && hover.zone() == TableZone.DRAW;
-        String label = "DRAW " + shown.view().you().drawsRemaining() + "/" + Rules.MANUAL_DRAWS;
+        Rectangle r = swapBounds();
+        boolean can = canSwap() && (!swapping || !swapMarked.isEmpty());
+        boolean lit = can && hover != null && hover.zone() == TableZone.SWAP;
+        String label = swapping ? "SWAP " + swapMarked.size()
+                : "SWAP " + shown.view().you().drawsRemaining() + "/" + Rules.SWAPS_PER_ROUND;
         TablePlaque.button(g, r.x, r.y, r.width, r.height, can ? TablePlaque.Look.PRIMARY : TablePlaque.Look.OFF, lit,
                 label, FxKit.bold(12));
     }
 
-    /** Skip sits below Draw. */
+    /** Skip sits below Swap; in swap mode it cancels the swap instead. */
     private void drawSkipButton(GraphicsContext g) {
         if (shown.view().phase() != MatchPhase.IN_PROGRESS) return;
         Rectangle r = skipBounds();
-        boolean can = shown.view().canSkip() && !state.reconnecting();
+        boolean can = swapping || shown.view().canSkip() && !state.reconnecting();
         boolean lit = can && hover != null && hover.zone() == TableZone.SKIP;
         TablePlaque.button(g, r.x, r.y, r.width, r.height, can ? TablePlaque.Look.PLAIN : TablePlaque.Look.OFF, lit,
-                "SKIP TURN", FxKit.bold(11));
+                swapping ? "CANCEL" : "SKIP TURN", FxKit.bold(11));
     }
 
     /** The latest notice (such as a rejected move) under a choice overlay, which hides the status line. */
@@ -1520,18 +1571,18 @@ final class CardTableView extends Pane {
         CardInstance spell = handCard(selected);
         boolean ready = spell != null && !spell.def().occupiesSpace() && !playsFor(selected).isEmpty();
         String detail = detailText();
-        // The cast button takes the detail line's place while it is offered.
-        if (detail != null && !ready) centered(g, detail, FxKit.normal(13), FxKit.MUTED, midY + 22);
+        if (detail != null) centered(g, detail, FxKit.normal(13), FxKit.MUTED, midY + 22);
         if (!ready) return;
         Rectangle cast = castBounds();
         boolean needsTarget = Rules.takesTarget(spell.def().effect())
                 && playsFor(selected).stream().anyMatch(play -> play.targetId() != null);
         boolean lit = hover != null && hover.zone() == TableZone.CAST && !targetChoice;
         TablePlaque.Look look = targetChoice ? TablePlaque.Look.PLAIN : TablePlaque.Look.PRIMARY;
-        String label = targetChoice ? "Choose a target"
-                : Rules.takesTarget(spell.def().effect()) && !needsTarget ? "Cast without a target"
-                : "Cast " + spell.def().name();
-        TablePlaque.button(g, cast.x, cast.y, cast.width, cast.height, look, lit, label, FxKit.bold(13));
+        String label = targetChoice ? "CHOOSE A TARGET"
+                : Rules.takesTarget(spell.def().effect()) && !needsTarget ? "CAST WITHOUT TARGET"
+                : "CAST " + spell.def().name().toUpperCase(Locale.ROOT);
+        Font font = FxKit.bold(16);
+        TablePlaque.button(g, cast.x, cast.y, cast.width, cast.height, look, lit, FxKit.fit(label, font, cast.width - 16), font);
     }
 
     private String statusText() {
@@ -1544,16 +1595,18 @@ final class CardTableView extends Pane {
         if (!shown.opponentConnected()) return shown.opponentName() + " disconnected — their seat is held for now";
         if (view.keeping()) return "Keep one of the cards your Reconnaissance revealed";
         if (!view.yourTurn()) return shown.opponentName() + " is choosing a card…";
-        String draws = view.canDraw() ? " or draw (" + view.you().drawsRemaining() + " left)" : "";
-        if (view.hand().isEmpty()) return "Your hand is empty — draw a card or skip your turn";
+        if (swapping) return swapMarked.isEmpty() ? "Choose up to " + view.swapLimit() + " cards to swap"
+                : "Swap " + swapMarked.size() + " card" + (swapMarked.size() == 1 ? "" : "s") + " — press SWAP to confirm";
+        String draws = view.canSwap() ? ", swap cards (" + view.you().drawsRemaining() + " left)" : "";
+        if (view.hand().isEmpty()) return "Your hand is empty — skip your turn";
         CardInstance card = handCard(dragging ? pressed : selected);
         if (card == null) return "Your turn — play a card" + draws + ", or skip (S)";
         if (card.def().occupiesSpace())
             return view.you().row().isFull() ? "Your row is full — choose a Unit to replace" : "Choose an empty space on your row";
         Effect effect = card.def().effect();
-        if (!Rules.takesTarget(effect)) return "Cast " + card.def().name() + " with the button below";
+        if (!Rules.takesTarget(effect)) return "Cast " + card.def().name() + " with the Cast button on the left";
         if (Rules.spellTargets(card, view.hand(), view.board()).isEmpty()) return "No legal target — this Spell would resolve with no effect";
-        if (!targetChoice) return "Cast " + card.def().name() + " with the button below";
+        if (!targetChoice) return "Cast " + card.def().name() + " with the Cast button on the left";
         if (effect instanceof Effect.Exchange) return "Choose another card in your hand to discard";
         return "Choose a target for " + card.def().name();
     }
@@ -1581,6 +1634,11 @@ final class CardTableView extends Pane {
             double[] pose = state.reducedMotion() ? handTarget(i) : handPose(i);
             handCard(g, card.def(), r.getCenterX(), r.getCenterY(), pose[1], fanAngle(i, hand.size()),
                     chosen, pose[0], yourTurn ? null : DIM);
+            if (swapMarked.contains(card.id())) {
+                g.setStroke(FxKit.CORAL);
+                g.setLineWidth(3);
+                g.strokeRoundRect(r.x - 3, r.y - 3, r.width + 6, r.height + 6, 12, 12);
+            }
             // Exchange's discard is chosen from the hand; mark the other cards once Cast asked for it.
             if (playNow(selected, new Hit(TableZone.HAND, i)) != null) {
                 g.setStroke(FxKit.AMBER.deriveColor(0, 1, 1, .9));

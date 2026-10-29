@@ -1,7 +1,6 @@
 package deckduel.client.ui;
 
 import deckduel.client.ClientSettings;
-import deckduel.client.startup.UpdateFlow;
 import deckduel.client.state.ClientModel;
 import deckduel.client.state.ClientModelListener;
 import deckduel.client.state.Screen;
@@ -20,9 +19,6 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
     private final Runnable quitGame;
     private final Runnable saveSettings;
     private Runnable gameSoundsChanged = () -> { };
-    private final UpdateFlow updates;
-    private final String fixture;
-    private final boolean restarts;
     private final JPanel surface = new JPanel(new BorderLayout()) {
         @Override public Dimension getPreferredSize() {
             Dimension natural = super.getPreferredSize();
@@ -70,6 +66,7 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
     private final JLabel playNotice = caption(" ");
     private final java.util.Map<String, JPanel> pages = new java.util.LinkedHashMap<>();
     private final java.util.Map<String, MenuNavigation> navigation = new java.util.HashMap<>();
+    private Runnable refreshSettings = () -> { };
     private String currentPage = "home";
     private boolean creatingRoom;
     private final Timer refreshTimer;
@@ -80,28 +77,20 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
         repaint();
     });
 
-    /**
-     * Builds the menu; Quit uses the frame's normal save-and-close path. Settings checks for
-     * updates through {@code updates}, labelling the result when {@code fixture} names a test fixture.
-     */
-    public LobbyPanel(ClientModel model, ClientSettings settings, Runnable quitGame, UpdateFlow updates, String fixture,
-                      boolean restarts) {
+    /** Builds the menu; Quit uses the frame's normal save-and-close path. */
+    public LobbyPanel(ClientModel model, ClientSettings settings, Runnable quitGame) {
         this(model, settings, quitGame, () -> {
             Thread writer = new Thread(() -> {
                 synchronized (settings) { settings.save(); }
             }, "deck-duel-save-settings");
             writer.setDaemon(true);
             writer.start();
-        }, updates, fixture, restarts);
+        });
     }
 
     // Inject persistence in UI tests so selecting a style never writes real user preferences.
-    LobbyPanel(ClientModel model, ClientSettings settings, Runnable quitGame, Runnable saveSettings,
-               UpdateFlow updates, String fixture, boolean restarts) {
+    LobbyPanel(ClientModel model, ClientSettings settings, Runnable quitGame, Runnable saveSettings) {
         super(model, Screen.LOBBY, settings);
-        this.updates = updates;
-        this.fixture = fixture;
-        this.restarts = restarts;
         this.model = model;
         this.refreshTimer = new Timer(5000, event -> model.refreshMatches());
         this.settings = settings;
@@ -144,6 +133,7 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
         model.addListener(new ClientModelListener() {
             @Override public void onScreenChanged(Screen screen) {
                 if (screen == Screen.LOBBY) {
+                    refreshSettings.run();
                     creatingRoom = false;
                     refreshState();
                     showPage("home");
@@ -371,14 +361,16 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
         line(page, settingLabel("ANIMATION & SOUND"));
         page.add(Box.createVerticalStrut(7));
         JButton motion = MenuSettingsOption.toggle("Reduced motion", "Limit background and card animation.");
-        motion.setSelected(settings.reducedMotion());
-        motion.setText("Reduced motion: " + (settings.reducedMotion() ? "On" : "Off"));
         motion.setName("reducedMotion");
+        Runnable showMotion = () -> {
+            motion.setText("Reduced motion: " + (settings.reducedMotion() ? "On" : "Off"));
+            motion.setSelected(settings.reducedMotion());
+        };
+        showMotion.run();
         motion.addActionListener(event -> {
             settings.setReducedMotion(!settings.reducedMotion());
             model.setReducedMotion(settings.reducedMotion());
-            motion.setText("Reduced motion: " + (settings.reducedMotion() ? "On" : "Off"));
-            motion.setSelected(settings.reducedMotion());
+            showMotion.run();
             saveSettings.run();
         });
         line(page, motion);
@@ -397,40 +389,15 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
             saveSettings.run();
         });
         line(page, sounds);
+        // The match's pause menu can change both; show its values when the menu returns.
+        refreshSettings = () -> { showMotion.run(); showSounds.run(); };
         page.add(Box.createVerticalStrut(20));
-        buildUpdates(page);
-        page.add(Box.createVerticalStrut(12));
         line(page, caption("Changes saved automatically"));
         return page;
     }
 
     /** Notifies the frame so muting releases the audio device and cancels queued cues. */
     void onGameSoundsChanged(Runnable listener) { gameSoundsChanged = listener; }
-
-    /** The installed version, Check for updates, and Install update once a release is offered. */
-    private void buildUpdates(JPanel page) {
-        line(page, settingLabel("UPDATES"));
-        page.add(Box.createVerticalStrut(7));
-        JButton check = MenuSettingsOption.route("Check for updates",
-                "Installed version " + updates.installedVersion() + ".", updates::check);
-        check.setName("checkForUpdates");
-        line(page, check);
-        JLabel status = caption(" ");
-        status.setName("updateStatus");
-        line(page, status);
-        JButton install = MenuSettingsOption.route("Install update", "Download and install the new release.", updates::install);
-        install.setName("installUpdate");
-        line(page, install);
-        java.util.function.Consumer<UpdateFlow.State> show = state -> {
-            status.setText((fixture == null ? "" : "Test fixture · ") + StartupPanel.summary(state, restarts));
-            check.setEnabled(state.stage() != UpdateFlow.Stage.CHECKING && state.stage() != UpdateFlow.Stage.INSTALLING);
-            install.setVisible(state.canInstall());
-            install.setText(state.stage() == UpdateFlow.Stage.INSTALL_FAILED ? "Retry update" : "Install update");
-            page.revalidate();
-        };
-        updates.addListener(show);
-        show.accept(updates.state());
-    }
 
     private static JLabel settingLabel(String text) {
         JLabel label = caption(text);
@@ -447,11 +414,7 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
         if (back != null) {
             JButton backButton = smallButton("Back", () -> showPage(back));
             line(page, backButton);
-            for (String key : java.util.List.of("ESCAPE", "BACK_SPACE"))
-                page.getInputMap(JComponent.WHEN_ANCESTOR_OF_FOCUSED_COMPONENT).put(KeyStroke.getKeyStroke(key), "menu.back");
-            page.getActionMap().put("menu.back", new AbstractAction() {
-                @Override public void actionPerformed(java.awt.event.ActionEvent event) { backButton.doClick(0); }
-            });
+            bindBack(page, () -> backButton.doClick(0));
             page.add(Box.createVerticalStrut(8));
         }
         if (title != null) {
@@ -489,7 +452,42 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
         button.setFont(Theme.normal(13f));
         button.setPreferredSize(new Dimension(90, 36));
         button.setBorder(BorderFactory.createEmptyBorder(4, 10, 4, 10));
+        fireOnRelease(button, action);
         return button;
+    }
+
+    /**
+     * Runs {@code action} when a press that began on {@code button} is released over it, even if
+     * Swing disarmed the button meanwhile (a small drag across its edge, or a relayout under the
+     * pointer). The normal action event comes first, so one click never runs the action twice.
+     */
+    private static void fireOnRelease(JButton button, Runnable action) {
+        boolean[] pending = new boolean[1];
+        button.addActionListener(event -> pending[0] = false);
+        button.addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override public void mousePressed(java.awt.event.MouseEvent event) {
+                pending[0] = SwingUtilities.isLeftMouseButton(event) && button.isEnabled();
+            }
+            @Override public void mouseReleased(java.awt.event.MouseEvent event) {
+                boolean over = button.contains(event.getPoint());
+                if (pending[0] && over && button.isEnabled() && button.isShowing()) action.run();
+                pending[0] = false;
+            }
+        });
+    }
+
+    /**
+     * Escape and Backspace run {@code back} while {@code screen} is showing, wherever focus is in
+     * the window: after a screen change focus can still sit on a hidden page, which ancestor-scoped
+     * bindings never reach. Swing fires window-wide bindings only for showing, enabled components,
+     * and a focused text field keeps its own Backspace.
+     */
+    static void bindBack(JComponent screen, Runnable back) {
+        for (String key : java.util.List.of("ESCAPE", "BACK_SPACE"))
+            screen.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).put(KeyStroke.getKeyStroke(key), "menu.back");
+        screen.getActionMap().put("menu.back", new AbstractAction() {
+            @Override public void actionPerformed(java.awt.event.ActionEvent event) { back.run(); }
+        });
     }
 
     private static void line(JPanel page, JComponent component) {
@@ -550,7 +548,7 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
         practice.setEnabled(!updateNeeded);
         for (Component online : new Component[] {create, createGap, browse, browseGap}) online.setVisible(!model.isOffline());
         playNotice.setText(model.requiredUpdate() != null
-                ? "Version " + model.requiredUpdate() + " is required before your next match. Install it in Settings."
+                ? "Version " + model.requiredUpdate() + " is required before your next match. Restart Deck Duel to install it."
                 : model.maintenance() != null ? "Server maintenance: new matches can start again after the restart."
                 : updateNeeded ? "An update is installing. New matches can start after Deck Duel restarts."
                 : model.isOffline() ? "Offline practice. History and replays last only for this session." : " ");

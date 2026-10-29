@@ -4,7 +4,7 @@ import deckduel.core.card.SkipTurn;
 
 import deckduel.cards.CatalogLoader;
 import deckduel.core.card.DeckRules;
-import deckduel.core.card.DrawCard;
+import deckduel.core.card.SwapCards;
 import deckduel.core.card.GreedyBot;
 import deckduel.core.card.KeepCard;
 import deckduel.core.card.MatchPhase;
@@ -31,7 +31,7 @@ class MessageSerializationTest {
         return List.of(new RegisterRequest("alice", "secret"), new LoginRequest("alice", "secret"),
                 new LoginResponse(true, null, user), new LoginResponse(false, "Invalid login", null),
                 new CreateMatchRequest(), new MatchCreated("ABCDE"), new JoinMatchRequest("ABCDE"),
-                new PracticeRequest(true), new MoveRequest(3, 7, PlayCard.cast(4, 9L)), new MoveRequest(4, 7, new DrawCard()),
+                new PracticeRequest(true), new MoveRequest(3, 7, PlayCard.cast(4, 9L)), new MoveRequest(4, 7, new SwapCards(List.of(3L, 5L))),
                 new MoveRequest(6, 8, new KeepCard(12)),
                 new MoveRequest(7, 9, new SkipTurn()),
                 new MoveRequest(8, 10, new deckduel.core.card.ChooseKing(deckduel.core.card.King.NETHRION)),

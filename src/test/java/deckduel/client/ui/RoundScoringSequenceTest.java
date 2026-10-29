@@ -59,6 +59,8 @@ class RoundScoringSequenceTest {
             public void move(Move move) { moves.add(move); }
             public void rematch() { }
             public void leave() { }
+            public void quit() { }
+            public void toggle(PauseMenu.Preference preference) { }
         }, new ScoringSounds(() -> false));
         new Scene(view); view.getScene().getStylesheets().add(FxKit.STYLESHEET);
         view.resize(1280, 720); view.applyCss(); view.layout();

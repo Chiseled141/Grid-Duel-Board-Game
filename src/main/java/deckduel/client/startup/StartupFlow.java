@@ -6,6 +6,8 @@ import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.Executor;
 import java.util.function.Consumer;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  * The launch journey before login: check for updates, then connect to the server. Owned by one
@@ -15,6 +17,7 @@ import java.util.function.Consumer;
  * reached, {@link #playOffline()} starts a private local server instead.
  */
 public final class StartupFlow {
+    private static final Logger LOG = Logger.getLogger(StartupFlow.class.getName());
 
     /** How far the journey has come. */
     public enum Phase { UPDATES, CONNECTING, CONNECTION_FAILED, CONNECTED, OFFLINE_STARTING, OFFLINE }
@@ -95,7 +98,8 @@ public final class StartupFlow {
                 connector.connect(local);
                 ui.execute(() -> publish(new State(Phase.OFFLINE, state.update(), local, null, serverRequires)));
             } catch (IOException | RuntimeException failure) {
-                ui.execute(() -> publish(new State(Phase.CONNECTION_FAILED, state.update(), route, reason(failure), serverRequires)));
+                String reason = reason("offline play could not start", failure);
+                ui.execute(() -> publish(new State(Phase.CONNECTION_FAILED, state.update(), route, reason, serverRequires)));
             }
         });
     }
@@ -130,7 +134,8 @@ public final class StartupFlow {
             } catch (UpdateRequiredException outdated) {
                 ui.execute(() -> serverRefused(outdated));
             } catch (IOException | RuntimeException failure) {
-                ui.execute(() -> publish(new State(Phase.CONNECTION_FAILED, state.update(), route, reason(failure), serverRequires)));
+                String reason = reason("cannot connect to the " + route.describe(), failure);
+                ui.execute(() -> publish(new State(Phase.CONNECTION_FAILED, state.update(), route, reason, serverRequires)));
             }
         });
     }
@@ -142,7 +147,9 @@ public final class StartupFlow {
         updates.check();
     }
 
-    private static String reason(Exception failure) {
+    /** Logs a failed connection, whose technical reason the startup screen does not show, and returns it. */
+    private static String reason(String what, Exception failure) {
+        LOG.log(Level.WARNING, what, failure);
         return failure.getMessage() == null ? failure.getClass().getSimpleName() : failure.getMessage();
     }
 

@@ -710,11 +710,12 @@ class CardMatchIntegrationTest {
                 mine = alice.update(u -> u.view().yourTurn());
                 int rev = mine.view().revision(); bob.update(u -> u.view().revision() == rev);
             }
-            var draw = new MoveRequest(alice.requests++, mine.view().revision(), new deckduel.core.card.DrawCard());
+            var draw = new MoveRequest(alice.requests++, mine.view().revision(),
+                    new deckduel.core.card.SwapCards(List.of(mine.view().hand().get(0).id())));
             alice.send(draw);
             MatchUpdate pending = alice.update(u -> u.view().choiceKind() == deckduel.core.card.ChoiceKind.SECRET_EDICT);
             MatchUpdate hidden = bob.update(u -> u.view().revision() == pending.view().revision());
-            assertTrue(hidden.view().looking().isEmpty()); assertEquals(10, pending.view().hand().size());
+            assertTrue(hidden.view().looking().isEmpty()); assertEquals(9, pending.view().hand().size());
             assertEquals(1, pending.view().you().drawsUsed());
             alice.send(draw); assertEquals(pending.view(), alice.update(any -> true).view());
             alice.close(); bob.update(u -> !u.opponentConnected());
@@ -726,7 +727,7 @@ class CardMatchIntegrationTest {
                 again.send(keep);
                 MatchUpdate kept = again.update(u -> u.view().revision() > restored.view().revision());
                 bob.update(u -> u.view().revision() == kept.view().revision());
-                assertTrue(kept.view().yourTurn()); assertEquals(11, kept.view().hand().size());
+                assertTrue(kept.view().yourTurn()); assertEquals(10, kept.view().hand().size());
                 assertEquals(1, kept.view().you().drawsUsed()); assertEquals(0, kept.view().you().playsUsed());
                 again.send(keep); assertEquals(kept.view(), again.update(any -> true).view());
                 bob.send(new LeaveMatchRequest()); again.update(u -> u.view().phase() == MatchPhase.FINISHED);

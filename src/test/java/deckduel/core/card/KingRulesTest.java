@@ -108,8 +108,8 @@ class KingRulesTest {
         PlayerView first = start.view(Seat.FIRST), second = start.view(Seat.SECOND);
         assertEquals(first.kingOffer(), second.kingOffer()); assertEquals(3, first.kingOffer().stream().distinct().count());
         assertEquals(10, first.hand().size()); assertEquals(35, first.you().deckCount());
-        assertTrue(first.legalPlays().isEmpty()); assertFalse(first.canDraw()); assertFalse(first.canSkip());
-        assertThrows(RuleViolation.class, () -> start.apply(starter, new DrawCard()));
+        assertTrue(first.legalPlays().isEmpty()); assertFalse(first.canSwap()); assertFalse(first.canSkip());
+        assertThrows(RuleViolation.class, () -> start.apply(starter, swapFirst(start, starter)));
         assertThrows(RuleViolation.class, () -> start.apply(starter, new SkipTurn()));
         King outside = List.of(King.values()).stream().filter(k -> !first.kingOffer().contains(k)).findFirst().orElseThrow();
         assertThrows(RuleViolation.class, () -> start.apply(Seat.FIRST, new ChooseKing(outside)));
@@ -143,32 +143,32 @@ class KingRulesTest {
     @Test void secretEdictEmptyDeckDoesNotSpendAnythingAndSingleCardDrawsNormally() {
         MatchState empty = ready(King.NETHRION, 10); Seat emptyActor = empty.turn();
         PlayerView before = empty.view(emptyActor);
-        assertThrows(RuleViolation.class, () -> empty.apply(emptyActor, new DrawCard()));
+        assertThrows(RuleViolation.class, () -> empty.apply(emptyActor, swapFirst(empty, emptyActor)));
         assertEquals(before, empty.view(emptyActor)); assertFalse(before.you().kings().edictUsed());
         MatchState one = ready(King.NETHRION, 11); Seat actor = one.turn();
-        PlayerView after = one.apply(actor, new DrawCard()).view(actor);
-        assertEquals(11, after.hand().size()); assertEquals(1, after.you().drawsUsed());
+        PlayerView after = one.apply(actor, swapFirst(one, actor)).view(actor);
+        assertEquals(10, after.hand().size()); assertEquals(1, after.you().drawsUsed());
         assertTrue(after.you().kings().edictUsed()); assertFalse(after.keeping());
     }
 
     @Test void secretEdictIsPrivateBlocksOtherActionsKeepsTurnAndPutsOtherCardOnBottom() {
         MatchState state = ready(King.NETHRION, 12); Seat actor = state.turn();
-        MatchState pending = state.apply(actor, new DrawCard());
+        MatchState pending = state.apply(actor, swapFirst(state, actor));
         PlayerView mine = pending.view(actor), theirs = pending.view(actor.other());
         assertEquals(ChoiceKind.SECRET_EDICT, mine.choiceKind()); assertEquals(2, mine.looking().size());
-        assertEquals(10, mine.hand().size()); assertEquals(1, mine.you().drawsUsed());
+        assertEquals(9, mine.hand().size()); assertEquals(1, mine.you().drawsUsed());
         assertTrue(theirs.looking().isEmpty()); assertEquals(ChoiceKind.NONE, theirs.choiceKind());
-        assertEquals(0, mine.you().playsUsed()); assertFalse(mine.canDraw()); assertFalse(mine.canSkip());
-        assertThrows(RuleViolation.class, () -> pending.apply(actor, new DrawCard()));
+        assertEquals(0, mine.you().playsUsed()); assertFalse(mine.canSwap()); assertFalse(mine.canSkip());
+        assertThrows(RuleViolation.class, () -> pending.apply(actor, new SwapCards(List.of(mine.hand().get(0).id()))));
         assertThrows(RuleViolation.class, () -> pending.apply(actor, new SkipTurn()));
         assertThrows(RuleViolation.class, () -> pending.apply(actor, PlayCard.place(mine.hand().get(0).id(), 0)));
         assertThrows(RuleViolation.class, () -> pending.apply(actor, new KeepCard(mine.looking().get(0).id())));
         assertThrows(RuleViolation.class, () -> pending.apply(actor, new KeepEdictCard(-1)));
         CardInstance kept = mine.looking().get(1), bottom = mine.looking().get(0);
         MatchState done = pending.apply(actor, new KeepEdictCard(kept.id()));
-        assertEquals(actor, done.turn()); assertEquals(11, done.view(actor).hand().size());
+        assertEquals(actor, done.turn()); assertEquals(10, done.view(actor).hand().size());
         assertEquals(1, done.view(actor).you().deckCount());
-        MatchState drawn = done.apply(actor, new DrawCard());
+        MatchState drawn = done.apply(actor, swapFirst(done, actor));
         assertTrue(drawn.view(actor).hand().contains(bottom)); assertFalse(drawn.view(actor).keeping());
         assertEquals(2, drawn.view(actor).you().drawsUsed());
         assertEquals(mine, pending.view(actor), "a reconnect projects the same pending private snapshot");
@@ -181,7 +181,7 @@ class KingRulesTest {
         assertFalse(state.view(actor).you().kings().edictUsed()); assertEquals(0, state.view(actor).you().drawsUsed());
         assertEquals(1, state.view(actor).you().kings().spellsPlayed());
         state = state.apply(state.turn(), new SkipTurn());
-        state = state.apply(actor, new DrawCard());
+        state = state.apply(actor, swapFirst(state, actor));
         assertTrue(state.view(actor).you().kings().edictUsed());
         assertEquals(ChoiceKind.SECRET_EDICT, state.view(actor).choiceKind());
         state = state.apply(actor, new KeepEdictCard(state.view(actor).looking().get(0).id()));
@@ -211,15 +211,16 @@ class KingRulesTest {
         MatchState start = offered(King.NETHRION, copies(ASSASSIN, 13));
         King other = start.view(Seat.FIRST).kingOffer().stream().filter(k -> k != King.NETHRION).findFirst().orElseThrow();
         MatchState reference = choose(start, other); Seat actor = reference.turn();
-        reference = reference.apply(actor, new DrawCard()).apply(actor, new DrawCard()).apply(actor, new DrawCard());
-        CardInstance originalThird = reference.view(actor).hand().get(12);
-        MatchState pending = choose(start, King.NETHRION).apply(actor, new DrawCard());
+        for (int i = 0; i < 3; i++) reference = reference.apply(actor, swapFirst(reference, actor));
+        CardInstance originalThird = reference.view(actor).hand().get(9);
+        MatchState chosen = choose(start, King.NETHRION);
+        MatchState pending = chosen.apply(actor, swapFirst(chosen, actor));
         CardInstance bottom = pending.view(actor).looking().get(0), kept = pending.view(actor).looking().get(1);
         MatchState actual = pending.apply(actor, new KeepEdictCard(kept.id()));
-        actual = actual.apply(actor, new DrawCard());
-        assertEquals(originalThird, actual.view(actor).hand().get(11));
-        actual = actual.apply(actor, new DrawCard());
-        assertEquals(bottom, actual.view(actor).hand().get(12));
+        actual = actual.apply(actor, swapFirst(actual, actor));
+        assertEquals(originalThird, actual.view(actor).hand().get(9));
+        actual = actual.apply(actor, swapFirst(actual, actor));
+        assertEquals(bottom, actual.view(actor).hand().get(9));
         assertEquals(3, actual.view(actor).you().drawsUsed());
         assertEquals(0, actual.view(actor).you().playsUsed());
     }
@@ -258,7 +259,7 @@ class KingRulesTest {
         for (boolean hard : List.of(false, true)) {
             MatchState state = ready(King.NETHRION, 45);
             Seat actor = state.turn();
-            state = state.apply(actor, new DrawCard());
+            state = state.apply(actor, swapFirst(state, actor));
             Move keep = hard ? PlannerBot.choose(state.view(actor)) : GreedyBot.choose(state.view(actor));
             assertInstanceOf(KeepEdictCard.class, keep);
             state = state.apply(actor, keep);
@@ -272,5 +273,10 @@ class KingRulesTest {
             }
             assertEquals(3, state.rounds().size());
         }
+    }
+
+    /** Swaps the first card of {@code seat}'s hand: one card out, one replacement in. */
+    private static SwapCards swapFirst(MatchState state, Seat seat) {
+        return new SwapCards(List.of(state.view(seat).hand().get(0).id()));
     }
 }

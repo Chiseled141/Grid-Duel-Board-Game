@@ -132,11 +132,7 @@ public final class HistoryPanel extends BattlefieldMenuPanel {
         views.add(scroll, "table"); views.add(empty, "empty");
         ledger.add(views, BorderLayout.CENTER);
         JPanel footer = new JPanel(new BorderLayout(16, 0)); footer.setOpaque(false);
-        for (String key : java.util.List.of("ESCAPE", "BACK_SPACE"))
-            getInputMap(JComponent.WHEN_ANCESTOR_OF_FOCUSED_COMPONENT).put(KeyStroke.getKeyStroke(key), "menu.back");
-        getActionMap().put("menu.back", new AbstractAction() {
-            @Override public void actionPerformed(java.awt.event.ActionEvent event) { backAction.run(); }
-        });
+        LobbyPanel.bindBack(this, backAction);
         // Extra right inset: the shadowed text paints slightly wider than the label measures.
         footnote.setBorder(BorderFactory.createEmptyBorder(2, 0, 4, 16));
         footer.add(footnote, BorderLayout.EAST);

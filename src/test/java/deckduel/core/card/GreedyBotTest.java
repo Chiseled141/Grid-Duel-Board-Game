@@ -8,14 +8,14 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 
 class GreedyBotTest {
-    @Test void botsDrawKeepAndFinishAWholeMatchWithOnlyLegalMoves() {
+    @Test void botsSwapKeepAndFinishAWholeMatchWithOnlyLegalMoves() {
         var catalog = CatalogLoader.loadBundled();
         var deck = DeckRules.deck(catalog);
         MatchState state = MatchState.start(deck, deck, 21);
         int moves = 0;
         while (state.phase() != MatchPhase.FINISHED) {
             for (Seat seat : Seat.values()) if (state.awaits(seat)) { state = state.apply(seat, GreedyBot.choose(state.view(seat))); break; }
-            assertTrue(++moves <= 3 * (2 * Rules.PLAYS_PER_ROUND + 2 * Rules.MANUAL_DRAWS + 10) + 2, "the match always progresses");
+            assertTrue(++moves <= 3 * (2 * Rules.PLAYS_PER_ROUND + 2 * Rules.SWAPS_PER_ROUND + 10) + 2, "the match always progresses");
         }
         assertEquals(Rules.ROUNDS, state.rounds().size());
     }
@@ -26,15 +26,21 @@ class GreedyBotTest {
         CardDef footman = unit("footman", 1, "N2", "Footmen");
         Row opponent = row(knight, knight), own = row(footman);
         var hand = List.of(copy(footman), copy(destroy));
-        // Two cards for two plays left: the bot plays rather than draws.
+        // A play that helps exists, so the bot plays rather than swaps.
         var view = view(own, opponent, hand, Rules.PLAYS_PER_ROUND - 2);
         Move choice = GreedyBot.choose(view);
         assertEquals(hand.get(1).id(), ((PlayCard) choice).cardId(), "destroying a knight swings 14 points; a footman adds 4");
     }
 
-    @Test void botDrawsWhenItsHandIsShorterThanItsPlays() {
-        var hand = List.of(copy(unit("a", 1, "N1", "Footmen")));
-        assertEquals(new DrawCard(), GreedyBot.choose(view(Row.EMPTY, Row.EMPTY, hand, 0)), "one card for ten plays: draw first");
+    @Test void botSwapsCardsThatCannotImproveAFullRowWeakestFirst() {
+        CardDef knight = unit("knight", 5, "N1", "Knights");
+        CardDef footman = unit("footman", 1, "N2", "Footmen");
+        Row own = row(knight, knight, knight, knight, knight, knight, knight);
+        var hand = List.of(copy(knight), copy(footman));
+        Move choice = GreedyBot.choose(view(own, Row.EMPTY, hand, 7));
+        assertEquals(new SwapCards(List.of(hand.get(1).id(), hand.get(0).id())), choice,
+                "neither card beats a Knight already on the full row");
+        assertEquals(choice, PlannerBot.choose(view(own, Row.EMPTY, hand, 7)), "both bots swap the same way");
     }
 
     /** The bot's own view on its turn, with {@code playsUsed} plays gone and a deck to draw from. */

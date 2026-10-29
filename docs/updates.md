@@ -18,7 +18,7 @@ the packaged production endpoint are described in `docs/connections.md`.
 | Download | `client/update/PackageDownloader`, `Http` | Streams the package to `staging/<name>.part` with progress, resumes with HTTP Range after an interruption (or starts again if the server ignores Range), stops at the signed size (hard cap 768 MiB), and renames the file only when size and SHA-256 match. Three attempts, two seconds apart, with messages a player can act on. |
 | Staging | `client/update/StagedInstaller` | Requires a launcher-started installation, checks the platform, downloads, unpacks into a new `versions/<version>` folder and verifies every file. Nothing is activated. |
 | Hand-over | `client/update/HelperRestarter`, `UpdateFinisher` | Once verified and no match is in progress, starts the new version's `deck-duel-launcher.jar activate …` with only the installation folder, the version and this process id, then the game saves its preferences and exits. |
-| Launcher and helper | `launcher/LauncherMain` (its own jar, JDK classes only) | `launch` starts the active version (with rollback). `activate` waits for the game to close, verifies the version again, switches the pointer and starts the game. `install` sets up an installation from a package (development and tests). |
+| Launcher and helper | `launcher/LauncherMain` (its own jar, JDK classes only) | `launch` starts the active version (with rollback). `activate` waits for the game to close, verifies the version again, switches the pointer and starts the game. `install` sets up an installation from a package (development and tests). `setup` does the same for the Windows installer but keeps a newer active version (`docs/windows-installer.md`). |
 | Install layout | `launcher/InstallLayout` | Per-user folders, the atomic pointer, verification, activation, rollback and pruning (below). |
 | Packages | `launcher/PackageManifest`, `PackageArchive` | Package format and safe extraction. |
 | Versions | `launcher/ReleaseVersion`, `PlatformId` | `MAJOR.MINOR.PATCH[-label]` ordering (`1.10.0` > `1.9.0`, `1.2.0-rc.1` < `1.2.0`) and platform ids such as `mac-aarch64`, `windows-x64`, `linux-x64`. |
@@ -126,7 +126,7 @@ java -jar target/deck-duel.jar release package --version 1.1.0 --platform "$(jav
     --app target/deck-duel.jar --launcher target/deck-duel-launcher.jar --out dist
 # 3. Sign the metadata for all platform packages of the release.
 java -jar target/deck-duel.jar release sign --private-key ~/deck-duel-keys/release.key \
-    --minimum-version 1.0.0 --minimum-protocol 16 --out site dist/deck-duel-1.1.0-*.zip
+    --minimum-version 1.0.0 --minimum-protocol 20 --out site dist/deck-duel-1.1.0-*.zip
 # 4. Upload site/ as it is (metadata, signature, packages): not done by this repository.
 ```
 
@@ -136,7 +136,8 @@ duplicate files such as `card-back 2.png`. Always build with `mvn clean package`
 another platform needs that platform, or OpenJFX's `-Djavafx.platform=<win|mac|mac-aarch64|linux|linux-aarch64>`
 plus network access for those artifacts. That cross-build has not been tried here.
 
-There is no bundled Java runtime: the launcher starts the game with the Java that runs the launcher.
+The launcher starts the game with the Java that runs the launcher. The Windows installer bundles
+that Java runtime (`docs/windows-installer.md`); elsewhere it is the player's own Java 17+.
 
 ### Local demonstration
 
@@ -157,8 +158,10 @@ See "Verification evidence" below.
 
 - No S3 bucket, upload, CloudFront, AWS credentials or release pipeline; no production key.
 - No production endpoint, certificate or bucket is configured in the repository; the operator supplies them at build and deploy time.
-- No bundled Java runtime, native installer, desktop shortcut or code signing of the
-  application itself; the first installation is made with `deck-duel-launcher.jar install`.
+- A Windows x64 installer with a bundled Java runtime and shortcuts exists (`docs/windows-installer.md`),
+  but it has not been run on Windows yet. There is no macOS or Linux installer (the first installation
+  there is made with `deck-duel-launcher.jar install`) and no code signing of the application itself.
+- Automatic updates never replace the installer's bundled Java runtime; a new Java version needs a new installer.
 - A version that was rolled back is recorded as `failed` but may be offered again by the next
   check. Skipping it automatically is not implemented.
 - No delta updates, and no metadata expiry. Replayed old metadata cannot downgrade, but it can

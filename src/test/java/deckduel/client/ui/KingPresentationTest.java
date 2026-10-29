@@ -52,7 +52,7 @@ class KingPresentationTest {
         }
         MatchState offered = opening;
         MatchState ready = offered.apply(Seat.FIRST, new ChooseKing(King.NETHRION)).apply(Seat.SECOND, new ChooseKing(King.NETHRION));
-        PlayerView edict = ready.apply(ready.turn(), new DrawCard()).view(ready.turn());
+        PlayerView edict = ready.apply(ready.turn(), new SwapCards(List.of(ready.view(ready.turn()).hand().get(0).id()))).view(ready.turn());
         PlayerView deployed = deployed(offered.view(Seat.FIRST));
         CardTableView table = FxTesting.call(() -> {
             for (King king : King.values()) KingArt.image(king);
@@ -60,6 +60,8 @@ class KingPresentationTest {
                 public void move(Move move) { }
                 public void rematch() { }
                 public void leave() { }
+                public void quit() { }
+                public void toggle(PauseMenu.Preference preference) { }
             }, new ScoringSounds(() -> false));
             new Scene(view); view.getScene().getStylesheets().add(FxKit.STYLESHEET);
             return view;
@@ -97,7 +99,7 @@ class KingPresentationTest {
                 var button = table.lookup("#yourKing0");
                 var location = button.localToScene(button.getBoundsInLocal());
                 assertTrue(location.getMinX() > table.slotBounds(TableZone.OWN, 6).getMaxX(), "Kings do not cover Units");
-                assertTrue(location.getMaxX() < table.drawBounds().x, "Kings do not cover actions");
+                assertTrue(location.getMaxX() < table.swapBounds().x, "Kings do not cover actions");
                 var kingArt = (javafx.scene.image.ImageView) ((javafx.scene.control.Button) button).getGraphic();
                 assertEquals(table.slotBounds(TableZone.OWN, 0).height, kingArt.getFitHeight(), .1);
             });

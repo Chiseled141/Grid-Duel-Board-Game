@@ -2,10 +2,6 @@ package deckduel.client.ui;
 
 import deckduel.client.ClientSettings;
 import deckduel.client.MenuTheme;
-import deckduel.client.startup.UpdateCheck;
-import deckduel.client.startup.UpdateFlow;
-import deckduel.client.startup.UpdateInstaller;
-import deckduel.client.startup.UpdateService;
 import deckduel.client.state.*;
 import deckduel.net.*;
 import org.junit.jupiter.api.Test;
@@ -58,10 +54,8 @@ class LobbyMenuTest {
     private record Ui(ClientModel model, ClientSettings settings, LobbyPanel panel,
                       List<Message> sent, AtomicInteger saved, AtomicInteger quit) { }
 
-    private Ui ui() { return ui(UpdateService.notConfigured(), UpdateInstaller.notConfigured(), null); }
-
-    /** Update work runs inline on the EDT here, so each click's result is visible at once. */
-    private Ui ui(UpdateService service, UpdateInstaller installer, String fixture) {
+    /** A signed-in menu over a recording connection. */
+    private Ui ui() {
         List<Message> sent = new ArrayList<>();
         var model = new ClientModel(new ServerConnection() {
             public void send(Message message) { sent.add(message); }
@@ -71,8 +65,7 @@ class LobbyMenuTest {
         var settings = new ClientSettings();
         var saved = new AtomicInteger();
         var quit = new AtomicInteger();
-        var updates = new UpdateFlow("1.0.0", service, installer, Runnable::run, Runnable::run);
-        var panel = new LobbyPanel(model, settings, quit::incrementAndGet, saved::incrementAndGet, updates, fixture, false);
+        var panel = new LobbyPanel(model, settings, quit::incrementAndGet, saved::incrementAndGet);
         model.handleMessage(new LoginResponse(true, null, new UserProfile("alice", 0, 0)));
         sent.clear();
         panel.setSize(1280, 660);
@@ -186,6 +179,8 @@ class LobbyMenuTest {
     private void menuKey(Ui ui, String pageName, String key) {
         JPanel page = find(ui.panel, JPanel.class).stream().filter(panel -> pageName.equals(panel.getName())).findFirst().orElseThrow();
         Object id = page.getInputMap(JComponent.WHEN_ANCESTOR_OF_FOCUSED_COMPONENT).get(KeyStroke.getKeyStroke(key));
+        // Back keys answer window-wide while the page shows, wherever focus was left.
+        if (id == null) id = page.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).get(KeyStroke.getKeyStroke(key));
         assertNotNull(id, "key must be installed on the visible button-only page");
         page.getActionMap().get(id).actionPerformed(new java.awt.event.ActionEvent(page, 0, key));
     }
@@ -331,52 +326,11 @@ class LobbyMenuTest {
         return find(ui.panel, JLabel.class).stream().filter(l -> name.equals(l.getName())).findFirst().orElseThrow();
     }
 
-    @Test void settingsShowsTheInstalledVersionAndAnHonestCheckWhenNoServiceExists() throws Exception {
+    @Test void settingsHasNoUpdatesSection() throws Exception {
         SwingUtilities.invokeAndWait(() -> {
             var ui = ui(); button(ui, "Settings").doClick();
-            JButton check = button(ui, "Check for updates");
-            assertEquals("Installed version 1.0.0.", check.getAccessibleContext().getAccessibleDescription());
-            assertEquals("Not checked yet.", named(ui, "updateStatus").getText());
-            assertFalse(button(ui, "Install update").isVisible());
-            check.doClick();
-            assertEquals("No update service is configured; nothing was checked.", named(ui, "updateStatus").getText());
-            assertFalse(button(ui, "Install update").isVisible());
-            assertTrue(ui.sent.isEmpty(), "update checks never use the game connection");
-        });
-    }
-
-    @Test void settingsOffersAFoundUpdateAndShowsInstallFailureRetryAndRestart() throws Exception {
-        SwingUtilities.invokeAndWait(() -> {
-            var attempts = new AtomicInteger();
-            var ui = ui(installed -> UpdateCheck.optional("1.1.0"), (update, progress) -> {
-                progress.accept(.5);
-                if (attempts.getAndIncrement() == 0) throw new java.io.IOException("disk full");
-                progress.accept(1);
-            }, "optional-update");
-            button(ui, "Settings").doClick();
-            button(ui, "Check for updates").doClick();
-            assertEquals("Test fixture · Version 1.1.0 is available.", named(ui, "updateStatus").getText());
-            button(ui, "Install update").doClick();
-            assertEquals("Test fixture · Update failed: disk full", named(ui, "updateStatus").getText());
-            button(ui, "Retry update").doClick();
-            assertEquals("Test fixture · Installed 1.1.0. Restart Deck Duel to finish.", named(ui, "updateStatus").getText());
-            assertEquals(2, attempts.get());
-            assertFalse(find(ui.panel, JButton.class).stream().anyMatch(b -> b.isVisible() && b.getText().endsWith("update")));
-        });
-    }
-
-    @Test void settingsStaysOnScreenWithAnUpdateOffered() throws Exception {
-        SwingUtilities.invokeAndWait(() -> {
-            var ui = ui(installed -> UpdateCheck.required("2.0.0"), UpdateInstaller.notConfigured(), null);
-            button(ui, "Settings").doClick();
-            button(ui, "Check for updates").doClick();
-            assertTrue(button(ui, "Install update").isVisible());
-            layout(ui.panel);
-            for (var button : find(ui.panel, JButton.class)) {
-                if (!button.isVisible()) continue;
-                var point = SwingUtilities.convertPoint(button, 0, 0, ui.panel);
-                assertTrue(point.y >= 0 && point.y + button.getHeight() <= ui.panel.getHeight(), button.getText() + " fits");
-            }
+            assertTrue(visibleButtons(ui).stream().noneMatch(text -> text.toLowerCase().contains("update")));
+            assertTrue(find(ui.panel, JLabel.class).stream().noneMatch(l -> l.isShowing() && l.getText().contains("UPDATES")));
         });
     }
 
@@ -392,8 +346,7 @@ class LobbyMenuTest {
                 public boolean isConnected() { return true; }
                 public void ensureConnected(deckduel.client.startup.ServerRoute route) { }
             });
-            var updates = new UpdateFlow("1.0.0", UpdateService.notConfigured(), UpdateInstaller.notConfigured(), Runnable::run, Runnable::run);
-            var panel = new LobbyPanel(model, new ClientSettings(), () -> { }, () -> { }, updates, null, false);
+            var panel = new LobbyPanel(model, new ClientSettings(), () -> { }, () -> { });
             model.beginOffline(new deckduel.client.startup.ServerRoute("127.0.0.1", 40404, false), "offline", "random-secret");
             model.handleMessage(new LoginResponse(true, null, new UserProfile("offline", 0, 0)));
             var ui = new Ui(model, new ClientSettings(), panel, sent, new AtomicInteger(), new AtomicInteger());
@@ -420,7 +373,7 @@ class LobbyMenuTest {
             ui.model.requireUpdate("2.0.0");
             for (String name : List.of("Create match", "Join a game", "Practice")) assertFalse(button(ui, name).isEnabled(), name);
             assertTrue(button(ui, "Match history").isEnabled(), "history and replays stay available");
-            assertEquals("Version 2.0.0 is required before your next match. Install it in Settings.", named(ui, "playNotice").getText());
+            assertEquals("Version 2.0.0 is required before your next match. Restart Deck Duel to install it.", named(ui, "playNotice").getText());
             button(ui, "Create match").doClick();
             assertTrue(ui.sent.isEmpty());
         });

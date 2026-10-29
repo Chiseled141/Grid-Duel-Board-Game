@@ -55,7 +55,7 @@ class PracticeMatchSystemTest {
                     frame[0].setBounds(0, 25, 1470, 923);
                     frame[0].setVisible(true);
                     screens[0] = new FxScreens(model[0], new ScoringSounds(() -> false), frame[0], () -> { },
-                            () -> false, bounds -> { });
+                            () -> false, bounds -> { }, new deckduel.client.ClientSettings());
                     model[0].register(new deckduel.client.startup.ServerRoute("127.0.0.1", port, false), "chooser", "secret123");
                 });
                 waitFor(() -> model[0].me() != null, "signed in");

@@ -33,8 +33,6 @@ final class MenuNavigation {
         bind("previous", () -> move(-1), "UP", "LEFT", "W", "A");
         bind("next", () -> move(1), "DOWN", "RIGHT", "S", "D");
         bind("activate", () -> { refresh(); if (selected != null) selected.doClick(0); }, "ENTER");
-        if (!buttons.isEmpty() && buttons.get(0).getText().equals("Back"))
-            bind("back", () -> buttons.get(0).doClick(0), "ESCAPE", "BACK_SPACE");
         reset();
     }
 

@@ -1,6 +1,7 @@
 package deckduel.client.ui;
 
 import deckduel.cards.CatalogLoader;
+import deckduel.client.ClientSettings;
 import deckduel.client.ScoringSounds;
 import deckduel.client.state.ClientModel;
 import deckduel.client.state.ClientModelListener;
@@ -33,6 +34,8 @@ final class FxScreens {
     private final Runnable toggleMusic;
     private final BooleanSupplier musicOn;
     private final Consumer<Rectangle> close;
+    private final ClientSettings settings;
+    private final ScoringSounds sounds;
     private Stage stage;
     private StackPane root;
     private Button music;
@@ -46,8 +49,10 @@ final class FxScreens {
      * bounds when the player closes the JavaFX window, on the EDT.
      */
     FxScreens(ClientModel model, ScoringSounds sounds, JFrame frame, Runnable toggleMusic,
-              BooleanSupplier musicOn, Consumer<Rectangle> close) {
+              BooleanSupplier musicOn, Consumer<Rectangle> close, ClientSettings settings) {
         this.model = model;
+        this.settings = settings;
+        this.sounds = sounds;
         this.frame = frame;
         this.toggleMusic = toggleMusic;
         this.musicOn = musicOn;
@@ -69,6 +74,11 @@ final class FxScreens {
             @Override public void move(Move move) { SwingUtilities.invokeLater(() -> model.move(move)); }
             @Override public void rematch() { SwingUtilities.invokeLater(model::requestRematch); }
             @Override public void leave() { SwingUtilities.invokeLater(model::leaveMatch); }
+            @Override public void quit() {
+                Rectangle bounds = bounds();
+                SwingUtilities.invokeLater(() -> { model.forfeitBeforeQuit(); close.accept(bounds); });
+            }
+            @Override public void toggle(PauseMenu.Preference preference) { SwingUtilities.invokeLater(() -> switchPreference(preference)); }
         }, sounds);
         loading = new LoadingScreen();
         music = musicToggle(musicOn);
@@ -83,6 +93,33 @@ final class FxScreens {
             event.consume();
             Rectangle bounds = bounds();
             SwingUtilities.invokeLater(() -> close.accept(bounds));
+        });
+    }
+
+    /** Switches one pause-menu preference on the EDT, saves it and shows the new values on the table. */
+    private void switchPreference(PauseMenu.Preference preference) {
+        switch (preference) {
+            case MUSIC -> toggleMusic.run();
+            case GAME_SOUNDS -> {
+                settings.setGameSounds(!settings.gameSounds());
+                if (!settings.gameSounds()) sounds.stop();
+            }
+            case REDUCED_MOTION -> {
+                settings.setReducedMotion(!settings.reducedMotion());
+                model.setReducedMotion(settings.reducedMotion());
+            }
+        }
+        if (preference != PauseMenu.Preference.MUSIC)
+            java.util.concurrent.CompletableFuture.runAsync(settings::save);
+        sendPreferences();
+    }
+
+    /** Hands the current preference values to the table; called on the EDT. */
+    private void sendPreferences() {
+        boolean gameSounds = settings.gameSounds(), reducedMotion = model.reducedMotion(), music = musicOn.getAsBoolean();
+        Platform.runLater(() -> {
+            table.preferences(gameSounds, reducedMotion, music);
+            showMusic(music);
         });
     }
 
@@ -134,7 +171,7 @@ final class FxScreens {
     /** Brings the JavaFX window forward for the table, and the Swing frame back for anything else. */
     private void switchTo(Screen screen) {
         boolean fx = screen == Screen.TABLE;
-        if (screen == Screen.TABLE) sendMatch();
+        if (screen == Screen.TABLE) { sendMatch(); sendPreferences(); }
         if (fx) {
             Rectangle bounds = frame.getBounds();
             boolean musicNow = musicOn.getAsBoolean();

@@ -157,7 +157,6 @@
                     <exclude>audio/**</exclude>
                     <exclude>fonts/**</exclude>
                     <exclude>fx/**</exclude>
-                    <exclude>tutorial/**</exclude>
                     <exclude>config/**</exclude>
                   </excludes>
                 </filter>

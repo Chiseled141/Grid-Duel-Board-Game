@@ -1,0 +1,14 @@
+# Java modules linked into the runtime bundled by the Windows installer (tools/build-windows-installer.ps1).
+# The installer's runtime is not replaced by automatic updates, so it carries the whole Java SE
+# API rather than only what jdeps finds today. The jdk.* modules: JavaFX and Swing interop need
+# jdk.unsupported(.desktop); JavaFX logging references jdk.jfr; EC TLS certificates need jdk.crypto.ec
+# on Java 17-21; screen readers use jdk.accessibility. Modules the linking JDK lacks are skipped.
+java.se
+jdk.unsupported
+jdk.unsupported.desktop
+jdk.jfr
+jdk.crypto.ec
+jdk.crypto.cryptoki
+jdk.charsets
+jdk.accessibility
+jdk.zipfs

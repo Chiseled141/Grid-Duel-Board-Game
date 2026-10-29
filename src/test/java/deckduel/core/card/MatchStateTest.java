@@ -53,22 +53,35 @@ class MatchStateTest {
         }
     }
 
-    @Test void playingDoesNotDrawAndThreeManualDrawsAreAllowedPerRound() {
+    @Test void playingDoesNotDrawAndThreeCardsMayBeSwappedPerRound() {
         MatchState state = started(fullDeck(), fullDeck(), seedStartedBy(Seat.FIRST));
         MatchState played = state.play(Seat.FIRST, firstPlace(state.view(Seat.FIRST)));
         assertEquals(Rules.HAND_SIZE - 1, played.view(Seat.FIRST).hand().size(), "no automatic replacement draw");
         assertEquals(Seat.SECOND, played.turn());
 
-        MatchState drawing = played;
-        for (int i = 1; i <= Rules.MANUAL_DRAWS; i++) {
-            drawing = drawing.apply(Seat.SECOND, new DrawCard());
-            assertEquals(Seat.SECOND, drawing.turn(), "a manual draw keeps the turn");
-            assertEquals(Rules.HAND_SIZE + i, drawing.view(Seat.SECOND).hand().size());
-            assertEquals(0, drawing.view(Seat.SECOND).you().playsUsed(), "and uses no play");
-        }
-        MatchState drawn = drawing;
-        assertThrows(RuleViolation.class, () -> drawn.apply(Seat.SECOND, new DrawCard()), "only three per round");
-        assertThrows(RuleViolation.class, () -> played.apply(Seat.FIRST, new DrawCard()), "only on your own turn");
+        PlayerView before = played.view(Seat.SECOND);
+        List<Long> chosen = List.of(before.hand().get(0).id(), before.hand().get(1).id());
+        MatchState swapped = played.apply(Seat.SECOND, new SwapCards(chosen));
+        PlayerView after = swapped.view(Seat.SECOND);
+        assertEquals(Seat.SECOND, swapped.turn(), "a swap keeps the turn");
+        assertEquals(Rules.HAND_SIZE, after.hand().size(), "as many cards come back as were discarded");
+        assertTrue(after.hand().stream().noneMatch(card -> chosen.contains(card.id())), "the chosen cards are gone");
+        assertEquals(2, after.you().discardCount());
+        assertEquals(before.you().deckCount() - 2, after.you().deckCount());
+        assertEquals(0, after.you().playsUsed(), "and uses no play");
+        assertEquals(2, after.you().drawsUsed());
+        assertEquals(1, after.swapLimit());
+        long third = after.hand().get(0).id(), fourth = after.hand().get(1).id();
+        assertThrows(RuleViolation.class, () -> swapped.apply(Seat.SECOND, new SwapCards(List.of(third, fourth))),
+                "three swapped cards per round in all");
+        assertThrows(RuleViolation.class, () -> swapped.apply(Seat.SECOND, new SwapCards(List.of(third, third))), "each card once");
+        assertThrows(RuleViolation.class, () -> swapped.apply(Seat.SECOND, new SwapCards(List.of())), "at least one card");
+        assertThrows(RuleViolation.class, () -> swapped.apply(Seat.SECOND, new SwapCards(List.of(chosen.get(0)))), "only hand cards");
+        MatchState done = swapped.apply(Seat.SECOND, new SwapCards(List.of(third)));
+        assertFalse(done.view(Seat.SECOND).canSwap());
+        assertThrows(RuleViolation.class, () -> done.apply(Seat.SECOND, new SwapCards(List.of(fourth))), "no swaps left");
+        long mine = played.view(Seat.FIRST).hand().get(0).id();
+        assertThrows(RuleViolation.class, () -> played.apply(Seat.FIRST, new SwapCards(List.of(mine))), "only on your own turn");
     }
 
     @Test void fullRowsDoNotEndTheRoundAndAFullRowReplacesAUnit() {
@@ -92,7 +105,7 @@ class MatchStateTest {
         assertEquals(2, next.round());
         assertEquals(1, next.rounds().size());
         assertEquals(Rules.HAND_SIZE, next.hand().size(), "a fresh ten-card hand, not the old one");
-        assertEquals(0, next.you().drawsUsed(), "manual draws reset");
+        assertEquals(0, next.you().drawsUsed(), "swaps reset");
         assertTrue(next.you().row().cards().isEmpty());
         assertEquals(MatchPhase.KING_SELECTION, next.phase());
     }
@@ -119,7 +132,7 @@ class MatchStateTest {
         MatchState state = started(unitsOnly(20), unitsOnly(20), seedStartedBy(Seat.FIRST));
         state = state.play(Seat.FIRST, firstPlace(state.view(Seat.FIRST)));
         state = state.play(Seat.SECOND, firstPlace(state.view(Seat.SECOND)));
-        state = state.apply(Seat.FIRST, new DrawCard());
+        state = state.apply(Seat.FIRST, new SwapCards(List.of(state.view(Seat.FIRST).hand().get(0).id())));
         PlayerView before = state.view(Seat.FIRST);
         assertTrue(before.canSkip());
         MatchState skipped = state.apply(Seat.FIRST, new SkipTurn());
@@ -257,7 +270,7 @@ class MatchStateTest {
         assertEquals(Seat.FIRST, looking.turn(), "the turn waits for the choice");
         assertTrue(looking.view(Seat.SECOND).looking().isEmpty(), "the opponent never sees them");
         assertEquals(view.you().deckCount() - 3, caster.you().deckCount());
-        assertThrows(RuleViolation.class, () -> looking.apply(Seat.FIRST, new DrawCard()), "keep first");
+        assertThrows(RuleViolation.class, () -> looking.apply(Seat.FIRST, new SwapCards(List.of(caster.hand().get(0).id()))), "keep first");
         assertFalse(caster.canSkip());
         assertThrows(RuleViolation.class, () -> looking.apply(Seat.FIRST, new SkipTurn()), "keep before skipping");
         assertThrows(RuleViolation.class, () -> looking.apply(Seat.FIRST, new KeepCard(view.hand().get(0).id())));

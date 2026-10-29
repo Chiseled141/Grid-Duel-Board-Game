@@ -103,11 +103,8 @@ class StartupJourneySystemTest {
 
                 SwingUtilities.invokeAndWait(() -> {
                     visibleButton(frame[0].getContentPane(), "Settings").doClick();
-                    visibleButton(frame[0].getContentPane(), "Check for updates").doClick();
+                    assertNull(visibleButton(frame[0].getContentPane(), "Check for updates"), "Settings has no Updates section");
                 });
-                waitFor(() -> find(frame[0].getContentPane(), JLabel.class).stream().anyMatch(l -> l.isShowing()
-                        && l.getText().equals("No update service is configured; nothing was checked.")),
-                        "Settings reports that no real check exists");
             } finally {
                 if (frame[0] != null) SwingUtilities.invokeAndWait(frame[0]::dispose);
                 if (server != null) server.stop();

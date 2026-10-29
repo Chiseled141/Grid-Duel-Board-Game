@@ -26,7 +26,7 @@ is described in `docs/updates.md`.
 
 | State | Buttons |
 |---|---|
-| Checking for updates | none |
+| Checking for updates | none; a brass bar sweeps while any step with no buttons is working (still with reduced motion) |
 | Up to date | none; connects after 0.7 s |
 | Updates not set up (no service) | none; says nothing was checked, then connects |
 | Update check failed | Retry, Continue |
@@ -37,7 +37,7 @@ is described in `docs/updates.md`.
 | Restarting (installed copy) | none; the game closes, the helper installs and the game starts again |
 | Update installed (fixtures only) | Quit |
 | Connecting | none |
-| Connection failed (including certificate problems, explained) | Retry, Play offline, Quit |
+| Connection failed ("Cannot connect to the server."; the technical reason, such as a certificate problem, is written to the client log, not shown) | Retry, Play offline, Quit |
 | Server requires a newer client | the update step again, without Continue; if no update is offered, a failure message with Retry |
 | Starting offline play / Offline play | none; opens the main menu |
 

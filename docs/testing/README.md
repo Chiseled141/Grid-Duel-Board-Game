@@ -23,7 +23,7 @@ personal data, logs, old build output or deleted files into that directory.
 | Newly public King selection | Painting and aura fly into the proper round-one/round-two slot; cancellation restores slots | `KingDeploymentTest` |
 | All seven supplied King images | Original SHA-256 and aspect ratio preserved | `KingArtTest` |
 | Last play of a round or match | Complete effects and scoring before the conclusion; authoritative banked totals | `RoundScoringSequenceTest`, `RoundClosingViewTest` |
-| Guide playback | All 17 recordings validate; private choices stay recipient-visible | `TutorialLibraryTest`, `HowToPlayPanelTest` |
+| Quick guide | Every step shows its tip and bundled clip; Back leaves without sending anything | `HowToPlayPanelTest` |
 | Replay seek, round jumps and filtered action journal | Seek pauses, original frame indices stay correct, missing frames are explicit, hidden pages stop timers | `ReplayNavigationTest`, `ReplayReviewTest` |
 | Replay score comparison | Raw components and multiplier effect reconcile exactly; banked totals and per-King changes remain separate | `ReplayScoreChangeTest` |
 | History filters and refresh | Search/result/mode combine locally, practice stays outside W/L, replay selection follows its id | `HistoryFilterTest`, `HistoryFilteringTest` |
@@ -46,5 +46,5 @@ observed results, screenshot paths and limitations. The complete run is retained
 
 Keep the latest machine reports in ignored `target/surefire-reports/` and build logs in
 `target/verification/`. Superseded screenshots, diagnostic recordings, duplicate reports and
-historical build trees are disposable. Tutorial `.duel` recordings and runtime artwork/audio
+historical build trees are disposable. Guide clips and runtime artwork/audio
 under `src/main/resources/` are application assets and must be retained.

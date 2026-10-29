@@ -131,7 +131,7 @@ final class PlayAnimator {
         return new Plan(s, settle);
     }
 
-    /** A manual draw or a kept Reconnaissance card: only the hands changed. Null when nothing moved. */
+    /** A swap or a kept Reconnaissance card: only the hands changed. Null when nothing moved. */
     static Plan handChanges(PlayerView before, PlayerView after, Layout layout) {
         if (before.round() != after.round() || after.phase() == MatchPhase.FINISHED) return null;
         Staging s = new Staging();
@@ -417,6 +417,11 @@ final class PlayAnimator {
         }
         // The opponent's own play reports what it drew; otherwise only their hand count says.
         int gained = play != null && !mine ? play.drawn() : play != null ? 0 : after.opponent().handCount() - before.opponent().handCount();
+        // An opponent's swap shows as many face-down cards leaving for their discard as arrive from their deck.
+        int swapped = play == null ? Math.max(0, after.opponent().discardCount() - before.opponent().discardCount()) : 0;
+        for (int i = 0; i < swapped; i++)
+            s.add(at + i * DEAL_GAP, DRAW, new Staging.Flight(null, layout.opponentHand(), layout.pile(TableZone.OPPONENT), false, true, 0));
+        gained += swapped;
         for (int i = 0; i < gained; i++) {
             s.sound(at + i * DEAL_GAP, Kind.DEAL);
             s.add(at + i * DEAL_GAP, DRAW, new Staging.Flight(null, deck != null ? deck : layout.pile(TableZone.OPPONENT),

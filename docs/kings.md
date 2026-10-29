@@ -66,7 +66,7 @@ tag disables and clearing; repeated calculation never accumulates points.
 | Varkhan | Ashkar / Assault | +2 per active Assassin or Bowman, cap +10 |
 | Altharion | Asterion / Royal Council | +2 per distinct active class, cap +10 |
 | Mordraven | Dravorn / Legion | `min(10, 3 × max(0, largest active class group − 2))`; tied groups count once |
-| Nethrion | Nerath / Secret Edict | First accepted manual draw each round privately looks at two, keeps one, bottoms the other; no score bonus |
+| Nethrion | Nerath / Secret Edict | First accepted swap each round privately looks at two for its last replacement, keeps one, bottoms the other; no score bonus |
 | Aurendor | Solmara / Royal Decree | +3 per accepted Spell played this round, cap +9, while at least one friendly Unit has active tags |
 | Thalvaren | Sylvaren / Alliance | +2 per distinct active nation, cap +10 |
 | Vaelthor | Vaelora / Twin Banners | +5 per nation with at least two active Units, cap +10; a larger group still counts once |
@@ -88,13 +88,14 @@ uses this complete score once. Winner, result transaction, W/L and historical ro
 used this round. Dealing a new round preserves ownership and resets both counters. A valid
 no-target Spell counts; a rejected action or an accepted-request retry does not count again.
 
-The first accepted manual draw with Nethrion spends exactly one manual draw. With at least two
-cards, it removes the top two into the owner's private `looking` list and sets
+The first accepted swap (`SwapCards`) with Nethrion spends its swapped cards from the allowance
+as usual and draws all but its last replacement normally. With at least two cards then left, it
+removes the top two into the owner's private `looking` list and sets
 `ChoiceKind.SECRET_EDICT`. `KeepEdictCard` adds the selected card to hand, puts the remaining
-card at the bottom, clears the pending choice and retains the same turn. Normal play, draw,
+card at the bottom, clears the pending choice and retains the same turn. Normal play, swap,
 skip and the Reconnaissance-specific `KeepCard` are rejected during this choice. With one card
-it draws normally and marks the ability used. With zero cards the request is rejected without
-spending a draw or the ability. Spell draws and the deal never trigger it. Reconnaissance
+left it draws normally and marks the ability used. A swap larger than the deck is rejected
+without spending a swap or the ability. Spell draws and the deal never trigger it. Reconnaissance
 continues to use `ChoiceKind.RECONNAISSANCE` and `KeepCard`, ending its cast's turn on completion.
 
 ## Modules and routes

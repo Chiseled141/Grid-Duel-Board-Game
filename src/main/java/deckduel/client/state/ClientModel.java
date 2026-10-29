@@ -155,7 +155,7 @@ public final class ClientModel {
         connection.send(new HistoryRequest());
     }
 
-    /** Sends one move (card play, manual draw, keep or skip) against the revision currently shown. */
+    /** Sends one move (card play, swap, keep or skip) against the revision currently shown. */
     public void move(Move move) {
         if (match == null || reconnecting || awaitingAnswer) return;
         if (!match.view().needsAction()) return;
@@ -183,6 +183,15 @@ public final class ClientModel {
         match = null;
         setScreen(Screen.LOBBY);
         runAfterMatch();
+    }
+
+    /**
+     * Forfeits an unfinished match before the game closes from the table, without changing
+     * screens; the closing frame must not be shown again.
+     */
+    public void forfeitBeforeQuit() {
+        if (match != null && match.view().phase() != deckduel.core.card.MatchPhase.FINISHED)
+            connection.send(new LeaveMatchRequest());
     }
 
     /** Applies a server message; callers hand off socket messages to the EDT. */

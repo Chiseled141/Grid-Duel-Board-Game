@@ -67,9 +67,9 @@ class ClientModelTest {
             var moving = mine.view().yourTurn() ? mine : update("M1", deckduel.core.card.Seat.SECOND);
             f.model.handleMessage(moving);
             f.sent.clear();
-            f.model.move(new deckduel.core.card.DrawCard());
-            assertEquals(new deckduel.core.card.DrawCard(), ((MoveRequest) f.sent.get(0)).move());
-            f.model.move(new deckduel.core.card.DrawCard());
+            f.model.move(new deckduel.core.card.SwapCards(java.util.List.of(1L)));
+            assertEquals(new deckduel.core.card.SwapCards(java.util.List.of(1L)), ((MoveRequest) f.sent.get(0)).move());
+            f.model.move(new deckduel.core.card.SwapCards(java.util.List.of(1L)));
             assertEquals(1, f.sent.size(), "one move per shown view");
         });
     }
@@ -158,7 +158,7 @@ class ClientModelTest {
             assertEquals(Screen.TABLE, f.model.screen(), "the match stays on screen");
             assertTrue(screens.isEmpty());
             assertTrue(errors.isEmpty(), "nothing is shown over the table");
-            f.model.move(new deckduel.core.card.DrawCard());
+            f.model.move(new deckduel.core.card.SwapCards(java.util.List.of(1L)));
             assertTrue(f.sent.get(0) instanceof MoveRequest, "moves in the current match still go out");
             f.model.requireUpdate("3.0.0");
             assertEquals("2.0.0", f.model.requiredUpdate(), "the first requirement is remembered");
@@ -195,7 +195,7 @@ class ClientModelTest {
             assertNull(f.model.match());
             f.sent.clear();
             f.model.replay().next(); f.model.replay().play(); f.model.replay().setSpeed(2.0);
-            f.model.move(new deckduel.core.card.DrawCard());
+            f.model.move(new deckduel.core.card.SwapCards(java.util.List.of(1L)));
             assertTrue(f.sent.isEmpty(), "playback sends nothing, and there is no live match to move in");
             f.model.closeReplay();
             assertEquals(Screen.HISTORY, f.model.screen());
@@ -247,7 +247,7 @@ class ClientModelTest {
             f.model.whenNoMatchInProgress(() -> ran.add("after"));
             assertEquals(List.of("now"), ran);
             f.model.setUpdating(true);
-            f.model.move(new deckduel.core.card.DrawCard());
+            f.model.move(new deckduel.core.card.SwapCards(java.util.List.of(1L)));
             assertEquals(Screen.TABLE, f.model.screen(), "installing never interrupts the match");
             f.model.leaveMatch();
             assertEquals(List.of("now", "after"), ran);

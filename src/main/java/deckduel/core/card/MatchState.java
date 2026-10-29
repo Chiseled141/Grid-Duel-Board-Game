@@ -28,10 +28,9 @@ public final class MatchState {
             known = List.copyOf(known);
         }
 
-        /** Whether this player can still do anything this round: play a card, or draw one to play. */
+        /** Whether this player can still do anything this round: a swap needs cards in hand, so play one. */
         boolean canAct() {
-            return playsUsed < Rules.PLAYS_PER_ROUND
-                    && (!hand.isEmpty() || drawsUsed < Rules.MANUAL_DRAWS && !drawPile.isEmpty());
+            return playsUsed < Rules.PLAYS_PER_ROUND && !hand.isEmpty();
         }
     }
 
@@ -146,7 +145,7 @@ public final class MatchState {
         if (move instanceof KeepEdictCard keep) return keep(actor, keep.cardId(), ChoiceKind.SECRET_EDICT);
         if (move instanceof KeepCard keep) return keep(actor, keep.cardId(), ChoiceKind.RECONNAISSANCE);
         if (!side(actor).looking().isEmpty()) throw new RuleViolation("Finish your private card choice first.");
-        if (move instanceof DrawCard) return draw(actor);
+        if (move instanceof SwapCards swap) return swap(actor, swap.cardIds());
         if (move instanceof SkipTurn) return skip(actor);
         return playCard(actor, (PlayCard) move);
     }
@@ -245,23 +244,38 @@ public final class MatchState {
                 extra.handCard(), extra.drawn(), actorRow, opponentRow);
     }
 
-    /** A manual draw: one card, without using or ending the turn. */
-    private MatchState draw(Seat actor) {
+    /**
+     * A swap: the chosen hand cards are discarded and as many are drawn, without using or ending
+     * the turn. Nethrion's Secret Edict turns the first swap's last replacement into a private
+     * choice of two.
+     */
+    private MatchState swap(Seat actor, List<Long> cardIds) {
         Side mine = side(actor);
-        if (mine.drawsUsed() >= Rules.MANUAL_DRAWS) throw new RuleViolation("You have no manual draws left this round.");
-        if (mine.drawPile().isEmpty()) throw new RuleViolation("Your deck is empty.");
+        int count = cardIds.size(), left = Rules.SWAPS_PER_ROUND - mine.drawsUsed();
+        if (count == 0) throw new RuleViolation("Choose at least one card to swap.");
+        if (new LinkedHashSet<>(cardIds).size() != count) throw new RuleViolation("Choose each card only once.");
+        if (left <= 0) throw new RuleViolation("You have no swaps left this round.");
+        if (count > left) throw new RuleViolation("You can swap only " + left + " more card" + (left == 1 ? "" : "s") + " this round.");
+        if (count > mine.drawPile().size()) throw new RuleViolation("Your deck has only " + mine.drawPile().size() + " cards left.");
         Draft me = new Draft(mine);
+        for (long id : cardIds) {
+            CardInstance card = me.hand.stream().filter(c -> c.id() == id).findFirst()
+                    .orElseThrow(() -> new RuleViolation("That card is not in your hand."));
+            me.hand.remove(card);
+            me.discardCount++;
+        }
         boolean edict = me.kings.kings().contains(King.NETHRION) && !me.kings.edictUsed();
         if (edict) {
             me.kings = new KingStatus(me.kings.kings(), me.kings.spellsPlayed(), true);
+            me.draw(count - 1);
             if (me.drawPile.size() > 1) {
                 me.choiceKind = ChoiceKind.SECRET_EDICT;
                 for (int i = 0; i < King.NETHRION.threshold(); i++) me.looking.add(me.drawPile.remove(0));
             } else me.draw(1);
-        } else me.draw(1);
-        me.drawsUsed++;
+        } else me.draw(count);
+        me.drawsUsed += count;
         List<MatchEvent> log = new ArrayList<>(events);
-        log.add(new MatchEvent(actor, "drew a card"));
+        log.add(new MatchEvent(actor, "swapped " + count + " card" + (count == 1 ? "" : "s")));
         return with(actor, me.build(), log, turn);
     }
 

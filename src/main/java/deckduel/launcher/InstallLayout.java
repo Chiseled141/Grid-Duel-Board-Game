@@ -126,6 +126,46 @@ public final class InstallLayout {
         return manifest;
     }
 
+    /**
+     * Sets up the package an installer bundles: installs and activates it, unless a newer
+     * version that still verifies is already active (an automatic update arrived after the
+     * installer was built). Running it again repairs a damaged pointer or version folder.
+     *
+     * @return the version that starts next
+     */
+    public String setUp(Path zip) throws IOException {
+        PackageManifest bundled = PackageArchive.manifest(zip);
+        Optional<Pointer> current;
+        try {
+            current = pointer();
+        } catch (IOException | NumberFormatException damaged) {
+            LOG.log(Level.WARNING, "replacing a damaged installation pointer", damaged);
+            Files.delete(root.resolve(POINTER));
+            current = Optional.empty();
+        }
+        if (current.isPresent() && ReleaseVersion.parse(current.get().active()).newerThan(ReleaseVersion.parse(bundled.version()))) {
+            try {
+                verify(current.get().active());
+                refreshLauncher(current.get().active());
+                return current.get().active();
+            } catch (IOException damaged) {
+                LOG.log(Level.WARNING, "the active version is damaged; installing " + bundled.version(), damaged);
+            }
+        }
+        Path folder = versionDir(bundled.version());
+        if (Files.isDirectory(folder)) {
+            try {
+                verify(bundled.version());
+            } catch (IOException damaged) {
+                // installPackage keeps an active folder; the installer has closed the game, so replace it.
+                PackageArchive.deleteTree(folder);
+            }
+        }
+        installPackage(zip);
+        activate(bundled.version());
+        return bundled.version();
+    }
+
     /** Checks every file of an installed version against its manifest. */
     public PackageManifest verify(String version) throws IOException {
         Path folder = versionDir(version);

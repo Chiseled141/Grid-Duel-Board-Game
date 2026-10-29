@@ -11,7 +11,8 @@ public sealed interface Message extends Serializable permits ActionRejected, Can
         PracticeRequest, ProfileUpdate, ProtocolHello, ProtocolReady, RegisterRequest, RematchRequest,
         ReplayRequest, ReplayResponse, UpdateRequired {
     /**
-     * Version 19 adds the recipient's final pre-bank round view so scoring finishes before summaries.
+     * Version 20 replaces the one-card manual draw with SwapCards (discard chosen hand cards, draw as many).
+     * Version 19 added the recipient's final pre-bank round view so scoring finishes before summaries.
      * Version 18 added the server-owned 30-second King choice deadline to MatchUpdate.
      * Version 17 added simultaneous King choices, ownership, bonus breakdown and private Secret Edict.
      * Version 16 added the client's release version to ProtocolHello, UpdateRequired (the server's
@@ -19,7 +20,7 @@ public sealed interface Message extends Serializable permits ActionRejected, Can
      * restart). Version 15 added CancelRoomRequest, 14 personal replays, and 13 removed the
      * matchmaking queue. Older peers are rejected at the handshake.
      */
-    int PROTOCOL_VERSION = 19;
+    int PROTOCOL_VERSION = 20;
     /** Greeting shared by both peers. */
     String GREETING = "DECK_DUEL_PROTOCOL:" + PROTOCOL_VERSION;
     /** Restricts deserialization to protocol records, card view contracts and bounded collections. */
@@ -60,7 +61,7 @@ public sealed interface Message extends Serializable permits ActionRejected, Can
                     + "deckduel.core.card.CardDef;deckduel.core.card.CardInstance;deckduel.core.card.CardKind;"
                     + "deckduel.core.card.King;deckduel.core.card.KingStatus;deckduel.core.card.KingBonus;"
                     + "deckduel.core.card.ChooseKing;deckduel.core.card.KeepEdictCard;deckduel.core.card.ChoiceKind;"
-                    + "deckduel.core.card.DrawCard;deckduel.core.card.KeepCard;"
+                    + "deckduel.core.card.SwapCards;deckduel.core.card.KeepCard;"
                     + "deckduel.core.card.PlayCard;deckduel.core.card.SkipTurn;deckduel.core.card.Formation;"
                     + "deckduel.core.card.Effect$Disable;deckduel.core.card.Effect$Destroy;"
                     + "deckduel.core.card.Effect$ClearDisable;deckduel.core.card.Effect$RandomDiscard;"

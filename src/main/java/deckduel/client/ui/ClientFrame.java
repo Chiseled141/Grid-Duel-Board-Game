@@ -97,7 +97,7 @@ public final class ClientFrame extends JFrame {
                 Screen.STARTUP.name());
         content.add(new LoginPanel(model, settings, server.route()), Screen.LOGIN.name());
         scoringSounds = new deckduel.client.ScoringSounds(settings::gameSounds);
-        var lobby = new LobbyPanel(model, settings, this::closeAndSave, updates, services.fixture(), restarts);
+        var lobby = new LobbyPanel(model, settings, this::closeAndSave);
         lobby.onGameSoundsChanged(() -> { if (!settings.gameSounds()) scoringSounds.stop(); });
         content.add(lobby, Screen.LOBBY.name());
         content.add(new HistoryPanel(model, settings, model::leaveToLobby), Screen.HISTORY.name());
@@ -105,7 +105,7 @@ public final class ClientFrame extends JFrame {
         content.add(new HowToPlayPanel(model), Screen.HOW_TO_PLAY.name());
         add(buildScene());
         fxScreens = new FxScreens(model, scoringSounds, this, () -> soundToggle.doClick(),
-                settings::soundEnabled, bounds -> { setBounds(bounds); closeAndSave(); });
+                settings::soundEnabled, bounds -> { setBounds(bounds); closeAndSave(); }, settings);
         // Remembers required updates, holds new matches while installing, and restarts once no match is in progress.
         new UpdateFinisher(model, updates, services.restarter(), () -> { closeAndSave(); System.exit(0); }, text -> {
             if (fxScreens.showing()) fxScreens.notice(text);
@@ -115,7 +115,10 @@ public final class ClientFrame extends JFrame {
         model.addListener(new ClientModelListener() {
             @Override public void onScreenChanged(Screen screen) {
                 // The JavaFX table has no card here; the menu stays behind it, hidden.
-                if (screen != Screen.TABLE) screens.show(content, screen.name());
+                if (screen != Screen.TABLE) {
+                    screens.show(content, screen.name());
+                    SwingUtilities.invokeLater(() -> focusScreen(screen));
+                }
                 updateMenuMusic();
             }
             // A failed offline sign-in is shown on the login form rather than leaving the startup screen up.
@@ -147,6 +150,32 @@ public final class ClientFrame extends JFrame {
             java.util.logging.Logger.getLogger(ClientFrame.class.getName())
                     .log(java.util.logging.Level.WARNING, "could not confirm the start of " + version, unrecorded);
         }
+    }
+
+    /**
+     * Moves keyboard focus onto the screen now shown when it still sits on a hidden one, so its
+     * keys and default button answer at once. The menu places its own focus.
+     */
+    private void focusScreen(Screen screen) {
+        if (model.screen() != screen || screen == Screen.LOBBY) return;
+        for (java.awt.Component card : content.getComponents()) {
+            if (!card.isVisible() || !(card instanceof java.awt.Container panel)) continue;
+            java.awt.Component owner = java.awt.KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusOwner();
+            if (owner != null && owner.isShowing() && SwingUtilities.isDescendingFrom(owner, panel)) return;
+            javax.swing.JButton first = firstButton(panel);
+            if (first != null) first.requestFocusInWindow(); else panel.requestFocusInWindow();
+        }
+    }
+
+    private static javax.swing.JButton firstButton(java.awt.Container parent) {
+        for (java.awt.Component child : parent.getComponents()) {
+            if (child instanceof javax.swing.JButton button && button.isShowing() && button.isEnabled()) return button;
+            if (child instanceof java.awt.Container nested) {
+                javax.swing.JButton found = firstButton(nested);
+                if (found != null) return found;
+            }
+        }
+        return null;
     }
 
     private void modelMessage(deckduel.net.Message message) { model.handleMessage(message); }

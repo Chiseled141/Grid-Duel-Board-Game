@@ -9,7 +9,8 @@ connects to AWS, uploads anything or changes security groups. Each command block
 - **Change in AWS Console:** a click-path in the AWS web console.
 
 Technical background: `docs/connections.md` (TLS, version policy, drain), `docs/updates.md`
-(updater and release format), `docs/replays.md`.
+(updater and release format), `docs/windows-installer.md`, `docs/replays.md`. The order of work for a
+first small release is summarised in `docs/online-release.md`.
 
 ## 0. Inputs you must supply
 
@@ -170,11 +171,11 @@ sudo systemctl enable --now deckduel-backup.timer
 Health, logs and readiness. **Run inside EC2** (the port is still closed to the internet):
 ```sh
 systemctl status deckduel --no-pager
-journalctl -u deckduel -n 50 --no-pager                 # "listening on 0.0.0.0:<GAME_PORT> (TLS)" and "Deck Duel server ready ... protocol 16"
+journalctl -u deckduel -n 50 --no-pager                 # "listening on 0.0.0.0:<GAME_PORT> (TLS)" and "Deck Duel server ready ... protocol 20"
 sudo /opt/deckduel/bin/deckduel-ctl status               # state=open ... certificateExpires=...
 ss -ltnp | grep <GAME_PORT>
 /usr/bin/java -jar /opt/deckduel/current/deck-duel-server.jar probe --host <GAME_HOST> --port <GAME_PORT> --connect-address 127.0.0.1
-#   tls ok TLSv1.3 certificate CN=<GAME_HOST> ...   then   ok protocol 16 ready ...
+#   tls ok TLSv1.3 certificate CN=<GAME_HOST> ...   then   ok protocol 20 ready ...
 ```
 This local probe dials loopback, so the security group's public game port can stay closed.
 It still verifies the certificate against `<GAME_HOST>` and uses that name for TLS SNI; it does
@@ -232,7 +233,7 @@ java -jar target/deck-duel-server.jar probe --host <GAME_HOST> --port <GAME_PORT
 5. **Sign and publish the metadata last.** **Run on my computer**:
    ```sh
    java -jar target/deck-duel.jar release sign --private-key ~/deck-duel-keys/release.key \
-       --minimum-version <OLDEST_SUPPORTED_CLIENT> --minimum-protocol 16 --out dist/site dist/client-<VERSION>/*.zip
+       --minimum-version <OLDEST_SUPPORTED_CLIENT> --minimum-protocol 20 --out dist/site dist/client-<VERSION>/*.zip
    aws s3 cp dist/site/latest.properties.sig s3://<RELEASE_BUCKET>/<CHANNEL>/ --content-type text/plain --cache-control no-cache
    aws s3 cp dist/site/latest.properties     s3://<RELEASE_BUCKET>/<CHANNEL>/ --content-type text/plain --cache-control no-cache
    curl -fsS https://<RELEASE_BUCKET>.s3.ap-southeast-1.amazonaws.com/<CHANNEL>/latest.properties | head -3   # public
@@ -240,9 +241,16 @@ java -jar target/deck-duel-server.jar probe --host <GAME_HOST> --port <GAME_PORT
    ```
    Between the two metadata uploads a client may see a signature mismatch. It reports "Update
    check failed" with Retry; it never accepts unsigned data.
-6. **First installation for players.** Players need the launcher and a first package
-   (`deck-duel-launcher.jar install --root <per-user folder> --package <zip>`; see
-   `docs/updates.md`). A native installer that does this is not built yet.
+   For Windows, build on a Windows x64 computer with `tools\build-windows-installer.ps1` instead
+   (`docs/windows-installer.md`). It writes the Windows package to the same folder, together with
+   `DeckDuel-Setup-<VERSION>.exe`. Copy every platform's zip into `dist/client-<VERSION>/` on the
+   computer that holds the signing key before step 5.
+6. **First installation for players.** Windows players run `DeckDuel-Setup-<VERSION>.exe` once
+   (bundled Java, no administrator rights). Upload it next to the packages, for example:
+   `aws s3 cp dist/client-<VERSION>/DeckDuel-Setup-<VERSION>.exe s3://<RELEASE_BUCKET>/<CHANNEL>/ --content-type application/vnd.microsoft.portable-executable`,
+   and share its URL, or host it anywhere else. Players on other platforms need Java 17+, the
+   launcher and a first package (`deck-duel-launcher.jar install --root <per-user folder> --package <zip>`;
+   see `docs/updates.md`).
 
 Players receive only the packages, which hold the client jars, the public key and public
 addresses: never AWS credentials, the signing key, the server certificate key or a database.

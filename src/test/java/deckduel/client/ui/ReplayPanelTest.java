@@ -91,8 +91,8 @@ class ReplayPanelTest {
                 play.doClick();
                 assertFalse(playback.playing());
                 assertFalse(timer(ui.panel, "stepper").isRunning());
-                // Keys work on the replay page only: nothing is bound window-wide.
-                assertEquals(0, ui.panel.getInputMap(javax.swing.JComponent.WHEN_IN_FOCUSED_WINDOW).size());
+                // Keys work on the replay page only; just Back (Escape/Backspace) answers wherever focus is.
+                assertBackOnly(ui.panel.getInputMap(javax.swing.JComponent.WHEN_IN_FOCUSED_WINDOW));
                 int before = playback.index();
                 ui.panel.getActionMap().get("replay.next").actionPerformed(null);
                 assertEquals(before + 1, playback.index());
@@ -138,5 +138,11 @@ class ReplayPanelTest {
                 assertFalse(timer(ui.panel, "stepper").isRunning());
             } catch (ReflectiveOperationException e) { throw new AssertionError(e); }
         });
+    }
+
+    static void assertBackOnly(javax.swing.InputMap windowWide) {
+        assertEquals(2, windowWide.size());
+        for (String key : java.util.List.of("ESCAPE", "BACK_SPACE"))
+            assertEquals("menu.back", windowWide.get(javax.swing.KeyStroke.getKeyStroke(key)));
     }
 }

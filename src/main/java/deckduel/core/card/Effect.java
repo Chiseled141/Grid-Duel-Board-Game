@@ -58,7 +58,7 @@ public sealed interface Effect extends Serializable {
         @Override public String text() { return "Take " + cards + " random card" + (cards == 1 ? "" : "s") + " from the enemy's hand into yours."; }
     }
 
-    /** Spell: draws {@code cards} from the caster's deck; not a manual draw. */
+    /** Spell: draws {@code cards} from the caster's deck; not a swap. */
     record Draw(int cards) implements Effect {
         @Serial private static final long serialVersionUID = 1L;
         /** Validates the count. */

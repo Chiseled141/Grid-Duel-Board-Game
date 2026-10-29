@@ -14,8 +14,8 @@ public final class Rules {
     public static final int HAND_SIZE = 10;
     /** Play allowance per player per round, including Spells, replacements and voluntary skips. */
     public static final int PLAYS_PER_ROUND = 10;
-    /** Manual draws per player per round. */
-    public static final int MANUAL_DRAWS = 3;
+    /** Cards a player may swap (discard and redraw) per round, across any number of swaps. */
+    public static final int SWAPS_PER_ROUND = 3;
     /** Rounds per match. */
     public static final int ROUNDS = 3;
     /** Both players' public Unit rows from one player's side. */

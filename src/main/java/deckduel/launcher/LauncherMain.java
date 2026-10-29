@@ -22,7 +22,9 @@ import java.util.logging.SimpleFormatter;
  * and verified V. Waits for the game (process P) to close, verifies V's files again, activates
  * it and starts the game. If anything fails, the previous version stays active and starts.</li>
  * <li>{@code install --root R --package ZIP}: sets up an installation from a package, for
- * development and tests; players get their first copy from an installer that does the same.</li>
+ * development and tests.</li>
+ * <li>{@code setup --root R --package ZIP}: run by the Windows installer with the package it
+ * bundles; like {@code install}, but keeps a newer version that an update already activated.</li>
  * </ul>
  * It runs from the new version's folder during an update, so no file it replaces is in use.
  * No credentials are ever passed to it or written by it.
@@ -45,6 +47,7 @@ public final class LauncherMain {
                 case "launch" -> launch(layout);
                 case "activate" -> activate(layout, options.get("version"), Long.parseLong(options.get("wait-pid")));
                 case "install" -> install(layout, Path.of(options.get("package")));
+                case "setup" -> System.out.println("Deck Duel " + layout.setUp(Path.of(options.get("package"))) + " is ready in " + layout.root());
                 default -> throw new IllegalArgumentException("Unknown launcher command " + command);
             }
         } catch (Exception failure) {

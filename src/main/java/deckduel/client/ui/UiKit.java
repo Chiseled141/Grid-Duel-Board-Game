@@ -67,13 +67,20 @@ public final class UiKit {
      * and a soft shadow; it brightens on hover and sinks a pixel when pressed.
      */
     public static class PillButton extends JButton {
-        private final Pill variant;
+        private static final Color OFF_TOP = new Color(0x2E2A28), OFF_BOTTOM = new Color(0x1E1B1A);
+        private Pill variant;
 
         public PillButton(String text, Pill variant) {
             super(text.toUpperCase());
             this.variant = variant;
             setRolloverEnabled(true);
             refit();
+        }
+
+        /** Changes the look, as for the current choice of a pair of toggle-like pills. */
+        public void setVariant(Pill next) {
+            variant = next;
+            repaint();
         }
 
         /** Keeps the button sized to its label so long text never truncates. */
@@ -114,13 +121,25 @@ public final class UiKit {
             g.translate(0, sink);
             g.setColor(Theme.WOOD_LINE);
             g.fill(chamfer(0, 0, w, h, 5));
-            Color top = hover ? brighter(variant.top, 1.18f) : variant.top;
-            Color bottom = hover ? brighter(variant.bottom, 1.3f) : variant.bottom;
+            boolean enabled = isEnabled();
+            hover &= enabled;
+            // Disabled is plain dark iron with readable faded lettering, never a washed-out gold.
+            Color top = !enabled ? OFF_TOP : hover ? brighter(variant.top, 1.18f) : variant.top;
+            Color bottom = !enabled ? OFF_BOTTOM : hover ? brighter(variant.bottom, 1.3f) : variant.bottom;
             g.setPaint(new java.awt.GradientPaint(0, 0, top, 0, h, bottom));
             g.fill(chamfer(1, 1, w - 2, h - 2, 4));
-            g.setColor(Theme.withAlpha(variant.trim, hover ? 240 : 170));
+            g.setColor(!enabled ? Theme.withAlpha(Theme.BRASS, 70) : Theme.withAlpha(variant.trim, hover ? 240 : 170));
             g.setStroke(new java.awt.BasicStroke(1f));
             g.draw(chamfer(2.5, 2.5, w - 5, h - 5, 3));
+            if (!enabled) {
+                g.setFont(getFont());
+                FontMetrics metrics = g.getFontMetrics();
+                g.setColor(Theme.FADED);
+                g.drawString(getText(), (w - metrics.stringWidth(getText())) / 2,
+                        (h - metrics.getHeight()) / 2 + metrics.getAscent());
+                g.dispose();
+                return;
+            }
             g.dispose();
             setForeground(hover && variant != Pill.GOLD ? Theme.BRASS_LIGHT : variant.text);
             super.paintComponent(graphics);

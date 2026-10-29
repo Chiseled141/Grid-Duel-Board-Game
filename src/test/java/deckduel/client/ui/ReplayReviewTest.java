@@ -127,7 +127,7 @@ class ReplayReviewTest {
                 assertEquals(2, playback.frame().round());
                 ui.panel.getActionMap().get("replay.last").actionPerformed(null); assertTrue(playback.atEnd());
                 ui.panel.getActionMap().get("replay.first").actionPerformed(null); assertEquals(0, playback.index());
-                assertEquals(0, ui.panel.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).size());
+                ReplayPanelTest.assertBackOnly(ui.panel.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW));
                 ui.model.closeReplay();
                 int saved = playback.index();
                 ui.panel.getActionMap().get("replay.last").actionPerformed(null);
@@ -204,28 +204,6 @@ class ReplayReviewTest {
                 search.setText(""); assertTrue(journal.getModel().getSize() > 0);
                 assertTrue(ui.sent.isEmpty());
             } finally { ui.panel.stop(); }
-        });
-    }
-
-    @Test void openingAnotherTrainingExcerptDetachesOldListenersAndResetsNavigation() throws Exception {
-        SwingUtilities.invokeAndWait(() -> {
-            AtomicBoolean active = new AtomicBoolean(true);
-            var panel = new ReplayPanel(() -> true, active::get, () -> { });
-            var first = new ReplayPlayback(ClientFixtures.replay(true));
-            var single = new ReplayPlayback(new ReplayResponse(0, "Training", true, "", true,
-                    List.of(first.replay().frames().get(5))));
-            try {
-                panel.openTraining(first); first.play();
-                assertFalse(timer(panel).isRunning(), "training advances only with Next");
-                panel.openTraining(single);
-                assertFalse(first.playing()); assertFalse(timer(panel).isRunning());
-                first.seek(20);
-                assertEquals(0, named(panel, JSlider.class, "replaySeek").getMaximum());
-                assertFalse(named(panel, JSlider.class, "replaySeek").isEnabled());
-                assertTrue(named(panel, JLabel.class, "replayAction").getText().contains("excerpt"));
-                active.set(false); panel.stop(); single.play();
-                assertFalse(timer(panel).isRunning(), "hidden training page must not restart a timer");
-            } finally { panel.stop(); }
         });
     }
 

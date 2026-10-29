@@ -43,7 +43,7 @@ The eleventh Spell slot, left by Sabotage, is open until a new Spell is designed
 | Destroy Unit | `DESTROY OPPONENT`: the Unit leaves the row with its points and combos | an enemy Unit |
 | Random Discard | `RANDOM_DISCARD 1` from the enemy hand (server picks) | none |
 | Random Steal | `RANDOM_STEAL 1` from the enemy hand into yours (server picks) | none |
-| Draw Two | `DRAW 2` from your deck (not a manual draw) | none |
+| Draw Two | `DRAW 2` from your deck (not a swap) | none |
 | Exchange | `EXCHANGE 1 2`: discard the chosen card, then draw 2 | another card in your hand |
 | Reconnaissance | `RECONNAISSANCE 3`: look at the top 3, keep 1, the rest to the bottom | none; then a private keep choice |
 | Spy | `SPY 3`: three random enemy hand cards are revealed to you only | none |

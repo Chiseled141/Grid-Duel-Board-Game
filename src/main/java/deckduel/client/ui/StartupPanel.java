@@ -13,12 +13,14 @@ import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.Insets;
 import java.util.Locale;
+import java.util.function.BooleanSupplier;
 import javax.swing.AbstractAction;
 import javax.swing.JButton;
 import javax.swing.JComponent;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.KeyStroke;
+import javax.swing.Timer;
 
 /**
  * The launch screen before login: an iron plate on the animated valley, like the login card,
@@ -35,7 +37,7 @@ final class StartupPanel extends BattlefieldMenuPanel {
     private final JLabel heading = centered(Theme.display(24f), Theme.BRASS_LIGHT);
     private final JLabel detail = centered(Theme.normal(13f), Theme.CREAM);
     private final JLabel failure = centered(Theme.bold(11f), Theme.CORAL);
-    private final ProgressBar bar = new ProgressBar();
+    private final ProgressBar bar;
     private final JButton continueButton = UiKit.pill("Continue", UiKit.Pill.GOLD_OUTLINE);
     private final JButton quitButton = UiKit.pill("Quit", UiKit.Pill.GOLD_OUTLINE);
     private final JButton offlineButton = UiKit.pill("Play offline", UiKit.Pill.GOLD_OUTLINE);
@@ -53,6 +55,7 @@ final class StartupPanel extends BattlefieldMenuPanel {
         super(model, Screen.STARTUP, settings);
         this.version = version;
         this.restarts = restarts;
+        bar = new ProgressBar(model::reducedMotion);
         setLayout(new GridBagLayout());
         getAccessibleContext().setAccessibleName("Deck Duel startup");
         updateButton.addActionListener(event -> flow.update());
@@ -112,12 +115,11 @@ final class StartupPanel extends BattlefieldMenuPanel {
         detail.setText(text[1]);
         boolean updating = state.phase() == StartupFlow.Phase.UPDATES;
         boolean installing = updating && update.stage() == UpdateFlow.Stage.INSTALLING;
-        bar.setProgress(installing ? update.progress() : -1);
-        String reason = state.phase() == StartupFlow.Phase.CONNECTION_FAILED ? state.failure()
-                : updating && (update.stage() == UpdateFlow.Stage.CHECK_FAILED
+        // The technical reason for a failed connection goes to the log, not to the player.
+        String reason = updating && (update.stage() == UpdateFlow.Stage.CHECK_FAILED
                         || update.stage() == UpdateFlow.Stage.INSTALL_FAILED) ? update.failure() : null;
         failure.setText(reason == null ? " " : reason);
-        boolean failed = reason != null;
+        boolean failed = reason != null || state.phase() == StartupFlow.Phase.CONNECTION_FAILED;
         boolean offered = updating && (update.stage() == UpdateFlow.Stage.OPTIONAL_UPDATE
                 || update.stage() == UpdateFlow.Stage.REQUIRED_UPDATE);
         updateButton.setVisible(offered);
@@ -128,6 +130,10 @@ final class StartupPanel extends BattlefieldMenuPanel {
         // Continue appears only where entry is allowed; elsewhere Quit is the way out.
         continueButton.setVisible(waiting && updating && state.canContinue());
         quitButton.setVisible(waiting && !continueButton.isVisible());
+        // A step with nothing to press is still working: the bar sweeps like a loading screen.
+        if (installing) bar.setProgress(update.progress());
+        else if (primaryButton() == null) bar.setLoading();
+        else bar.hideBar();
         boolean offline = state.phase() == StartupFlow.Phase.OFFLINE_STARTING || state.phase() == StartupFlow.Phase.OFFLINE;
         footer.setText(("Version " + version + "  ·  " + (offline ? "offline play on this computer" : state.route().describe()))
                 .toUpperCase(Locale.ROOT));
@@ -145,10 +151,11 @@ final class StartupPanel extends BattlefieldMenuPanel {
 
     /** The heading and one-line detail for a startup state. */
     static String[] describe(StartupFlow.State state, boolean restarts) {
-        String route = state.route().describe();
         return switch (state.phase()) {
-            case CONNECTING -> new String[] {"CONNECTING", "Reaching the " + route + "…"};
-            case CONNECTION_FAILED -> new String[] {"CONNECTION FAILED", "Cannot reach the " + route + "."};
+            case CONNECTING -> new String[] {"CONNECTING", "Connecting to the server…"};
+            case CONNECTION_FAILED -> state.serverRequires() != null
+                    ? new String[] {"UPDATE REQUIRED", "The server needs Deck Duel " + state.serverRequires() + " or newer. No update is available yet."}
+                    : new String[] {"CONNECTION FAILED", "Cannot connect to the server."};
             case CONNECTED -> new String[] {"CONNECTED", "Opening login…"};
             case OFFLINE_STARTING -> new String[] {"STARTING OFFLINE PLAY", "Starting a private server on this computer…"};
             case OFFLINE -> new String[] {"OFFLINE PLAY", "Signing in to practice against the bots…"};
@@ -205,28 +212,68 @@ final class StartupPanel extends BattlefieldMenuPanel {
         return label;
     }
 
-    /** A brass bar in a sunken slot, like the castle-hall loading bar; empty space when hidden. The detail line reads out the percentage. */
+    /**
+     * A brass bar in a sunken slot, like the castle-hall loading bar: filled to the download's
+     * progress (the detail line reads out the percentage), a sweeping segment while a step is
+     * loading, or empty space when hidden. Reduced motion shows the segment standing still.
+     */
     private static final class ProgressBar extends JComponent {
+        private static final double SEGMENT = .28, SWEEP_SECONDS = 1.6;
+        private final BooleanSupplier reducedMotion;
+        private final Timer frames = new Timer(33, event -> repaint());
+        private final long start = System.nanoTime();
         private double progress = -1;
+        private boolean loading;
 
-        ProgressBar() {
+        ProgressBar(BooleanSupplier reducedMotion) {
+            this.reducedMotion = reducedMotion;
             setPreferredSize(new Dimension(TEXT_WIDTH, 12));
         }
 
-        /** Sets the filled fraction, or a negative value to hide the bar. */
-        void setProgress(double value) { progress = value; repaint(); }
+        /** Shows the filled fraction of a download. */
+        void setProgress(double value) { show(value, false); }
+
+        /** Shows the sweeping loading segment. */
+        void setLoading() { show(-1, true); }
+
+        void hideBar() { show(-1, false); }
+
+        private void show(double value, boolean sweep) {
+            progress = value;
+            loading = sweep;
+            animate();
+            repaint();
+        }
+
+        private void animate() {
+            boolean run = loading && isDisplayable() && !reducedMotion.getAsBoolean();
+            if (run && !frames.isRunning()) frames.start();
+            else if (!run) frames.stop();
+        }
+
+        @Override public void addNotify() { super.addNotify(); animate(); }
+
+        @Override public void removeNotify() { frames.stop(); super.removeNotify(); }
 
         @Override protected void paintComponent(Graphics graphics) {
-            if (progress < 0) return;
+            if (progress < 0 && !loading) return;
             var g = UiKit.nice(graphics);
             try {
                 int x = 30, width = getWidth() - 60, height = getHeight();
                 g.translate(x, 0);
                 UiKit.paintSlot(g, width, height, false);
-                int filled = (int) Math.round((width - 4) * progress);
-                if (filled > 0) {
-                    g.setPaint(new java.awt.GradientPaint(0, 2, Theme.BRASS_LIGHT, 0, height - 2, Theme.BRASS));
-                    g.fill(UiKit.chamfer(2, 2, filled, height - 4, 2));
+                int inner = width - 4;
+                g.setPaint(new java.awt.GradientPaint(0, 2, Theme.BRASS_LIGHT, 0, height - 2, Theme.BRASS));
+                if (loading) {
+                    int segment = (int) Math.round(inner * SEGMENT);
+                    double phase = (System.nanoTime() - start) / 1e9 / SWEEP_SECONDS % 1;
+                    // Eased back and forth across the slot; centred and still with reduced motion.
+                    double eased = reducedMotion.getAsBoolean() ? .5 : (1 - Math.cos(phase * 2 * Math.PI)) / 2;
+                    int left = 2 + (int) Math.round((inner - segment) * eased);
+                    g.fill(UiKit.chamfer(left, 2, segment, height - 4, 2));
+                } else {
+                    int filled = (int) Math.round(inner * progress);
+                    if (filled > 0) g.fill(UiKit.chamfer(2, 2, filled, height - 4, 2));
                 }
             } finally { g.dispose(); }
         }

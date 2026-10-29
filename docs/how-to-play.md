@@ -1,57 +1,40 @@
 # How to Play
 
-The main menu's **How to Play** entry opens the English guide, including in offline practice.
-Choose a lesson, read the rule and step through its recorded example with **Next**.
-**Details** shows the recorded action and a compact score explanation for both sides.
-Back (or Escape from the replay) returns to the menu. Leaving or changing lessons pauses playback.
+The main menu's **How to Play** entry opens the **Quick guide**: seven steps down the left
+(play cards, combos, formations, Spells, swapping, Kings, winning), each one line of text over a
+short GIF clip. Previous/Next or the arrow keys move between steps; reduced motion shows each
+clip's first frame. `GuideSteps` lists the steps and is shared with the match's pause menu
+(Menu → How to play), so both teach the same thing.
 
-The example has only Next and Details controls: no timeline, round jumps, Previous, automatic
-playback or speed control. Right arrow advances one action; the full replay navigation shortcuts
-are disabled here. Choose the lesson again to restart it. Personal replays retain their complete
-navigation and searchable journal; see [replay controls](replays.md).
+The clips in `src/main/resources/assets/guide/` were recorded on 2026-10-29 from a real practice
+match (seed 7) on the real `CardTableView`: the engine (`MatchState`) applied every move, the
+greedy bot played the opponent, and scripted pointer input pressed, dragged and released on the
+table as a player would. Frames were snapshot at 10 per second and encoded with ffmpeg
+(palette + Bayer dither). The drawn arrow pointer is added to the frames; no
+screenshot of the desktop was taken.
 
-The 17 lessons cover starting matches, Units and pairs, formations/scoring, seven-space rows
-and replacement, manual draws/skips, Kings/Secret Edict, rounds/final results and each of the ten
-neutral Spells. Rules and observation prompts sit beside playback; private confirmation and
-inspected-card steps have specific prompts. Formation values, the seven-nation bonus, King
-descriptions and Spell text come from current structured definitions. Provisional balance is labelled.
+Back (or Escape anywhere on the page) returns to the menu. The page reads only bundled files and
+sends nothing to the server. The Recorded lessons view (17 `.duel` training recordings shown in a
+read-only replay) was removed at the user's request on 2026-10-29; personal replays stay under
+History → Replay ([replay controls](replays.md)).
 
-## Recordings and boundaries
+## Reproducing the quick-guide clips (macOS/Linux, graphical session)
 
-`src/main/resources/tutorial/*.duel` contains curated training recordings, not personal history.
-They hold a public training seed and accepted moves, with a marker selecting a contiguous excerpt.
-The generator uses the ordinary 45-card deck and `MatchState.apply`; it does not fabricate rows,
-scores, hands or frames. The learner's camera is always the first seat's recipient-visible view.
-The full-match example completes three rounds without forfeiting. Other clips show the relevant
-before/after state, including every Spell with a meaningful legal target or nonempty deck/hand.
-
-`client/guide/TutorialRecording` replays and validates each recorded move against the bundled
-catalog on a worker thread, then returns immutable `PlayerView` frames. `TutorialLibrary` pairs
-these with English lessons. `HowToPlayPanel` owns chapter selection and observation text;
-`ReplayPlayback` owns playback position/speed; `ReplayPanel` renders it independently of the live
-match and account replay. No tutorial action can send a network move, create a match, write a
-result/replay or change settings. Loading failures have an explicit Retry action. Late worker
-completion does not start playback after leaving the guide.
-
-The personal replay path remains History → Replay. Compact replay layouts keep final scores
-above controls in the guide's smaller viewport. King art decodes in the background and triggers
-repaint on completion. The headless server excludes tutorial/client/JavaFX/artwork resources.
-
-## Reproducing the training assets on Windows
-
-From the repository root, using the current compiled core:
-
-```powershell
-mvn -DskipTests compile
-javac -cp target/classes -d target/tutorial-tools tools/RecordTutorials.java
-java -cp "target/classes;target/tutorial-tools" RecordTutorials
-mvn test
+```sh
+mvn -q -DskipTests compile
+mvn -q dependency:build-classpath -Dmdep.outputFile=target/cp.txt
+javac -cp "target/classes:$(cat target/cp.txt)" -d target/guide-tools tools/RecordGuideClips.java
+java -cp "target/guide-tools:target/classes:$(cat target/cp.txt)" deckduel.client.ui.RecordGuideClips target/guide-frames 7
+java -cp "target/guide-tools:target/classes:$(cat target/cp.txt)" deckduel.client.ui.RecordGuideClips target/guide-win 7 win
 ```
 
-The tool searches deterministic training deals, records only accepted moves and writes the 17
-intentional teaching assets. It never reads the live database or connects to a server. Tests check
-that all recordings remain valid and actually demonstrate their named effect, rather than merely
-loading successfully. Regenerate and review them when rules or catalog behavior changes.
+The first run writes `kings`, `play`, `combos`, `formation`, `cast`, `swap` and `win` frame folders;
+the second re-records only the ending (the bot passes in round 3 so the clip ends in a victory) and
+was used for `win.gif`. Encode each folder with
+`ffmpeg -framerate 10 -i <dir>/f%04d.png -vf "scale=1920:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=160:stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=4:diff_mode=rectangle" -loop 0 <name>.gif`
+(`play.gif` keeps its first 95 frames). Frames are rendered at 2x (2560×1440) and the GIFs are
+1920×1080, about 36 MB in total; the How to Play screen shrinks a clip to fit but never draws it
+larger than one clip pixel per screen pixel, so it stays sharp on HiDPI displays.
 
 Separately, Unit/Spell hover popups are disabled during the entire live King-selection phase,
 including when the eye button hides the offer. The hand remains visible and King inspection is

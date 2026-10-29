@@ -7,7 +7,7 @@ import java.util.Set;
 
 /**
  * The stronger practice opponent. Like {@link GreedyBot} it sees only its own {@link PlayerView}
- * and makes the same keep and draw decisions, but for card plays it plays out the rest
+ * and makes the same keep and swap decisions, but for card plays it plays out the rest
  * of its known hand for each candidate, scores round-ending plays exactly, and holds disruption
  * Spells while the opponent still has plays left to rebuild with. Deterministic for a given view.
  */

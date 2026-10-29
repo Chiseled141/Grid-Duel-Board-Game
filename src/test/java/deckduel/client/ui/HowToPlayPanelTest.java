@@ -6,14 +6,10 @@ import deckduel.client.state.ServerConnection;
 import deckduel.net.*;
 import java.awt.Component;
 import java.awt.Container;
-import java.awt.image.BufferedImage;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.concurrent.FutureTask;
-import javax.imageio.ImageIO;
 import javax.swing.*;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
@@ -25,7 +21,7 @@ class HowToPlayPanelTest {
         FutureTask<T> task = new FutureTask<>(work); SwingUtilities.invokeAndWait(task); return task.get();
     }
     private static Ui open() throws Exception {
-        Ui ui = edt(() -> {
+        return edt(() -> {
             List<Message> sent = new ArrayList<>();
             var model = new ClientModel(new ServerConnection() {
                 public void send(Message message) { sent.add(message); }
@@ -37,11 +33,6 @@ class HowToPlayPanelTest {
             sent.clear(); model.showHowToPlay();
             return new Ui(model, panel, sent);
         });
-        long deadline = System.currentTimeMillis() + 10_000;
-        while (!edt(() -> named(ui.panel, JComboBox.class, "guideChapters").getItemCount() == 17)) {
-            assertTrue(System.currentTimeMillis() < deadline, "bundled recordings load asynchronously"); Thread.sleep(20);
-        }
-        return ui;
     }
     private static <T extends Component> T named(Container parent, Class<T> type, String name) {
         for (Component child : parent.getComponents()) {
@@ -50,97 +41,26 @@ class HowToPlayPanelTest {
         }
         return null;
     }
-    private static void layout(Container parent) {
-        parent.doLayout(); for (Component child : parent.getComponents()) if (child instanceof Container container) layout(container);
-    }
 
-    @Test void lessonsPlaybackAndBackStayReadOnlyAndStopOnNavigation() throws Exception {
+    @Test void quickGuideStepsShowATipAndClipEachAndBackLeaves() throws Exception {
         Ui ui = open();
         try {
-            String pausedPosition = edt(() -> {
-                assertEquals(Screen.HOW_TO_PLAY, ui.model.screen());
-                var chapters = named(ui.panel, JComboBox.class, "guideChapters");
-                for (int i = 0; i < 17; i++) {
-                    chapters.setSelectedIndex(i);
-                    assertFalse(named(ui.panel, JTextArea.class, "guideRules").getText().isBlank());
-                    assertTrue(named(ui.panel, JLabel.class, "replayPosition").getText().contains("Action 0"));
-                    assertEquals(i == 0 || i == 5 ? "Opening deal" : "Start of recorded excerpt",
-                            named(ui.panel, JLabel.class, "replayAction").getText());
-                }
-                chapters.setSelectedIndex(5);
-                named(ui.panel, JButton.class, "replayNext").doClick();
-                assertFalse(named(ui.panel, JLabel.class, "replayPosition").getText().contains("Action 0"));
-                var recording = named(ui.panel, ReplayPanel.class, "guideRecording");
-                for (String control : List.of("replayPrevious", "replayPlay", "replaySpeed", "replayTimeline"))
-                    assertFalse(named(recording, JComponent.class, control).isVisible());
-                assertEquals(2, java.util.Arrays.stream(recording.getComponents())
-                        .filter(component -> component instanceof JButton && component.isVisible()).count());
-                String position = named(recording, JLabel.class, "replayPosition").getText();
-                for (String command : List.of("replay.play", "replay.previous", "replay.first", "replay.last", "replay.nextRound"))
-                    recording.getActionMap().get(command).actionPerformed(null);
-                assertEquals(position, named(recording, JLabel.class, "replayPosition").getText());
-                named(recording, JButton.class, "replayDetailsToggle").doClick(0);
-                assertTrue(named(recording, JTextArea.class, "guideStepDetails").isVisible());
-                assertFalse(named(recording, JTabbedPane.class, "replayDetailTabs").isVisible());
-                ui.model.leaveToLobby();
-                assertEquals("PLAY", named(ui.panel, JButton.class, "replayPlay").getText());
-                assertTrue(ui.sent.isEmpty()); assertNull(ui.model.match()); assertNull(ui.model.replay());
-                return named(ui.panel, JLabel.class, "replayPosition").getText();
-            });
-            Thread.sleep(1600);
             edt(() -> {
-                assertEquals(pausedPosition, named(ui.panel, JLabel.class, "replayPosition").getText());
-                ui.model.showHowToPlay();
-                assertEquals(5, named(ui.panel, JComboBox.class, "guideChapters").getSelectedIndex());
-                assertTrue(named(ui.panel, JLabel.class, "replayPosition").getText().contains("Action 0"));
-                named(ui.panel, JButton.class, "guideNext").doClick();
-                assertEquals(6, named(ui.panel, JComboBox.class, "guideChapters").getSelectedIndex());
-                named(ui.panel, JButton.class, "guideBack").doClick();
-                assertEquals(Screen.LOBBY, ui.model.screen()); assertTrue(ui.sent.isEmpty()); return null;
-            });
-        } finally { edt(() -> { ui.model.leaveToLobby(); return null; }); }
-    }
-
-    @Test void readableGuideAndRecordingsRenderAtSupportedWindowSizes() throws Exception {
-        Ui ui = open();
-        try {
-            var artReady = new java.util.concurrent.CountDownLatch(1);
-            KingArt.whenReady(artReady::countDown);
-            assertTrue(artReady.await(10, java.util.concurrent.TimeUnit.SECONDS));
-            for (int[] size : new int[][] {{1280, 720}, {1470, 923}, {1920, 1080}}) {
-                for (int lesson : new int[] {0, 5, 6, 8, 14}) {
-                    BufferedImage image = edt(() -> {
-                        ui.panel.setSize(size[0], size[1]);
-                        named(ui.panel, JComboBox.class, "guideChapters").setSelectedIndex(lesson);
-                        layout(ui.panel);
-                        // Show the final frame to include counters, effect results and the final three-round score.
-                        JButton next = named(ui.panel, JButton.class, "replayNext");
-                        while (next.isEnabled()) next.doClick(0);
-                        layout(ui.panel);
-                        assertTrue(named(ui.panel, JTextArea.class, "guideRules").getWidth() >= 280);
-                        assertTrue(named(ui.panel, ReplayPanel.class, "guideRecording").getWidth() >= 850);
-                        BufferedImage picture = new BufferedImage(size[0], size[1], BufferedImage.TYPE_INT_RGB);
-                        var graphics = picture.createGraphics(); ui.panel.paint(graphics); graphics.dispose(); return picture;
-                    });
-                    Path path = Path.of("target/how-to-play-qa", "lesson-" + lesson + "-" + size[0] + ".png");
-                    Files.createDirectories(path.getParent()); ImageIO.write(image, "png", path.toFile());
-                    if (lesson == 5 || lesson == 14) {
-                        BufferedImage privateChoice = edt(() -> {
-                            var chapters = named(ui.panel, JComboBox.class, "guideChapters");
-                            chapters.setSelectedIndex(0); chapters.setSelectedIndex(lesson);
-                            JButton next = named(ui.panel, JButton.class, "replayNext");
-                            while (next.isEnabled() && !named(ui.panel, JTextArea.class, "guideObservation").getText().contains("only")
-                                    && !named(ui.panel, JTextArea.class, "guideObservation").getText().contains("Only")) next.doClick(0);
-                            assertTrue(named(ui.panel, JTextArea.class, "guideObservation").getText().contains("only")
-                                    || named(ui.panel, JTextArea.class, "guideObservation").getText().contains("Only"));
-                            BufferedImage picture = new BufferedImage(size[0], size[1], BufferedImage.TYPE_INT_RGB);
-                            var graphics = picture.createGraphics(); ui.panel.paint(graphics); graphics.dispose(); return picture;
-                        });
-                        ImageIO.write(privateChoice, "png", Path.of("target/how-to-play-qa",
-                                "lesson-" + lesson + "-private-" + size[0] + ".png").toFile());
-                    }
+                assertEquals(GuideSteps.STEPS.get(0).title(), ui.panel.currentTitle());
+                assertFalse(named(ui.panel, JButton.class, "guideStepPrevious").isEnabled());
+                for (int i = 1; i < GuideSteps.STEPS.size(); i++) {
+                    named(ui.panel, JButton.class, "guideStepNext").doClick();
+                    assertEquals(GuideSteps.STEPS.get(i).title(), ui.panel.currentTitle());
                 }
-            }
+                assertFalse(named(ui.panel, JButton.class, "guideStepNext").isEnabled());
+                named(ui.panel, JButton.class, "guideStep2").doClick();
+                assertEquals(GuideSteps.STEPS.get(2).title(), ui.panel.currentTitle());
+                for (GuideSteps.Step step : GuideSteps.STEPS)
+                    assertNotNull(HowToPlayPanel.class.getResource(step.resource()), step.resource() + " is bundled");
+                named(ui.panel, JButton.class, "guideBack").doClick();
+                assertEquals(Screen.LOBBY, ui.model.screen());
+                assertTrue(ui.sent.isEmpty()); return null;
+            });
         } finally { edt(() -> { ui.model.leaveToLobby(); return null; }); }
     }
 }

@@ -53,7 +53,7 @@ class FxScreensTest {
             frame[0].setBounds(40, 40, 1280, 720);
             frame[0].setVisible(true);
             screens[0] = new FxScreens(model[0], new ScoringSounds(() -> false), frame[0], () -> { },
-                    () -> false, bounds -> { });
+                    () -> false, bounds -> { }, new deckduel.client.ClientSettings());
         });
         try {
             var catalog = CatalogLoader.loadBundled();

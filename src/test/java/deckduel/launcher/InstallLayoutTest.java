@@ -80,6 +80,34 @@ class InstallLayoutTest {
         for (int launch = 0; launch < 5; launch++) assertEquals("1.1.0", layout.chooseForLaunch());
     }
 
+    @Test void setUpInstallsTheBundledPackageButKeepsANewerUpdate() throws IOException {
+        assertEquals("1.0.0", layout.setUp(packages.packageFor("1.0.0")));
+        assertEquals(new InstallLayout.Pointer("1.0.0", null, 0, null), layout.pointer().orElseThrow());
+        assertTrue(Files.isRegularFile(layout.stableLauncher()), "the shortcut's launcher exists");
+        installAndActivate("1.1.0");
+        Files.delete(layout.stableLauncher());
+        assertEquals("1.1.0", layout.setUp(packages.packageFor("1.0.0")), "reinstalling an older installer never downgrades");
+        assertEquals("1.1.0", layout.pointer().orElseThrow().active());
+        assertTrue(Files.isRegularFile(layout.stableLauncher()), "a missing launcher copy is restored");
+        assertEquals("1.2.0", layout.setUp(packages.packageFor("1.2.0")), "a newer installer upgrades");
+        assertEquals(new InstallLayout.Pointer("1.2.0", "1.1.0", 0, null), layout.pointer().orElseThrow());
+    }
+
+    @Test void setUpRepairsADamagedInstallation() throws IOException {
+        Path zip = packages.packageFor("1.0.0");
+        layout.setUp(zip);
+        TestPackages.corrupt(layout.versionDir("1.0.0").resolve(PackageManifest.APP_JAR));
+        Files.writeString(layout.root().resolve(InstallLayout.POINTER), "active=damaged\n");
+        assertEquals("1.0.0", layout.setUp(zip));
+        layout.verify("1.0.0");
+        assertEquals("1.0.0", layout.pointer().orElseThrow().active());
+
+        installAndActivate("1.1.0");
+        TestPackages.corrupt(layout.versionDir("1.1.0").resolve(PackageManifest.APP_JAR));
+        assertEquals("1.0.0", layout.setUp(zip), "a damaged newer version gives way to the bundled one");
+        layout.verify("1.0.0");
+    }
+
     @Test void launchingWithoutAnInstallationExplainsWhy() {
         IOException failure = assertThrows(IOException.class, () -> layout.chooseForLaunch());
         assertTrue(failure.getMessage().contains("not installed"));

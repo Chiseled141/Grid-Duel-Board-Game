@@ -1,7 +1,6 @@
 # Replay review verification
 
-Scope: client navigation and review of personal recordings, the shared tutorial playback surface,
-and local filtering of the history response. No game rules, serialized records, protocol version,
+Scope: client navigation and review of personal recordings and local filtering of the history response. No game rules, serialized records, protocol version,
 database schema or server authorization behavior changed.
 
 ## Environment and commands
@@ -48,7 +47,6 @@ These durations describe these runs only; no performance improvement is claimed.
 | Selected history entry is filtered out or removed | Clear selection and disable Watch replay | PASS |
 | `<html>` in an opponent name or journal search | Literal matching and plain text rendering | PASS |
 | Clear history filters | Restore loaded rows without another request | PASS |
-| Open another tutorial excerpt | Detach old listener, reset filters and navigation, stop old timer | PASS |
 | Leave a replay then activate its keyboard actions | No playback navigation and no timer restart | PASS |
 | How to Play controls | Only Next and Details are visible; full replay shortcuts cannot seek or start playback | PASS |
 | How to Play Details | Compact action and score explanation; no action journal, search or tab controls | PASS |
