@@ -32,7 +32,7 @@ public final class LoginPanel extends BattlefieldMenuPanel {
     private static final int MIN_CREDENTIAL_LENGTH = 3;
 
     private final ClientModel model;
-    // The server chosen at launch (docs/connections.md); credentials go nowhere else.
+    // The server chosen at launch (docs/README.md#connections); credentials go nowhere else.
     private final ServerRoute route;
 
     private final JTextField usernameField = new JTextField(14);

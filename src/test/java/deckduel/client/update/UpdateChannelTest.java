@@ -167,7 +167,8 @@ class UpdateChannelTest {
         badKey.setProperty("metadataUrl", "https://example.com/latest.properties");
         badKey.setProperty("publicKey", "AAAA");
         assertThrows(IllegalStateException.class, () -> UpdateConfig.from(badKey));
-        assertTrue(UpdateConfig.packaged().isEmpty(), "this build ships no release channel");
+        // A release build (launcher/) may package a channel; it must then be HTTPS.
+        UpdateConfig.packaged().ifPresent(config -> assertEquals("https", config.metadataUrl().getScheme()));
     }
 
     private ReleasePackage hosted(byte[] bytes) {

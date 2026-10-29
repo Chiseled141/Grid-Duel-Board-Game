@@ -19,10 +19,10 @@
     <javafx.version>21.0.5</javafx.version>
     <!-- Stamped into deckduel/version.properties; release builds may override it. -->
     <deckduel.version>${project.version}</deckduel.version>
-    <!-- The release channel (docs/updates.md). Empty: no release channel is configured. -->
+    <!-- The release channel (docs/README.md#updates). Empty: no release channel is configured. -->
     <deckduel.update.url></deckduel.update.url>
     <deckduel.update.publicKey></deckduel.update.publicKey>
-    <!-- The production game server (docs/deployment.md). Empty: no production server packaged. -->
+    <!-- The production game server (docs/README.md#deployment). Empty: no production server packaged. -->
     <deckduel.server.host></deckduel.server.host>
     <deckduel.server.port></deckduel.server.port>
   </properties>

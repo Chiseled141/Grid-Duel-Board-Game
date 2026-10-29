@@ -3,7 +3,7 @@
 #   tools/build-client-release.sh <version> <server-host> <server-port> <metadata-url> <public-key-file>
 # Builds the client with the production game server and the direct-S3 update channel packaged in,
 # then writes dist/client-<version>/deck-duel-<version>-<platform>.zip. Signing and uploading are
-# separate manual steps (docs/deployment.md, part D). The private signing key is never read here.
+# separate manual steps (docs/README.md#deployment, part D). The private signing key is never read here.
 set -euo pipefail
 VERSION=${1:?version}; HOST=${2:?server host (the certificate DNS name)}; PORT=${3:?server port}
 URL=${4:?https://<release-bucket>.s3.<region>.amazonaws.com/<channel>/latest.properties}; PUBLIC_KEY_FILE=${5:?public key file}

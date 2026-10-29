@@ -25,6 +25,8 @@ import java.util.logging.SimpleFormatter;
  * development and tests.</li>
  * <li>{@code setup --root R --package ZIP}: run by the Windows installer with the package it
  * bundles; like {@code install}, but keeps a newer version that an update already activated.</li>
+ * <li>{@code start [--root R] [--package ZIP]}: run by the macOS app on every launch: {@code setup}
+ * with the package it bundles (by default the one beside this jar), then {@code launch}.</li>
  * </ul>
  * It runs from the new version's folder during an update, so no file it replaces is in use.
  * No credentials are ever passed to it or written by it.
@@ -47,6 +49,7 @@ public final class LauncherMain {
                 case "launch" -> launch(layout);
                 case "activate" -> activate(layout, options.get("version"), Long.parseLong(options.get("wait-pid")));
                 case "install" -> install(layout, Path.of(options.get("package")));
+                case "start" -> start(layout, options.containsKey("package") ? Path.of(options.get("package")) : bundledPackage());
                 case "setup" -> System.out.println("Deck Duel " + layout.setUp(Path.of(options.get("package"))) + " is ready in " + layout.root());
                 default -> throw new IllegalArgumentException("Unknown launcher command " + command);
             }
@@ -90,6 +93,27 @@ public final class LauncherMain {
             LOG.log(Level.SEVERE, "could not activate " + version, failed);
         }
         launch(layout);
+    }
+
+    /** Sets up the bundled package (keeping a newer updated version), then starts the game. */
+    static void start(InstallLayout layout, Path zip) throws IOException {
+        layout.setUp(zip);
+        launch(layout);
+    }
+
+    /** The one update package that the app bundles next to this jar. */
+    static Path bundledPackage() throws IOException {
+        Path folder;
+        try {
+            folder = Path.of(LauncherMain.class.getProtectionDomain().getCodeSource().getLocation().toURI()).getParent();
+        } catch (java.net.URISyntaxException | SecurityException unknown) {
+            throw new IOException("cannot locate the launcher jar", unknown);
+        }
+        try (var packages = Files.list(folder)) {
+            List<Path> found = packages.filter(p -> p.getFileName().toString().matches("deck-duel-.+\\.zip")).toList();
+            if (found.size() != 1) throw new IOException("expected one bundled package in " + folder + ", found " + found.size());
+            return found.get(0);
+        }
     }
 
     /** Installs and activates a package; for setting up development and test installations. */

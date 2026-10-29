@@ -1,7 +1,7 @@
 # Deck Duel game server. Install as /etc/systemd/system/deckduel.service (deploy/setup-ec2.sh does this).
 [Unit]
 Description=Deck Duel game server
-Documentation=file:///opt/deckduel/docs/deployment.md
+Documentation=file:///opt/deckduel/docs/README.md#deployment
 After=network-online.target
 Wants=network-online.target
 
@@ -9,7 +9,7 @@ Wants=network-online.target
 Type=simple
 User=deckduel
 Group=deckduel
-# Memory for a 2 GiB t4g.small (docs/deployment.md "JVM memory"): a 512 MiB heap, capped
+# Memory for a 2 GiB t4g.small (docs/README.md#deployment "JVM memory"): a 512 MiB heap, capped
 # metaspace, the serial collector for a small heap on two vCPUs, and exit (then restart) on OOM.
 ExecStart=/usr/bin/java -Xms128m -Xmx512m -XX:MaxMetaspaceSize=128m -XX:+UseSerialGC -XX:+ExitOnOutOfMemoryError \
     -Djava.awt.headless=true -jar /opt/deckduel/current/deck-duel-server.jar server --config /etc/deckduel/server.properties

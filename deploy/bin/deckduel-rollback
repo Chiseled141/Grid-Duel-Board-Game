@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Run inside EC2: sudo /opt/deckduel/bin/deckduel-rollback [--force]
 # Switches back to the release that was current before the last switch, with the same draining.
-# Check docs/deployment.md "Rollback and database compatibility" first.
+# Check docs/README.md#deployment "Rollback and database compatibility" first.
 set -euo pipefail
 [ "$(id -u)" -eq 0 ] || { echo "Run with sudo." >&2; exit 1; }
 PREVIOUS=$(readlink /opt/deckduel/previous 2>/dev/null || true)

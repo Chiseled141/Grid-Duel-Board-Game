@@ -43,7 +43,7 @@ public final class Main {
         try {
             // Release tooling has sub-commands of its own.
             if (args[0].equals("release")) { System.exit(deckduel.release.ReleaseTool.run(java.util.Arrays.copyOfRange(args, 1, args.length))); }
-            // The server and its operator tools (docs/deployment.md) share the headless server jar's entry point.
+            // The server and its operator tools (docs/README.md#deployment) share the headless server jar's entry point.
             if (java.util.Set.of("server", "ctl", "backup", "backup-keygen", "restore", "probe").contains(args[0])) System.exit(deckduel.server.ServerMain.run(args));
             Map<String, String> options = parseOptions(args);
             switch (args[0]) {
@@ -164,8 +164,8 @@ public final class Main {
     private static void usage() {
         LOG.info("Usage: client [--host H --port P --tls true|false --trust-cert ca.pem --startup-fixture up-to-date|optional-update|"
                 + "required-update|install-fails|check-fails|connection-fails] | server [--config server.properties | --port 5555 --db data/deck-duel.db]"
-                + " | ctl status|drain|resume|reload-tls|wait-safe [--socket S] | backup|restore|backup-keygen ... (docs/deployment.md)"
+                + " | ctl status|drain|resume|reload-tls|wait-safe [--socket S] | backup|restore|backup-keygen ... (docs/README.md#deployment)"
                 + " | demo [--games 1] | bots [--host 127.0.0.1 --port 5555 --tls true --trust-cert ca.pem --count 2 --games 1 --password bot-pass]"
-                + " | release keygen|package|sign ... (docs/updates.md)");
+                + " | release keygen|package|sign ... (docs/README.md#updates)");
     }
 }

@@ -46,6 +46,7 @@ class EndpointsTest {
         filled.setProperty("host", "play.example.net");
         filled.setProperty("port", "5556");
         assertEquals(new ServerRoute("play.example.net", 5556, true), Endpoints.from(filled).orElseThrow());
-        assertTrue(Endpoints.packaged().isEmpty(), "this build packages no production server");
+        // A release build (launcher/) packages its server; that route must always use TLS.
+        Endpoints.packaged().ifPresent(route -> assertTrue(route.tls(), "a packaged server always uses TLS"));
     }
 }

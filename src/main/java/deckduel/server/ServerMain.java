@@ -11,7 +11,7 @@ import java.util.logging.Logger;
  * The headless server and its local operator tools ({@code deck-duel-server.jar}; also reachable
  * through {@code deck-duel.jar}). It never touches JavaFX, Swing or audio.
  * <ul>
- * <li>{@code server --config FILE}: the production server (docs/deployment.md); or
+ * <li>{@code server --config FILE}: the production server (docs/README.md#deployment); or
  * {@code server --port P --db FILE} for local development on 127.0.0.1 without TLS.</li>
  * <li>{@code ctl status|drain|resume|reload-tls|wait-safe [--socket S] [--timeout SECONDS]}: talks to a
  * running server over its local control socket.</li>

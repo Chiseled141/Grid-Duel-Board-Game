@@ -20,7 +20,7 @@ install -d -o deckduel -g deckduel -m 0700 /var/lib/deckduel /var/backups/deckdu
 for script in "$HERE"/bin/*; do install -o root -g root -m 0755 "$script" /opt/deckduel/bin/; done
 for unit in "$HERE"/systemd/*; do install -o root -g root -m 0644 "$unit" /etc/systemd/system/; done
 install -o root -g deckduel -m 0640 "$HERE/config/server.properties.template" /etc/deckduel/server.properties.example
-[ -f "$HERE/../docs/deployment.md" ] && install -o root -g root -m 0644 "$HERE/../docs/deployment.md" /opt/deckduel/docs/
+[ -f "$HERE/../docs/README.md" ] && install -o root -g root -m 0644 "$HERE/../docs/README.md" /opt/deckduel/docs/
 
 systemctl daemon-reload
 systemctl enable deckduel.service >/dev/null

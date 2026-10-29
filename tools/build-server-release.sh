@@ -31,7 +31,7 @@ mkdir -p "$OUT/docs"
 cp "$JAR" "$OUT/deck-duel-server.jar"
 echo "$VERSION" > "$OUT/VERSION"
 cp -R deploy "$OUT/deploy"
-cp docs/deployment.md "$OUT/docs/"
+cp docs/README.md "$OUT/docs/"
 (cd "$OUT" && shasum -a 256 deck-duel-server.jar > SHA256SUMS)
 # macOS tar would embed extended attributes that GNU tar on Ubuntu warns about.
 TAR_OPTS=()

@@ -1,5 +1,5 @@
 # Deck Duel server configuration.
-# Install as /etc/deckduel/server.properties, owned root:deckduel, mode 0640 (docs/deployment.md).
+# Install as /etc/deckduel/server.properties, owned root:deckduel, mode 0640 (docs/README.md#deployment).
 # No passwords belong here: TLS uses PEM files protected by file permissions.
 
 # Listen on every interface. Anything but 127.0.0.1 requires the TLS files below; the server

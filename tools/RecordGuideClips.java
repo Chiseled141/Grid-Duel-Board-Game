@@ -29,7 +29,7 @@ import javax.imageio.ImageIO;
  * Records the How to Play quick-guide clips from a real match on the real {@link CardTableView}:
  * the engine applies every move, the greedy bot plays the opponent, and scripted pointer input
  * presses, drags and releases on the table. Writes PNG frames per clip under {@code args[0]}
- * (seed in {@code args[1]}; a third argument records only the match end). See docs/how-to-play.md.
+ * (seed in {@code args[1]}; a third argument records only the match end). See docs/README.md#how-to-play.
  */
 public class RecordGuideClips {
     static final Seat ME = Seat.FIRST;

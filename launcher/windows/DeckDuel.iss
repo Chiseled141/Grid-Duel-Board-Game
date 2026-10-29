@@ -1,5 +1,5 @@
 ; Deck Duel Windows installer (Inno Setup 6.3 or newer).
-; Built by tools\build-windows-installer.ps1, which passes these defines:
+; Built by launcher\windows\build-installer.ps1, which passes these defines:
 ;   AppVersion      the release version, for example 1.1.0 or 1.2.0-beta.1
 ;   NumericVersion  the same without its label, for the file properties (1.2.0)
 ;   Staging         a folder holding runtime\, deck-duel-launcher.jar and the update package
@@ -7,10 +7,10 @@
 ;
 ; Per-user install without administrator rights. The program folder holds the bundled Java
 ; runtime and the package; the setup step unpacks the game into %LOCALAPPDATA%\DeckDuel, the
-; folder the automatic updater owns (docs/updates.md), and the shortcuts start its launcher copy.
+; folder the automatic updater owns (docs/README.md#updates), and the shortcuts start its launcher copy.
 
 #ifndef AppVersion
-  #error Build with tools\build-windows-installer.ps1
+  #error Build with launcher\windows\build-installer.ps1
 #endif
 
 ; The updater's per-user installation root (launcher.InstallLayout.defaultRoot on Windows).
