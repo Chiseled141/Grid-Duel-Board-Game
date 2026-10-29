@@ -27,8 +27,7 @@ BUILD=$(mktemp -d "${TMPDIR:-/tmp}/deck-duel-build.XXXXXX")
 trap 'rm -rf "$BUILD"' EXIT
 rsync -a --delete --exclude target --exclude dist --exclude .git --exclude data --exclude logs --exclude '* [0-9]*' "$REPO"/ "$BUILD"/
 cd "$BUILD"
-# SKIP_TESTS=1 is for CI runners without audio or a full desktop; run the tests on your computer first.
-mvn -q clean verify -DskipTests="${SKIP_TESTS:+true}" -Ddeckduel.version="$VERSION" -Ddeckduel.server.host="$HOST" -Ddeckduel.server.port="$PORT" \
+mvn -q clean verify -Ddeckduel.version="$VERSION" -Ddeckduel.server.host="$HOST" -Ddeckduel.server.port="$PORT" \
     -Ddeckduel.update.url="$URL" -Ddeckduel.update.publicKey="$PUBLIC_KEY"
 PLATFORM=$(java -cp target/classes deckduel.Main release platform | tail -1)
 OUT=$REPO/dist/client-$VERSION

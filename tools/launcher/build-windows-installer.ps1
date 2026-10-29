@@ -28,7 +28,7 @@ param(
     [string] $PublicKeyFile = '',
     [string] $JdkHome = $env:JAVA_HOME,
     [string] $InnoSetupCompiler = '',
-    # For CI runners without audio or a full desktop; run the tests on your computer first.
+    # For a computer without audio or a full desktop session; run the tests elsewhere first.
     [switch] $SkipTests
 )
 $ErrorActionPreference = 'Stop'

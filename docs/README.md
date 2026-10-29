@@ -1129,11 +1129,6 @@ Windows checklist (to record when run):
 6. Run the older installer again: the newer version stays active.
 7. Uninstall: the program folder and `%LOCALAPPDATA%\DeckDuel` are gone, and `%USERPROFILE%\.deckduel` remains.
 
-**Without a Windows computer:** the **Build launchers** GitHub Actions workflow
-(`.github/workflows/build-launchers.yml`, Actions tab → Run workflow) builds this installer and the
-macOS apps (Apple silicon and Intel) on GitHub's machines, with the version, host and port you
-enter, and attaches them to the run as artifacts. It skips the tests; run `mvn test` locally first.
-
 <a id="macos-app"></a>
 
 ## macOS app
