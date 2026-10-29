@@ -575,9 +575,18 @@ class CardMatchIntegrationTest {
         }
     }
 
+    /** Creates the control-socket folder in a short system location; Unix addresses are length-limited. */
+    private static Path shortSocketFolder() throws IOException {
+        // Unix socket paths are limited to about 100 characters on macOS and 108 on Windows,
+        // so prefer the short system folder on Unix and the JVM temp folder elsewhere.
+        Path unixTmp = Path.of("/tmp");
+        Path base = File.separatorChar != '\\' && Files.isDirectory(unixTmp)
+                ? unixTmp : Path.of(System.getProperty("java.io.tmpdir"));
+        return Files.createTempDirectory(base, "dd");
+    }
+
     @Test void theControlSocketReportsDrainsAndResumes() throws Exception {
-        // Unix socket paths are limited to about 100 characters, so use a short folder.
-        Path folder = Files.createTempDirectory(Path.of("/tmp"), "dd");
+        Path folder = shortSocketFolder();
         Path socket = folder.resolve("control.sock");
         try (ControlServer control = ControlServer.start(socket, server)) {
             if (Files.getFileStore(socket).supportsFileAttributeView("posix"))

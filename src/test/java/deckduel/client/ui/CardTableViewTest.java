@@ -5,6 +5,8 @@ import static org.junit.jupiter.api.Assertions.*;
 import deckduel.cards.CatalogLoader;
 import deckduel.client.ClientSettings;
 import deckduel.client.ScoringSounds;
+import deckduel.core.card.CardDef;
+import deckduel.core.card.CardInstance;
 import deckduel.core.card.DeckRules;
 import deckduel.core.card.GreedyBot;
 import deckduel.core.card.MatchPhase;
@@ -12,7 +14,11 @@ import deckduel.core.card.MatchState;
 import deckduel.core.card.Move;
 import deckduel.core.card.PlayCard;
 import deckduel.core.card.PlayerView;
+import deckduel.core.card.Row;
+import deckduel.core.card.RowCard;
+import deckduel.core.card.Scoring;
 import deckduel.core.card.Seat;
+import deckduel.core.card.SideView;
 import deckduel.net.MatchUpdate;
 import java.awt.Rectangle;
 import java.util.ArrayList;
@@ -696,6 +702,47 @@ class CardTableViewTest {
             click(t.view, t.view.drawBounds());
             assertEquals(1, t.actions.calls.size(), "no draw on the opponent's turn");
         });
+    }
+
+    @Test void castingASpellThatNeedsNoTargetShowsAButtonThatResolvesIt() throws Exception {
+        CardDef drawTwo = DECK.stream().filter(card -> card.id().equals("draw-two")).findFirst().orElseThrow();
+        CardInstance spell = new CardInstance(90_001, drawTwo);
+        FxTesting.run(() -> {
+            var t = table(new ClientSettings(), true);
+            t.view.show(shown(spellView(List.of(spell), List.of()), true));
+            click(t.view, t.view.handBounds(0));
+            assertTrue(t.actions.calls.isEmpty(), "selecting a Spell sends nothing");
+            click(t.view, t.view.castBounds());
+            assertEquals(List.of(PlayCard.cast(spell.id(), null)), t.actions.calls);
+        });
+    }
+
+    @Test void aSpellThatTakesATargetAsksForOneThroughItsButtonBeforeItCasts() throws Exception {
+        CardDef destroy = DECK.stream().filter(card -> card.id().equals("destroy-unit")).findFirst().orElseThrow();
+        CardDef knight = DECK.stream().filter(card -> card.id().equals("ashkar-knight")).findFirst().orElseThrow();
+        CardInstance spell = new CardInstance(90_002, destroy);
+        CardInstance enemy = new CardInstance(90_003, knight);
+        FxTesting.run(() -> {
+            var t = table(new ClientSettings(), true);
+            t.view.show(shown(spellView(List.of(spell), List.of(RowCard.placed(2, enemy))), true));
+            click(t.view, t.view.handBounds(0));
+            // Selecting the Spell alone does not arm its targets.
+            click(t.view, t.view.rowCardBounds(TableZone.OPPONENT, 2));
+            assertTrue(t.actions.calls.isEmpty(), "targets wait for the Cast button");
+            click(t.view, t.view.castBounds());
+            assertTrue(t.actions.calls.isEmpty(), "the button asks for a target instead of casting");
+            click(t.view, t.view.rowCardBounds(TableZone.OPPONENT, 2));
+            assertEquals(List.of(PlayCard.cast(spell.id(), enemy.id())), t.actions.calls);
+        });
+    }
+
+    /** A view in the recipient's turn with a chosen hand and enemy row, for Spell casting tests. */
+    private static PlayerView spellView(List<CardInstance> hand, List<RowCard> enemy) {
+        Row enemyRow = new Row(enemy);
+        SideView you = new SideView(Row.EMPTY, Scoring.score(Row.EMPTY), 0, 0, hand.size(), 20, 0, 0);
+        SideView them = new SideView(enemyRow, Scoring.score(enemyRow), 0, 0, 5, 20, 0, 0);
+        return new PlayerView(Seat.FIRST, 1, MatchPhase.IN_PROGRESS, 1, Seat.FIRST, you, them, hand,
+                List.of(), List.of(), null, null, List.of(), List.of());
     }
 
     /** A round-one view in which the starting player is choosing which Reconnaissance card to keep. */

@@ -160,6 +160,8 @@ final class CardTableView extends Pane {
     private final java.util.ArrayDeque<State> held = new java.util.ArrayDeque<>();
     private State pendingConclusion;
     private Long selected, pressed;
+    // The Cast button was pressed for a Spell that takes a target; the next card click chooses it.
+    private boolean targetChoice;
     // The player's own arrangement, for easier reading only: the hand's order by card id, and which
     // real row space each of the seven places on their row shows. Nothing of it reaches the server.
     private List<Long> handOrder = new ArrayList<>();
@@ -264,6 +266,7 @@ final class CardTableView extends Pane {
     private void presentSnapshot(State next) {
         // Hover indices may identify different cards after a draw, play or private reveal update.
         clearPreview();
+        targetChoice = false;
         state = next;
         MatchUpdate update = next.match();
         if (update == null) {
@@ -363,6 +366,7 @@ final class CardTableView extends Pane {
     void hidden() {
         clearPreview();
         clearGesture();
+        targetChoice = false;
         onScreen = false;
         if (pendingConclusion != null) {
             State conclusion = pendingConclusion; pendingConclusion = null;
@@ -541,6 +545,7 @@ final class CardTableView extends Pane {
 
     private void play(PlayCard play) {
         selected = null;
+        targetChoice = false;
         actions.move(play);
         wake();
     }
@@ -554,6 +559,7 @@ final class CardTableView extends Pane {
     void skipTurn() {
         if (shown == null || kings.deploying() || state.reconnecting() || !shown.view().canSkip()) return;
         selected = null;
+        targetChoice = false;
         actions.move(new SkipTurn());
         wake();
     }
@@ -579,6 +585,31 @@ final class CardTableView extends Pane {
             if (play.targetId() != null && play.targetId().equals(target)) return play;
         }
         return null;
+    }
+
+    /** Whether the Cast button is on offer: a Spell is selected and its target has not been asked for yet. */
+    private boolean castButtonActive() {
+        CardInstance spell = handCard(selected);
+        return spell != null && !spell.def().occupiesSpace() && !targetChoice && !playsFor(selected).isEmpty();
+    }
+
+    /** Presses the Cast button: a Spell that takes a target asks for one first; the rest resolve at once. */
+    private void pressCast() {
+        CardInstance spell = handCard(selected);
+        if (spell == null || spell.def().occupiesSpace()) return;
+        List<PlayCard> plays = playsFor(selected);
+        boolean needsTarget = Rules.takesTarget(spell.def().effect())
+                && plays.stream().anyMatch(play -> play.targetId() != null);
+        if (needsTarget) { targetChoice = true; wake(); return; }
+        plays.stream().filter(play -> play.slot() == PlayCard.NO_SPACE && play.targetId() == null)
+                .findFirst().ifPresent(this::play);
+    }
+
+    /** The play a click performs now: Spell targets are only live after the Cast button asked for one. */
+    private PlayCard playNow(Long cardId, Hit hit) {
+        if (hit == null || hit.zone() == TableZone.CAST) return null;
+        PlayCard play = playAt(cardId, hit);
+        return play != null && (play.targetId() == null || targetChoice) ? play : null;
     }
 
     /** The card instance id a hit points at, or null. */
@@ -614,7 +645,8 @@ final class CardTableView extends Pane {
     void moveTo(Point2D point) {
         hover = hitAt(point);
         boolean inspectable = hover != null && hover.zone() == TableZone.REVEALED;
-        board.setCursor(inspectable ? javafx.scene.Cursor.HAND : javafx.scene.Cursor.DEFAULT);
+        boolean targetable = playNow(selected, hover) != null;
+        board.setCursor(inspectable || targetable ? javafx.scene.Cursor.HAND : javafx.scene.Cursor.DEFAULT);
         Hit target = previewable(hover);
         if (!java.util.Objects.equals(target, previewTarget)) {
             clearPreview();
@@ -738,18 +770,25 @@ final class CardTableView extends Pane {
         lastPointer = null;
         if (pressedSlot != null) { dropRowCard(hit, point); return; }
         if (!dragging && hit != null && button(hit)) { pressed = null; return; }
+        // The Cast button comes first; it then either asks for a target or resolves the Spell.
+        if (!dragging && hit != null && hit.zone() == TableZone.CAST && castButtonActive()) {
+            pressed = null;
+            pressCast();
+            return;
+        }
         Long card = dragging ? pressed : selected;
         boolean wasDrag = dragging;
         // Dropped within the hand rather than on a destination: it keeps the place it was shown at.
         List<Long> rearranged = wasDrag && overHand(point) ? hand().stream().map(CardInstance::id).toList() : null;
         pressed = null; dragging = false;
-        PlayCard play = rearranged != null ? null : playAt(card, hit);
+        PlayCard play = rearranged != null ? null : playNow(card, hit);
         if (play != null) { play(play); return; }
         if (rearranged != null) handOrder = rearranged;
         if (wasDrag) settleHandCard(card, point);
         if (!wasDrag && hit != null && hit.zone() == TableZone.HAND && settings.clickToSelectCards()) {
             long id = hand().get(hit.index()).id();
             selected = selected != null && selected == id ? null : id;
+            targetChoice = false;
         }
         wake();
     }
@@ -889,7 +928,8 @@ final class CardTableView extends Pane {
             case D -> draw();
             case S -> skipTurn();
             case ESCAPE -> {
-                if (pressed != null || pressedSlot != null) { selected = null; cancelDrag(); }
+                if (pressed != null || pressedSlot != null) { selected = null; targetChoice = false; cancelDrag(); }
+                else if (targetChoice) { targetChoice = false; wake(); }
                 else if (selected != null) { selected = null; wake(); } else confirmLeave();
             }
             default -> {
@@ -907,6 +947,7 @@ final class CardTableView extends Pane {
         int index = 0;
         for (int i = 0; i < hand.size(); i++) if (selected != null && hand.get(i).id() == selected) index = i + step;
         selected = hand.get(Math.floorMod(selected == null ? 0 : index, hand.size())).id();
+        targetChoice = false;
         wake();
     }
 
@@ -915,14 +956,14 @@ final class CardTableView extends Pane {
         if (card == null) return;
         TableZone zone = targetZone(card.def());
         // Number keys count the places as the player sees them.
-        PlayCard play = playAt(selected, new Hit(zone, zone == TableZone.OWN ? rowOrder[slot] : slot));
+        PlayCard play = playNow(selected, new Hit(zone, zone == TableZone.OWN ? rowOrder[slot] : slot));
         if (play != null) play(play);
     }
 
     private void confirmKey() {
-        PlayCard cast = playAt(selected, new Hit(TableZone.CAST, 0));
-        if (cast != null) play(cast);
-        else if (playAt(selected, hover) != null) play(playAt(selected, hover));
+        if (castButtonActive()) { pressCast(); return; }
+        PlayCard chosen = playNow(selected, hover);
+        if (chosen != null) play(chosen);
     }
 
     /** The Unit row a card's keyboard numbers refer to. */
@@ -1201,7 +1242,7 @@ final class CardTableView extends Pane {
                 if (slotBounds(zone, slot).contains(x, y)) return new Hit(zone, slot);
         if (view.canDraw() && (drawBounds().contains(x, y) || pileBounds().contains(x, y))) return new Hit(TableZone.DRAW, 0);
         if (view.canSkip() && !state.reconnecting() && skipBounds().contains(x, y)) return new Hit(TableZone.SKIP, 0);
-        if (playAt(selected, new Hit(TableZone.CAST, 0)) != null && castBounds().contains(x, y)) return new Hit(TableZone.CAST, 0);
+        if (castButtonActive() && castBounds().contains(x, y)) return new Hit(TableZone.CAST, 0);
         return null;
     }
 
@@ -1302,7 +1343,7 @@ final class CardTableView extends Pane {
         // Paint the vacant spaces first so a sliding card can cross them without being painted over.
         for (int slot = 0; slot < Row.SIZE; slot++) {
             RowCard card = side.row().at(slot);
-            boolean destination = rearranging ? slot != pressedSlot : playAt(active, new Hit(zone, slot)) != null;
+            boolean destination = rearranging ? slot != pressedSlot : playNow(active, new Hit(zone, slot)) != null;
             boolean hovered = hover != null && hover.zone() == zone && hover.index() == slot;
             if (card == null || staged && effects.hiddenOnRow(card.card().id()) || rearranging && slot == pressedSlot)
                 emptySlot(g, slotBounds(zone, slot), destination, hovered);
@@ -1312,7 +1353,7 @@ final class CardTableView extends Pane {
             // A card still travelling here is drawn by its animation instead; one being moved, at the pointer.
             if (card == null || staged && effects.hiddenOnRow(card.card().id()) || rearranging && slot == pressedSlot) continue;
             Rectangle r = rowCardBounds(zone, slot);
-            boolean destination = rearranging ? slot != pressedSlot : playAt(active, new Hit(zone, slot)) != null;
+            boolean destination = rearranging ? slot != pressedSlot : playNow(active, new Hit(zone, slot)) != null;
             boolean hovered = hover != null && hover.zone() == zone && hover.index() == slot;
             double jump = jump(zone, slot);
             g.save();
@@ -1479,17 +1520,21 @@ final class CardTableView extends Pane {
 
     private void drawStatus(GraphicsContext g) {
         centered(g, statusText(), FxKit.bold(17), FxKit.CREAM, midY);
-        boolean castable = playAt(selected, new Hit(TableZone.CAST, 0)) != null;
+        CardInstance spell = handCard(selected);
+        boolean ready = spell != null && !spell.def().occupiesSpace() && !playsFor(selected).isEmpty();
         String detail = detailText();
         // The cast button takes the detail line's place while it is offered.
-        if (detail != null && !castable) centered(g, detail, FxKit.normal(13), FxKit.MUTED, midY + 22);
-        if (castable) {
-            Rectangle cast = castBounds();
-            boolean lit = hover != null && hover.zone() == TableZone.CAST;
-            CardInstance spell = handCard(selected);
-            String label = Rules.takesTarget(spell.def().effect()) ? "Cast without a target" : "Cast " + spell.def().name();
-            TablePlaque.button(g, cast.x, cast.y, cast.width, cast.height, TablePlaque.Look.PRIMARY, lit, label, FxKit.bold(13));
-        }
+        if (detail != null && !ready) centered(g, detail, FxKit.normal(13), FxKit.MUTED, midY + 22);
+        if (!ready) return;
+        Rectangle cast = castBounds();
+        boolean needsTarget = Rules.takesTarget(spell.def().effect())
+                && playsFor(selected).stream().anyMatch(play -> play.targetId() != null);
+        boolean lit = hover != null && hover.zone() == TableZone.CAST && !targetChoice;
+        TablePlaque.Look look = targetChoice ? TablePlaque.Look.PLAIN : TablePlaque.Look.PRIMARY;
+        String label = targetChoice ? "Choose a target"
+                : Rules.takesTarget(spell.def().effect()) && !needsTarget ? "Cast without a target"
+                : "Cast " + spell.def().name();
+        TablePlaque.button(g, cast.x, cast.y, cast.width, cast.height, look, lit, label, FxKit.bold(13));
     }
 
     private String statusText() {
@@ -1511,6 +1556,7 @@ final class CardTableView extends Pane {
         Effect effect = card.def().effect();
         if (!Rules.takesTarget(effect)) return "Cast " + card.def().name() + " with the button below";
         if (Rules.spellTargets(card, view.hand(), view.board()).isEmpty()) return "No legal target — this Spell would resolve with no effect";
+        if (!targetChoice) return "Cast " + card.def().name() + " with the button below";
         if (effect instanceof Effect.Exchange) return "Choose another card in your hand to discard";
         return "Choose a target for " + card.def().name();
     }
@@ -1518,7 +1564,7 @@ final class CardTableView extends Pane {
     /** Hovered card details, hidden while choosing a legal play destination. */
     String detailText() {
         CardInstance card = handCard(dragging ? pressed : selected);
-        if (card != null && playAt(card.id(), hover) != null) return null;
+        if (card != null && playNow(card.id(), hover) != null) return null;
         CardDef hovered = cardAt(hover);
         if (hovered != null) return CardFace.details(hovered);
         return null;
@@ -1538,6 +1584,12 @@ final class CardTableView extends Pane {
             double[] pose = state.reducedMotion() ? handTarget(i) : handPose(i);
             handCard(g, card.def(), r.getCenterX(), r.getCenterY(), pose[1], fanAngle(i, hand.size()),
                     chosen, pose[0], yourTurn ? null : DIM);
+            // Exchange's discard is chosen from the hand; mark the other cards once Cast asked for it.
+            if (playNow(selected, new Hit(TableZone.HAND, i)) != null) {
+                g.setStroke(FxKit.AMBER.deriveColor(0, 1, 1, .9));
+                g.setLineWidth(2.5);
+                g.strokeRoundRect(r.x - 3, r.y - 3, r.width + 6, r.height + 6, 12, 12);
+            }
         }
     }
 
