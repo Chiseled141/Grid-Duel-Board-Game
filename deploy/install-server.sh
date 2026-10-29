@@ -20,7 +20,11 @@ BIN=/opt/deckduel/bin
 echo "== Packages"
 export DEBIAN_FRONTEND=noninteractive
 need=()
-/usr/bin/java -version 2>&1 | grep -Eq 'version "(1[7-9]|[2-9][0-9])' || need+=(openjdk-17-jdk-headless)
+if ! /usr/bin/java -version 2>&1 | grep -Eq 'version "(1[7-9]|[2-9][0-9])'; then
+  # Newer Ubuntu releases no longer ship Java 17; the server runs on any Java 17+.
+  apt-get update -q
+  if apt-cache show openjdk-21-jdk-headless >/dev/null 2>&1; then need+=(openjdk-21-jdk-headless); else need+=(openjdk-17-jdk-headless); fi
+fi
 command -v mvn >/dev/null || need+=(maven)
 command -v certbot >/dev/null || need+=(certbot)
 if [ ${#need[@]} -gt 0 ]; then apt-get update -q && apt-get install -y -q "${need[@]}"; fi
@@ -35,9 +39,11 @@ trap 'rm -rf "$BUILD"' EXIT
 cp -R "$REPO"/. "$BUILD"/
 rm -rf "$BUILD/target" "$BUILD/.git"
 # Tests run on the development computer: the client tests need a graphical session.
+# The server jar contains no JavaFX, but the one module still compiles the client against it, and
+# OpenJFX publishes Linux ARM64 jars only from 22 on; the Java 17 class files are unchanged.
 OWNER=${SUDO_USER:-root}
 chown -R "$OWNER" "$BUILD"
-sudo -u "$OWNER" -H bash -c "cd '$BUILD' && mvn -q -DskipTests package -Ddeckduel.version='$VERSION'"
+sudo -u "$OWNER" -H bash -c "cd '$BUILD' && mvn -q -DskipTests package -Djavafx.version=22.0.2 -Ddeckduel.version='$VERSION'"
 BUNDLE=$BUILD/bundle
 mkdir -p "$BUNDLE"
 cp "$BUILD/target/deck-duel-server.jar" "$BUNDLE/"
@@ -74,7 +80,7 @@ systemctl enable --now deckduel-backup.timer >/dev/null
 
 echo
 echo "Deck Duel $VERSION is running for $HOST."
-echo "Build the game for players with: launcher/macos/build-app.sh <version> $HOST $PORT  (and launcher\\windows\\build-installer.ps1 on Windows)"
+echo "Build the game for players with: tools/launcher/build-mac-app.sh <version> $HOST $PORT  (and launcher\\windows\\build-installer.ps1 on Windows)"
 if [ -n "${NEW_BACKUP_KEY:-}" ]; then
   echo "New backup key; store it in your password manager (without it backups cannot be restored):"
   cat /etc/deckduel/backup.key

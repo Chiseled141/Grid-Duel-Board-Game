@@ -86,13 +86,13 @@ unless you force them (part K).
 
 1. **Windows build** (on Windows x64; [Windows installer](#windows-installer)):
    ```powershell
-   powershell -ExecutionPolicy Bypass -File launcher\windows\build-installer.ps1 -Version <VERSION> `
+   powershell -ExecutionPolicy Bypass -File tools\launcher\build-windows-installer.ps1 -Version <VERSION> `
        -ServerHost <GAME_HOST> -ServerPort <GAME_PORT> -UpdateUrl <RELEASE_URL> `
        -PublicKeyFile <path>\release.pub -JdkHome <JDK 21 folder>
    ```
    → `dist\client-<VERSION>\deck-duel-<VERSION>-windows-x64.zip` and `DeckDuel-Setup-<VERSION>.exe`.
 2. **macOS build** (on a Mac; [macOS app](#macos-app)):
-   `launcher/macos/build-app.sh <VERSION> <GAME_HOST> <GAME_PORT> [<RELEASE_URL> release.pub]`
+   `tools/launcher/build-mac-app.sh <VERSION> <GAME_HOST> <GAME_PORT> [<RELEASE_URL> release.pub]`
    → `dist/client-<VERSION>/deck-duel-<VERSION>-mac-<arch>.zip` and `DeckDuel-<VERSION>-mac-<arch>.dmg`.
 3. **Other platforms** (optional; on each platform): `tools/build-client-release.sh <VERSION> <GAME_HOST> <GAME_PORT> <RELEASE_URL> release.pub`.
    These players have no installer; see [updates](#updates).
@@ -368,7 +368,7 @@ java -jar target/deck-duel-server.jar probe --host <GAME_HOST> --port <GAME_PORT
    ```
    Between the two metadata uploads a client may see a signature mismatch. It reports "Update
    check failed" with Retry; it never accepts unsigned data.
-   For Windows, build on a Windows x64 computer with `launcher\windows\build-installer.ps1` instead
+   For Windows, build on a Windows x64 computer with `tools\launcher\build-windows-installer.ps1` instead
    (`docs/README.md#windows-installer`). It writes the Windows package to the same folder, together with
    `DeckDuel-Setup-<VERSION>.exe`. Copy every platform's zip into `dist/client-<VERSION>/` on the
    computer that holds the signing key before step 5.
@@ -1004,10 +1004,10 @@ menu (or the optional desktop shortcut). Updates then arrive through the automat
 
 | Part | File | Responsibility |
 |---|---|---|
-| Build script | `launcher/windows/build-installer.ps1` | Run on Windows x64. Builds and tests a copy of the repository with the server address and update channel packaged in, makes the update package, links the Java runtime, checks that runtime against the package, and compiles the installer. Nothing is uploaded or signed. |
-| Runtime modules | `launcher/runtime-modules.txt` | The Java modules `jlink` puts in the bundled runtime: all of Java SE plus the `jdk.*` modules JavaFX, Swing interop and TLS need. Modules that the linking JDK lacks are skipped. |
-| Installer script | `launcher/windows/DeckDuel.iss` (Inno Setup 6.3+) | Per-user install, shortcuts, the setup step, upgrade and uninstall. Its `AppId` must never change. |
-| Icon | `launcher/windows/deck-duel.ico` | The compass emblem from the card back (`assets/cards/card-back.png`), 16–256 px. |
+| Build script | `tools/launcher/build-windows-installer.ps1` | Run on Windows x64. Builds and tests a copy of the repository with the server address and update channel packaged in, makes the update package, links the Java runtime, checks that runtime against the package, and compiles the installer. Nothing is uploaded or signed. |
+| Runtime modules | `tools/launcher/runtime-modules.txt` | The Java modules `jlink` puts in the bundled runtime: all of Java SE plus the `jdk.*` modules JavaFX, Swing interop and TLS need. Modules that the linking JDK lacks are skipped. |
+| Installer script | `tools/launcher/DeckDuel.iss` (Inno Setup 6.3+) | Per-user install, shortcuts, the setup step, upgrade and uninstall. Its `AppId` must never change. |
+| Icon | `tools/launcher/deck-duel.ico` | The compass emblem from the card back (`assets/cards/card-back.png`), 16–256 px. |
 | Setup step | `launcher.InstallLayout.setUp`, `deck-duel-launcher.jar setup` | Installs and activates the bundled package, unless a newer version that still verifies is already active. A rerun repairs a damaged pointer or version folder. |
 
 ### What gets installed
@@ -1066,7 +1066,7 @@ Prerequisites (install once):
   needed here.
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File launcher\windows\build-installer.ps1 -Version <VERSION> `
+powershell -ExecutionPolicy Bypass -File tools\launcher\build-windows-installer.ps1 -Version <VERSION> `
     -ServerHost <GAME_HOST> -ServerPort <GAME_PORT> `
     -UpdateUrl https://<RELEASE_BUCKET>.s3.<REGION>.amazonaws.com/<CHANNEL>/latest.properties `
     -PublicKeyFile <path>\release.pub -JdkHome 'C:\Program Files\Eclipse Adoptium\<jdk-21 folder>'
@@ -1129,6 +1129,11 @@ Windows checklist (to record when run):
 6. Run the older installer again: the newer version stays active.
 7. Uninstall: the program folder and `%LOCALAPPDATA%\DeckDuel` are gone, and `%USERPROFILE%\.deckduel` remains.
 
+**Without a Windows computer:** the **Build launchers** GitHub Actions workflow
+(`.github/workflows/build-launchers.yml`, Actions tab → Run workflow) builds this installer and the
+macOS apps (Apple silicon and Intel) on GitHub's machines, with the version, host and port you
+enter, and attaches them to the run as artifacts. It skips the tests; run `mvn test` locally first.
+
 <a id="macos-app"></a>
 
 ## macOS app
@@ -1142,14 +1147,14 @@ Build it on a Mac; the app runs on that Mac's processor (Apple silicon `mac-aarc
 `mac-x64`). The update channel is optional; without it the game reports "Updates not set up".
 
 ```sh
-launcher/macos/build-app.sh <VERSION> <GAME_HOST> <GAME_PORT> [<RELEASE_URL> <release.pub>]
+tools/launcher/build-mac-app.sh <VERSION> <GAME_HOST> <GAME_PORT> [<RELEASE_URL> <release.pub>]
 ```
 
 | Part | File | What it does |
 |---|---|---|
-| Build script | `launcher/macos/build-app.sh` | Builds and tests a copy of the repository with the server address (and the release channel) packaged in, writes the update package, links the runtime with `jlink`, checks that runtime can set up the package and load the game, then makes `Deck Duel.app` and the `.dmg` with `jpackage`. |
-| Runtime modules | `launcher/runtime-modules.txt` | Shared with the Windows installer. |
-| Icon | `launcher/windows/deck-duel.ico` | Converted to `.icns` during the build. |
+| Build script | `tools/launcher/build-mac-app.sh` | Builds and tests a copy of the repository with the server address (and the release channel) packaged in, writes the update package, links the runtime with `jlink`, checks that runtime can set up the package and load the game, then makes `Deck Duel.app` and the `.dmg` with `jpackage`. |
+| Runtime modules | `tools/launcher/runtime-modules.txt` | Shared with the Windows installer. |
+| Icon | `tools/launcher/deck-duel.ico` | Converted to `.icns` during the build. |
 
 On every start the app runs `deck-duel-launcher.jar start`: it sets up its bundled package in
 `~/Library/Application Support/DeckDuel` (keeping a newer version an automatic update installed,

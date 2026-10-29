@@ -7,14 +7,14 @@ Builds and tests the client from a copy of this repository with the production g
 the update channel packaged in, then writes to dist\client-<Version>\:
   deck-duel-<Version>-windows-x64.zip   the update package (upload it to the release channel)
   DeckDuel-Setup-<Version>.exe          the installer players download and run once
-The installer carries a Java runtime linked from -JdkHome (launcher\runtime-modules.txt)
+The installer carries a Java runtime linked from -JdkHome (tools\launcher\runtime-modules.txt)
 and installs per user, without administrator rights. Nothing is signed or uploaded here; signing
 the release metadata and uploading are manual steps (docs/README.md#windows-installer).
 
 Requires: a JDK 17+ for Windows x64 (Temurin 21 recommended), Maven on PATH, Inno Setup 6.3+.
 
 .EXAMPLE
-powershell -ExecutionPolicy Bypass -File launcher\windows\build-installer.ps1 -Version 1.0.0 `
+powershell -ExecutionPolicy Bypass -File tools\launcher\build-windows-installer.ps1 -Version 1.0.0 `
     -ServerHost <GAME_HOST> -ServerPort 5555 `
     -UpdateUrl https://<RELEASE_BUCKET>.s3.<region>.amazonaws.com/stable/latest.properties `
     -PublicKeyFile $HOME\deck-duel-keys\release.pub -JdkHome 'C:\Program Files\Eclipse Adoptium\jdk-21.0.5.11-hotspot'
@@ -27,7 +27,9 @@ param(
     [string] $UpdateUrl = '',
     [string] $PublicKeyFile = '',
     [string] $JdkHome = $env:JAVA_HOME,
-    [string] $InnoSetupCompiler = ''
+    [string] $InnoSetupCompiler = '',
+    # For CI runners without audio or a full desktop; run the tests on your computer first.
+    [switch] $SkipTests
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
@@ -76,7 +78,7 @@ try {
     if ($LASTEXITCODE -ge 8) { throw "Copying the repository failed (robocopy $LASTEXITCODE)" }
     Push-Location $build
     try {
-        Invoke-Checked 'mvn' @('-q', 'clean', 'verify', "-Ddeckduel.version=$Version", "-Ddeckduel.server.host=$ServerHost",
+        Invoke-Checked 'mvn' @('-q', 'clean', 'verify', "-DskipTests=$([bool]$SkipTests)", "-Ddeckduel.version=$Version", "-Ddeckduel.server.host=$ServerHost",
             "-Ddeckduel.server.port=$ServerPort", "-Ddeckduel.update.url=$UpdateUrl", "-Ddeckduel.update.publicKey=$publicKey")
         $platform = "$(& $java -cp target\classes deckduel.Main release platform | Select-Object -Last 1)".Trim()
         if ($LASTEXITCODE -ne 0 -or $platform -ne 'windows-x64'){ throw "This JDK reports platform $platform, not windows-x64" }
@@ -88,7 +90,7 @@ try {
 
         # The runtime: the listed modules that this JDK has (jdk.crypto.ec is gone from newer JDKs).
         $available = & $java --list-modules | ForEach-Object { ($_ -split '@')[0] }
-        $modules = Get-Content "$repo\launcher\runtime-modules.txt" | Where-Object { $_ -and -not $_.StartsWith('#') } |
+        $modules = Get-Content "$repo\tools\launcher\runtime-modules.txt" | Where-Object { $_ -and -not $_.StartsWith('#') } |
             Where-Object { $available -contains $_ }
         $staging = Join-Path $build 'installer'
         Invoke-Checked "$JdkHome\bin\jlink.exe" @('--add-modules', ($modules -join ','), '--strip-debug', '--no-man-pages',
@@ -102,11 +104,14 @@ try {
         Invoke-Checked "$staging\runtime\bin\java.exe" @('-cp', "$check\versions\$Version\deck-duel.jar", 'deckduel.Main', 'release', 'platform')
 
         Invoke-Checked $iscc @('/Q', "/DAppVersion=$Version", "/DNumericVersion=$($Version -replace '-.*$', '')",
-            "/DStaging=$staging", "/DPackageName=$package", "/O$out", "$repo\launcher\windows\DeckDuel.iss")
+            "/DStaging=$staging", "/DPackageName=$package", "/O$out", "$repo\tools\launcher\DeckDuel.iss")
     } finally { Pop-Location }
 } finally {
     Remove-Item -Recurse -Force $build -ErrorAction SilentlyContinue
 }
 Get-FileHash -Algorithm SHA256 "$out\deck-duel-$Version-windows-x64.zip", "$out\DeckDuel-Setup-$Version.exe" |
     ForEach-Object { Write-Host "$($_.Hash.ToLower())  $(Split-Path -Leaf $_.Path)  $((Get-Item $_.Path).Length) bytes" }
-Write-Host "Built $out\DeckDuel-Setup-$Version.exe"
+# launcher\ keeps only the downloads players need (ignored by Git).
+New-Item -ItemType Directory -Force "$repo\launcher" | Out-Null
+Copy-Item "$out\DeckDuel-Setup-$Version.exe" "$repo\launcher\"
+Write-Host "Built $repo\launcher\DeckDuel-Setup-$Version.exe"

@@ -1,0 +1,72 @@
+# Builds the player downloads on GitHub's own Windows and macOS machines: run it from the
+# Actions tab (Build launchers → Run workflow). The files appear under the run's Artifacts.
+# Nothing is signed or published; see docs/README.md#windows-installer and #macos-app.
+name: Build launchers
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release version, for example 1.0.0
+        required: true
+        default: 1.0.0
+      host:
+        description: Game server DNS name (on its TLS certificate)
+        required: true
+        default: deckduel.duckdns.org
+      port:
+        description: Game server port
+        required: true
+        default: "5555"
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - name: Install Inno Setup
+        run: choco install innosetup -y --no-progress
+      - name: Build the installer
+        shell: pwsh
+        run: >
+          ./tools/launcher/build-windows-installer.ps1 -Version "${{ inputs.version }}"
+          -ServerHost "${{ inputs.host }}" -ServerPort ${{ inputs.port }}
+          -JdkHome $env:JAVA_HOME -SkipTests
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DeckDuel-${{ inputs.version }}-windows-x64
+          path: |
+            dist/client-${{ inputs.version }}/DeckDuel-Setup-${{ inputs.version }}.exe
+            dist/client-${{ inputs.version }}/deck-duel-${{ inputs.version }}-windows-x64.zip
+
+  macos:
+    strategy:
+      matrix:
+        # Apple silicon and Intel Macs each need their own build.
+        runner: [macos-14, macos-13]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - name: Build the app
+        env:
+          SKIP_TESTS: "1"
+        run: tools/launcher/build-mac-app.sh "${{ inputs.version }}" "${{ inputs.host }}" "${{ inputs.port }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DeckDuel-${{ inputs.version }}-${{ matrix.runner }}
+          path: |
+            dist/client-${{ inputs.version }}/*.dmg
+            dist/client-${{ inputs.version }}/*.zip

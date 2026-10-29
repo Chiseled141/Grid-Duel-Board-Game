@@ -21,3 +21,7 @@ dist/
 *.p12
 *.db.enc
 
+
+# launcher/ holds the built player downloads (the .exe and .dmg) on this computer only:
+# they are too large for Git (GitHub refuses files over 100 MB). Build scripts are in tools/launcher/.
+/launcher/
