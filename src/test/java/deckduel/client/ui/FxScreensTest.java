@@ -3,7 +3,6 @@ package deckduel.client.ui;
 import static org.junit.jupiter.api.Assertions.*;
 
 import deckduel.cards.CatalogLoader;
-import deckduel.client.ClientSettings;
 import deckduel.client.ScoringSounds;
 import deckduel.client.state.ClientModel;
 import deckduel.client.state.Screen;
@@ -53,7 +52,7 @@ class FxScreensTest {
             frame[0] = new JFrame("menu");
             frame[0].setBounds(40, 40, 1280, 720);
             frame[0].setVisible(true);
-            screens[0] = new FxScreens(model[0], new ClientSettings(), new ScoringSounds(() -> false), frame[0], () -> { },
+            screens[0] = new FxScreens(model[0], new ScoringSounds(() -> false), frame[0], () -> { },
                     () -> false, bounds -> { });
         });
         try {

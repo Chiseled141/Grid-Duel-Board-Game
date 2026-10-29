@@ -5,7 +5,7 @@ import javax.swing.*;
 
 /** Menu rows on iron tiles, matched to the match table's plates; the selected row is aged gold. */
 final class MenuSettingsOption extends JButton {
-    private enum Kind { CHOICE, TOGGLE, ACTION }
+    private enum Kind { TOGGLE, ACTION }
     private final Kind kind;
     private final String detail;
     // Fixed caption of a toggle; its button text carries the On/Off state.
@@ -20,10 +20,6 @@ final class MenuSettingsOption extends JButton {
         setRolloverEnabled(true); setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
         getAccessibleContext().setAccessibleDescription(detail);
         if (action != null) addActionListener(event -> action.run());
-    }
-
-    static JButton choice(String title, String detail, Runnable action) {
-        return new MenuSettingsOption(title, detail, Kind.CHOICE, action);
     }
 
     static JButton route(String title, String detail, Runnable action) {
@@ -53,19 +49,12 @@ final class MenuSettingsOption extends JButton {
     }
 
     private void paintChoice(Graphics2D g, boolean selected, boolean hover) {
-        int x = kind == Kind.ACTION ? 16 : 40;
-        if (kind != Kind.ACTION) {
-            g.setStroke(new BasicStroke(1.5f));
-            g.setColor(selected ? Theme.INK : Theme.BRASS);
-            g.drawOval(14, 21, 13, 13);
-            if (selected) g.fillOval(18, 25, 5, 5);
-        }
         g.setFont(getFont());
         g.setColor(selected ? Theme.INK : hover ? Theme.BRASS_LIGHT : Theme.CREAM);
-        g.drawString(getText(), x, 25);
+        g.drawString(getText(), 16, 25);
         g.setFont(Theme.normal(11f));
         g.setColor(selected ? new Color(0x4A3418) : Theme.FADED);
-        g.drawString(detail, x, 42);
+        g.drawString(detail, 16, 42);
     }
 
     /** The caption, its detail, and a switch on the right: lit gold when on, a dark slot when off. */

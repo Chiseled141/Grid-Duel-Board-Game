@@ -1,7 +1,6 @@
 package deckduel.client.ui;
 
 import deckduel.cards.CatalogLoader;
-import deckduel.client.ClientSettings;
 import deckduel.client.ScoringSounds;
 import deckduel.core.card.*;
 import deckduel.net.MatchUpdate;
@@ -60,7 +59,7 @@ class RoundScoringSequenceTest {
             public void move(Move move) { moves.add(move); }
             public void rematch() { }
             public void leave() { }
-        }, new ClientSettings(), new ScoringSounds(() -> false));
+        }, new ScoringSounds(() -> false));
         new Scene(view); view.getScene().getStylesheets().add(FxKit.STYLESHEET);
         view.resize(1280, 720); view.applyCss(); view.layout();
         view.show(update(before, true)); view.shown(0);

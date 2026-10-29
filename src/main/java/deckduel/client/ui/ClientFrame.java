@@ -104,7 +104,7 @@ public final class ClientFrame extends JFrame {
         content.add(new ReplayPanel(model), Screen.REPLAY.name());
         content.add(new HowToPlayPanel(model), Screen.HOW_TO_PLAY.name());
         add(buildScene());
-        fxScreens = new FxScreens(model, settings, scoringSounds, this, () -> soundToggle.doClick(),
+        fxScreens = new FxScreens(model, scoringSounds, this, () -> soundToggle.doClick(),
                 settings::soundEnabled, bounds -> { setBounds(bounds); closeAndSave(); });
         // Remembers required updates, holds new matches while installing, and restarts once no match is in progress.
         new UpdateFinisher(model, updates, services.restarter(), () -> { closeAndSave(); System.exit(0); }, text -> {

@@ -72,7 +72,7 @@ Tests use temporary SQLite files and ephemeral localhost ports. Desktop tests re
 - `server/MatchSession` runs each match on its own single-thread executor; timers only post work onto it. Moves quote the view revision; a retried accepted request id returns the current view instead of applying twice. Disconnected seats are held for `reconnectGraceSeconds`, then forfeited. In-match chat has been removed, including UI, client state, server relay and protocol messages. Rematch needs both players (the bot always agrees).
 - Keep seeded setup reproducible without revealing live seeds, RNG state, deck order, or opponent hands.
 - SQLite uses one shared connection under its monitor and PreparedStatements. Preserve PBKDF2 password storage, historical STONE/STREAM and later result labels, foreign keys, and atomic result insert + W/L transaction with rollback. Retired Elo columns are removed by an idempotent transactional schema migration; preserve accounts, historical match rows, round scores and foreign keys. Card matches store the first seat as blue, the catalog version as `rules_version`, rounds started/completed in the turn columns, and banked round scores in the additive `match_rounds` table; legacy rows are not reinterpreted.
-- Preserve client.properties host/port, window, music, reduced-motion, card-input and deck preferences. Obsolete pieceStyle is no longer used or written. Never commit personal DBs, credentials, logs, or generated build output.
+- Preserve client.properties host/port, window, music, reduced-motion and deck preferences. Obsolete pieceStyle is no longer used or written. Never commit personal DBs, credentials, logs, or generated build output.
 
 ## Approved card-game design
 

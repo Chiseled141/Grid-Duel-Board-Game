@@ -1,7 +1,6 @@
 package deckduel.client.ui;
 
 import deckduel.cards.CatalogLoader;
-import deckduel.client.ClientSettings;
 import deckduel.client.ScoringSounds;
 import deckduel.client.state.ClientModel;
 import deckduel.client.state.ClientModelListener;
@@ -46,7 +45,7 @@ final class FxScreens {
      * Starts JavaFX and builds the match table. Called on the EDT. {@code close} receives the window
      * bounds when the player closes the JavaFX window, on the EDT.
      */
-    FxScreens(ClientModel model, ClientSettings settings, ScoringSounds sounds, JFrame frame, Runnable toggleMusic,
+    FxScreens(ClientModel model, ScoringSounds sounds, JFrame frame, Runnable toggleMusic,
               BooleanSupplier musicOn, Consumer<Rectangle> close) {
         this.model = model;
         this.frame = frame;
@@ -56,7 +55,7 @@ final class FxScreens {
         FxKit.start();
         PaintedCardArt.preload(CatalogLoader.loadBundled().cards());
         boolean music = musicOn.getAsBoolean();
-        Platform.runLater(() -> build(settings, sounds, music));
+        Platform.runLater(() -> build(sounds, music));
         model.addListener(new ClientModelListener() {
             @Override public void onScreenChanged(Screen screen) { switchTo(screen); }
             @Override public void onMatchChanged() { sendMatch(); }
@@ -64,13 +63,13 @@ final class FxScreens {
         });
     }
 
-    private void build(ClientSettings settings, ScoringSounds sounds, boolean musicOn) {
+    private void build(ScoringSounds sounds, boolean musicOn) {
         VfxSprites.preload();
         table = new CardTableView(new CardTableView.Actions() {
             @Override public void move(Move move) { SwingUtilities.invokeLater(() -> model.move(move)); }
             @Override public void rematch() { SwingUtilities.invokeLater(model::requestRematch); }
             @Override public void leave() { SwingUtilities.invokeLater(model::leaveMatch); }
-        }, settings, sounds);
+        }, sounds);
         loading = new LoadingScreen();
         music = musicToggle(musicOn);
         root = new StackPane();

@@ -31,7 +31,6 @@ public final class ClientSettings {
     private boolean soundEnabled = true;
     private boolean reducedMotion = false;
     private volatile boolean gameSounds = true;
-    private volatile boolean clickToSelectCards = true;
     private volatile MenuTheme menuTheme = MenuTheme.GOLDEN_FIELDS;
     // Written by clients that still had a deck builder; preserved, never read for play.
     private volatile String deckRegions = "";
@@ -63,8 +62,6 @@ public final class ClientSettings {
         settings.reducedMotion = parseBoolean(
                 properties.getProperty("reducedMotion"), settings.reducedMotion);
         settings.gameSounds = parseBoolean(properties.getProperty("gameSounds"), settings.gameSounds);
-        settings.clickToSelectCards = parseBoolean(
-                properties.getProperty("clickToSelectCards"), settings.clickToSelectCards);
         settings.menuTheme = MenuTheme.fromPreference(properties.getProperty("menuTheme"));
         settings.deckRegions = properties.getProperty("deckRegions", "");
         settings.deckCards = properties.getProperty("deckCards", "");
@@ -84,7 +81,6 @@ public final class ClientSettings {
         properties.setProperty("windowHeight", String.valueOf(windowHeight));
         properties.setProperty("soundEnabled", String.valueOf(soundEnabled));
         properties.setProperty("reducedMotion", String.valueOf(reducedMotion));
-        properties.setProperty("clickToSelectCards", String.valueOf(clickToSelectCards));
         properties.setProperty("gameSounds", String.valueOf(gameSounds));
         properties.setProperty("menuTheme", menuTheme.name());
         properties.setProperty("deckRegions", deckRegions);
@@ -163,12 +159,6 @@ public final class ClientSettings {
 
     /** Turns match scoring sounds on or off. */
     public void setGameSounds(boolean enabled) { gameSounds = enabled; }
-
-    /** Whether a click may draw a card; upward dragging works in either mode. */
-    public boolean clickToSelectCards() { return clickToSelectCards; }
-
-    /** Chooses click-or-slide selection, or slide-only selection. */
-    public void setClickToSelectCards(boolean enabled) { clickToSelectCards = enabled; }
 
     /** Preferred scene shared by login and the main menu. */
     public MenuTheme menuTheme() { return menuTheme; }

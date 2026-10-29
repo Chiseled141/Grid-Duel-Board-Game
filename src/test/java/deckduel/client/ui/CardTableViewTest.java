@@ -42,7 +42,7 @@ class CardTableViewTest {
     private static Table table(ClientSettings settings, boolean sized) {
         Recorder actions = new Recorder();
         List<ScoringSounds.Cue> cues = new CopyOnWriteArrayList<>();
-        var view = new CardTableView(actions, settings, new ScoringSounds(settings::gameSounds, cues::add));
+        var view = new CardTableView(actions, new ScoringSounds(settings::gameSounds, cues::add));
         new Scene(view);
         view.getScene().getStylesheets().add(FxKit.STYLESHEET);
         if (sized) { size(view); view.shown(0); }
@@ -338,60 +338,36 @@ class CardTableViewTest {
         });
     }
 
-    @Test void dragOnlyModeIgnoresClicksButAcceptsADroppedCard() throws Exception {
-        FxTesting.run(() -> {
-            var settings = new ClientSettings();
-            settings.setClickToSelectCards(false);
-            var t = table(settings, true);
-            MatchState state = state();
-            PlayerView view = state.view(state.turn());
-            t.view.show(shown(view, true));
-            int unit = 0;
-            while (!view.hand().get(unit).def().occupiesSpace()) unit++;
-            click(t.view, t.view.handBounds(unit));
-            click(t.view, t.view.slotBounds(TableZone.OWN, 0));
-            assertTrue(t.actions.calls.isEmpty(), "a click does not select in drag-only mode");
-            Rectangle from = t.view.handBounds(unit), to = t.view.slotBounds(TableZone.OWN, 5);
-            t.view.pressAt(centre(from));
-            t.view.dragTo(centre(to));
-            t.view.releaseAt(centre(to));
-            assertEquals(5, ((PlayCard) t.actions.calls.get(0)).slot());
-        });
-    }
-
     private static void slowlyDrag(CardTableView view, Point2D from, Point2D to) {
         int steps = Math.max(1, (int) Math.ceil(from.distance(to) / 2));
         for (int step = 1; step <= steps; step++)
             view.dragTo(from.add(to.subtract(from).multiply(step / (double) steps)));
     }
 
-    @Test void smallMouseStepsStartHandDragsInBothInputModesAndOnlyServerUpdatesPlayTheCard() throws Exception {
+    @Test void smallMouseStepsStartHandDragsAndOnlyServerUpdatesPlayTheCard() throws Exception {
         FxTesting.run(() -> {
-            for (boolean click : new boolean[] {true, false}) {
-                var settings = new ClientSettings(); settings.setClickToSelectCards(click);
-                var t = table(settings, true);
-                MatchState state = state(); var view = state.view(state.turn());
-                t.view.show(shown(view, true)); t.view.show(shown(view, false));
-                int index = 0; while (!view.hand().get(index).def().occupiesSpace()) index++;
-                long cardId = view.hand().get(index).id();
-                Point2D origin = centre(t.view.handBounds(index));
-                t.view.pressAt(origin);
-                for (int dx = 2; dx <= 10; dx += 2) t.view.dragTo(origin.add(dx, 0));
-                assertTrue(t.view.lookup("#draggedCardLayer").isVisible(), "slow events must accumulate beyond the drag threshold");
-                var layer = t.view.lookup("#draggedCardLayer"); assertTrue(layer.isMouseTransparent());
-                var children = t.view.getChildrenUnmodifiable();
-                assertTrue(children.indexOf(layer) > children.indexOf(t.view.lookup("#kingControls")));
-                assertTrue(children.indexOf(layer) < children.indexOf(t.view.lookup("#matchResult")));
-                Point2D target = centre(t.view.slotBounds(TableZone.OWN, 0));
-                slowlyDrag(t.view, origin.add(10, 0), target); t.view.releaseAt(target);
-                assertEquals(List.of(PlayCard.place(cardId, 0)), t.actions.calls);
-                assertTrue(view.you().row().cards().isEmpty(), "a visual drag applies no gameplay locally");
-                assertFalse(layer.isVisible());
-                var accepted = state.apply(state.turn(), PlayCard.place(cardId, 0));
-                t.view.show(shown(accepted.view(view.seat()), false));
-                assertTrue(t.view.animating(), "the server's accepted play still runs its card animation");
-                t.view.hidden();
-            }
+            var t = table(new ClientSettings(), true);
+            MatchState state = state(); var view = state.view(state.turn());
+            t.view.show(shown(view, true)); t.view.show(shown(view, false));
+            int index = 0; while (!view.hand().get(index).def().occupiesSpace()) index++;
+            long cardId = view.hand().get(index).id();
+            Point2D origin = centre(t.view.handBounds(index));
+            t.view.pressAt(origin);
+            for (int dx = 2; dx <= 10; dx += 2) t.view.dragTo(origin.add(dx, 0));
+            assertTrue(t.view.lookup("#draggedCardLayer").isVisible(), "slow events must accumulate beyond the drag threshold");
+            var layer = t.view.lookup("#draggedCardLayer"); assertTrue(layer.isMouseTransparent());
+            var children = t.view.getChildrenUnmodifiable();
+            assertTrue(children.indexOf(layer) > children.indexOf(t.view.lookup("#kingControls")));
+            assertTrue(children.indexOf(layer) < children.indexOf(t.view.lookup("#matchResult")));
+            Point2D target = centre(t.view.slotBounds(TableZone.OWN, 0));
+            slowlyDrag(t.view, origin.add(10, 0), target); t.view.releaseAt(target);
+            assertEquals(List.of(PlayCard.place(cardId, 0)), t.actions.calls);
+            assertTrue(view.you().row().cards().isEmpty(), "a visual drag applies no gameplay locally");
+            assertFalse(layer.isVisible());
+            var accepted = state.apply(state.turn(), PlayCard.place(cardId, 0));
+            t.view.show(shown(accepted.view(view.seat()), false));
+            assertTrue(t.view.animating(), "the server's accepted play still runs its card animation");
+            t.view.hidden();
         });
     }
 

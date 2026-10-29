@@ -2,7 +2,6 @@ package deckduel.client.ui;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import deckduel.client.ClientSettings;
 import deckduel.client.DeckDuelClient;
 import deckduel.client.ScoringSounds;
 import deckduel.client.state.ClientModel;
@@ -55,7 +54,7 @@ class PracticeMatchSystemTest {
                     frame[0] = new JFrame("menu");
                     frame[0].setBounds(0, 25, 1470, 923);
                     frame[0].setVisible(true);
-                    screens[0] = new FxScreens(model[0], new ClientSettings(), new ScoringSounds(() -> false), frame[0], () -> { },
+                    screens[0] = new FxScreens(model[0], new ScoringSounds(() -> false), frame[0], () -> { },
                             () -> false, bounds -> { });
                     model[0].register(new deckduel.client.startup.ServerRoute("127.0.0.1", port, false), "chooser", "secret123");
                 });

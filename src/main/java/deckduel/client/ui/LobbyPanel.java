@@ -68,7 +68,6 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
     // Gaps after Create match and Join a game, hidden with them in offline play.
     private final Component createGap = Box.createVerticalStrut(8), browseGap = Box.createVerticalStrut(8);
     private final JLabel playNotice = caption(" ");
-    private final JButton[] cardControls = new JButton[2];
     private final java.util.Map<String, JPanel> pages = new java.util.LinkedHashMap<>();
     private final java.util.Map<String, MenuNavigation> navigation = new java.util.HashMap<>();
     private String currentPage = "home";
@@ -369,21 +368,6 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
 
     private JPanel buildSettings() {
         JPanel page = page("Settings", null, "home");
-        line(page, settingLabel("CARD SELECTION"));
-        page.add(Box.createVerticalStrut(7));
-        String[] controls = {"Click or slide up", "Slide up only"};
-        for (int i = 0; i < controls.length; i++) {
-            boolean click = i == 0;
-            cardControls[i] = MenuSettingsOption.choice(controls[i],
-                    click ? "Click a card or drag it upward." : "Select only with an upward drag.", () -> {
-                synchronized (settings) { settings.setClickToSelectCards(click); }
-                updateCardControls();
-                saveSettings.run();
-            });
-            line(page, cardControls[i]);
-            if (i == 0) page.add(Box.createVerticalStrut(6));
-        }
-        page.add(Box.createVerticalStrut(20));
         line(page, settingLabel("ANIMATION & SOUND"));
         page.add(Box.createVerticalStrut(7));
         JButton motion = MenuSettingsOption.toggle("Reduced motion", "Limit background and card animation.");
@@ -417,7 +401,6 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
         buildUpdates(page);
         page.add(Box.createVerticalStrut(12));
         line(page, caption("Changes saved automatically"));
-        updateCardControls();
         return page;
     }
 
@@ -454,11 +437,6 @@ public final class LobbyPanel extends BattlefieldMenuPanel {
         label.setFont(Theme.bold(11f));
         label.setForeground(Theme.BRASS_LIGHT);
         return label;
-    }
-
-    private void updateCardControls() {
-        cardControls[0].setSelected(settings.clickToSelectCards());
-        cardControls[1].setSelected(!settings.clickToSelectCards());
     }
 
     private JPanel page(String title, String subtitle, String back) {

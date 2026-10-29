@@ -1,7 +1,6 @@
 package deckduel.client.ui;
 
 import deckduel.cards.CatalogLoader;
-import deckduel.client.ClientSettings;
 import deckduel.client.ScoringSounds;
 import deckduel.core.card.*;
 import deckduel.net.MatchUpdate;
@@ -61,7 +60,7 @@ class KingPresentationTest {
                 public void move(Move move) { }
                 public void rematch() { }
                 public void leave() { }
-            }, new ClientSettings(), new ScoringSounds(() -> false));
+            }, new ScoringSounds(() -> false));
             new Scene(view); view.getScene().getStylesheets().add(FxKit.STYLESHEET);
             return view;
         });

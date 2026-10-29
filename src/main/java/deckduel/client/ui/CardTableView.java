@@ -1,6 +1,5 @@
 package deckduel.client.ui;
 
-import deckduel.client.ClientSettings;
 import deckduel.client.ScoringSounds;
 import deckduel.core.card.CardDef;
 import deckduel.core.card.CardInstance;
@@ -90,7 +89,6 @@ final class CardTableView extends Pane {
     record Hit(TableZone zone, int index) { }
 
     private final Actions actions;
-    private final ClientSettings settings;
     private final ScoringSounds sounds;
     private final ImageView backdrop = new ImageView();
     private final javafx.scene.shape.Rectangle headerShade = new javafx.scene.shape.Rectangle();
@@ -182,10 +180,9 @@ final class CardTableView extends Pane {
     private int handW, handH, handAreaWidth;
 
     /** Builds the table; it shows a match once {@link #show} receives one. */
-    CardTableView(Actions actions, ClientSettings settings, ScoringSounds sounds) {
+    CardTableView(Actions actions, ScoringSounds sounds) {
         this.actions = actions;
         kings = new KingTableControls(choice -> actions.move(choice));
-        this.settings = settings;
         this.sounds = sounds;
         setId("cardTable");
         setStyle("-fx-background-color: #2C2925;");
@@ -785,7 +782,7 @@ final class CardTableView extends Pane {
         if (play != null) { play(play); return; }
         if (rearranged != null) handOrder = rearranged;
         if (wasDrag) settleHandCard(card, point);
-        if (!wasDrag && hit != null && hit.zone() == TableZone.HAND && settings.clickToSelectCards()) {
+        if (!wasDrag && hit != null && hit.zone() == TableZone.HAND) {
             long id = hand().get(hit.index()).id();
             selected = selected != null && selected == id ? null : id;
             targetChoice = false;
